@@ -1,4 +1,4 @@
-import { Minus, Square, X, Search, Download, ListMusic } from "lucide-react";
+import { Minus, Music4, Square, X } from "lucide-react";
 import { APP_DISPLAY_NAME } from "../constants";
 
 type ElectrobunRpc = {
@@ -16,36 +16,41 @@ export function TitleBar({ electrobun }: TitleBarProps) {
   const send = electrobun?.rpc?.send;
 
   return (
-    <div className="flex items-center justify-between px-4 py-2 border-b border-winamp-border bg-winamp-panel shrink-0">
-      <div className="flex items-center gap-4 text-winamp-accent-muted electrobun-webkit-app-region-no-drag">
+    <div className="flex shrink-0 items-center justify-between border-b border-white/8 bg-[rgba(8,12,20,0.72)] px-5 py-3 backdrop-blur-2xl">
+      <div className="electrobun-webkit-app-region-no-drag flex items-center gap-2">
         <button
+          type="button"
           onClick={() => send?.minimizeWindow?.()}
-          className="hover:text-winamp-accent cursor-pointer transition-colors"
+          className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#f4be4f] text-transparent transition hover:text-[#5f3c00]"
           aria-label="Minimize"
         >
-          <Minus size={14} />
+          <Minus size={10} strokeWidth={2.5} />
         </button>
         <button
+          type="button"
           onClick={() => send?.maximizeWindow?.()}
-          className="hover:text-winamp-accent cursor-pointer transition-colors"
+          className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#61c454] text-transparent transition hover:text-[#0b4a07]"
           aria-label="Maximize"
         >
-          <Square size={12} />
+          <Square size={8} strokeWidth={2.4} />
         </button>
         <button
+          type="button"
           onClick={() => send?.closeWindow?.()}
-          className="hover:text-winamp-accent cursor-pointer transition-colors"
+          className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#ed6a5e] text-transparent transition hover:text-[#5f0d08]"
           aria-label="Close"
         >
-          <X size={14} />
+          <X size={9} strokeWidth={2.4} />
         </button>
       </div>
-      <div className="flex items-center gap-2 text-winamp-accent tracking-widest text-sm font-bold electrobun-webkit-app-region-drag flex-1 justify-center">
-        <ListMusic size={14} /> {APP_DISPLAY_NAME.toUpperCase().replace(/\s/g, " ")}
+
+      <div className="electrobun-webkit-app-region-drag flex flex-1 items-center justify-center gap-2 text-sm font-medium text-white/72">
+        <Music4 size={14} className="text-sky-300" />
+        <span>{APP_DISPLAY_NAME}</span>
       </div>
-      <div className="flex items-center gap-4 text-winamp-accent-muted electrobun-webkit-app-region-no-drag">
-        <Search size={14} className="hover:text-winamp-accent cursor-pointer transition-colors" />
-        <Download size={14} className="hover:text-winamp-accent cursor-pointer transition-colors" />
+
+      <div className="electrobun-webkit-app-region-no-drag text-xs uppercase tracking-[0.22em] text-white/28">
+        Desktop library
       </div>
     </div>
   );

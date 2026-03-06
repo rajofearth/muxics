@@ -9,7 +9,7 @@ function getAppDataPath(): string {
   const home = os.homedir();
 
   if (platform === "win32") {
-    const appData = process.env.APPDATA ?? path.join(home, "AppData", "Roaming");
+    const appData = process.env["APPDATA"] ?? path.join(home, "AppData", "Roaming");
     return path.join(appData, APP_ID);
   }
   if (platform === "darwin") {
@@ -22,13 +22,14 @@ export const APP_DATA_PATH = getAppDataPath();
 
 export const SETTINGS_PATH = path.join(APP_DATA_PATH, "settings.json");
 export const PLAYLISTS_DIR = path.join(APP_DATA_PATH, "playlists");
+export const LIBRARY_CACHE_PATH = path.join(APP_DATA_PATH, "library-cache.json");
 
 export function getDefaultMusicPath(): string {
   const platform = process.platform;
   const home = os.homedir();
 
   if (platform === "win32") {
-    const userProfile = process.env.USERPROFILE ?? home;
+    const userProfile = process.env["USERPROFILE"] ?? home;
     return path.join(userProfile, "Music");
   }
   return path.join(home, "Music");

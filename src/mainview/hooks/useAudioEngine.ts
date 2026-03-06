@@ -48,16 +48,16 @@ export function useAudioEngine() {
 
     // ── Event handlers (stable — read state at call-time) ──
     const onEnded = () => {
-      const { queue, currentTrack } = usePlayerStore.getState().player;
-      if (queue.length === 0) return;
-      const idx = queue.findIndex((t) => t.id === currentTrack?.id);
-      const next = idx >= 0 && idx < queue.length - 1 ? queue[idx + 1] : queue[0];
-      if (next) {
-        // Pause element before switching track to prevent Effect 3
-        // from trying to .play() the old src in between.
-        el.pause();
-        usePlayerStore.getState().playTrack(next, queue);
+      const { player, setCurrentTime } = usePlayerStore.getState();
+      if (player.repeatMode === "one" && player.currentTrack) {
+        el.currentTime = 0;
+        setCurrentTime(0);
+        el.play().catch(() => {});
+        return;
       }
+
+      el.pause();
+      usePlayerStore.getState().handleTrackEnd();
     };
 
     const onTimeUpdate = () => {
@@ -94,7 +94,7 @@ export function useAudioEngine() {
   const rpc = usePlayerStore((s) => s.rpc);
 
   useEffect(() => {
-    const { currentTrack } = usePlayerStore.getState().player;
+    const { currentTrack, currentTime, isPlaying } = usePlayerStore.getState().player;
     if (!currentTrack || !rpc) return;
 
     let cancelled = false;
@@ -115,7 +115,18 @@ export function useAudioEngine() {
         }
 
         el.src = url;
-        await el.play();
+        if (currentTime > 0) {
+          const restoreTime = () => {
+            el.currentTime = currentTime;
+          };
+          el.addEventListener("loadedmetadata", restoreTime, { once: true });
+        }
+
+        if (isPlaying) {
+          await el.play();
+        } else {
+          el.load();
+        }
       } catch (err) {
         console.warn("Playback start failed:", err);
       }

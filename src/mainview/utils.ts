@@ -9,8 +9,8 @@ export const formatTime = (seconds: number): string => {
   return `${min}:${sec.toString().padStart(2, "0")}`;
 };
 
-export const formatTotalDuration = (tracks: { time: string }[]): string => {
-  const totalSec = tracks.reduce((sum, t) => sum + parseTime(t.time), 0);
+export const formatTotalDuration = (tracks: { time: string; duration?: number }[]): string => {
+  const totalSec = tracks.reduce((sum, track) => sum + (track.duration ?? parseTime(track.time)), 0);
   const hours = Math.floor(totalSec / 3600);
   const min = Math.floor((totalSec % 3600) / 60);
   if (hours > 0) {

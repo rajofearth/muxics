@@ -26,17 +26,17 @@ export function ConfirmDialog({
 
   const confirmClass =
     variant === "danger"
-      ? "px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-mono"
-      : "px-4 py-2 bg-winamp-accent text-winamp-bg font-mono hover:opacity-90";
+      ? "rounded-full bg-red-500 px-4 py-2 text-white hover:bg-red-400"
+      : "rounded-full bg-white px-4 py-2 text-slate-950 hover:opacity-95";
 
   return (
     <Dialog title={title} onClose={onClose} maxWidth="lg">
-      <p className="text-winamp-text text-sm mb-6 break-words min-w-0">{message}</p>
+      <p className="mb-6 min-w-0 break-words text-sm text-white/60">{message}</p>
       <div className="flex justify-end gap-2">
         <button
           type="button"
           onClick={onClose}
-          className="px-4 py-2 text-winamp-accent-muted hover:text-winamp-accent"
+          className="px-4 py-2 text-white/45 transition hover:text-white"
         >
           {cancelLabel}
         </button>

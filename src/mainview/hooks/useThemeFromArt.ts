@@ -4,6 +4,12 @@ import { usePlayerStore } from "../store/playerStore";
 
 const MIN_ACCENT_LUMINANCE = 0.25; // Minimum luminance for contrast on dark UI
 
+type RGBTuple = [number, number, number];
+type ColorThiefLike = {
+  getColor: (img: HTMLImageElement) => RGBTuple;
+  getPalette: (img: HTMLImageElement, count: number) => RGBTuple[];
+};
+
 function rgbToHex(r: number, g: number, b: number): string {
   return "#" + [r, g, b].map((x) => Math.round(x).toString(16).padStart(2, "0")).join("");
 }
@@ -50,7 +56,7 @@ function lightenToMinLuminance(r: number, g: number, b: number): [number, number
 }
 
 /** Pick an accent color with sufficient contrast for dark theme */
-function pickBestAccentColor(thief: InstanceType<typeof ColorThief>, img: HTMLImageElement): string | null {
+function pickBestAccentColor(thief: ColorThiefLike, img: HTMLImageElement): string | null {
   const dominant = thief.getColor(img);
   if (!dominant) return null;
 
@@ -64,9 +70,9 @@ function pickBestAccentColor(thief: InstanceType<typeof ColorThief>, img: HTMLIm
   const palette = thief.getPalette(img, 5);
   if (palette?.length) {
     const candidates = palette
-      .map((c) => ({ rgb: c, lum: getLuminance(c[0], c[1], c[2]) }))
-      .filter((c) => c.lum >= MIN_ACCENT_LUMINANCE)
-      .sort((a, b) => b.lum - a.lum);
+      .map((color) => ({ rgb: color, lum: getLuminance(color[0], color[1], color[2]) }))
+      .filter((candidate) => candidate.lum >= MIN_ACCENT_LUMINANCE)
+      .sort((left, right) => right.lum - left.lum);
     if (candidates.length) {
       const [dr, dg, db] = candidates[0].rgb;
       return rgbToHex(dr, dg, db);
@@ -95,7 +101,8 @@ export function useThemeFromArt() {
 
     const onLoad = () => {
       try {
-        const thief = new ColorThief();
+        const ThiefCtor = ColorThief as unknown as { new (): ColorThiefLike };
+        const thief = new ThiefCtor();
         const accent = pickBestAccentColor(thief, img);
         if (accent) {
           const palette = [

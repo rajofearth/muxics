@@ -3,10 +3,15 @@
 		"lib": ["ESNext", "DOM"],
 		"target": "ESNext",
 		"module": "ESNext",
+		"baseUrl": ".",
 		"moduleDetection": "force",
 		"jsx": "react-jsx",
 		"allowJs": true,
 		"moduleResolution": "bundler",
+		"paths": {
+			"electrobun/bun": ["src/types/electrobun-bun-stub.d.ts"],
+			"electrobun/view": ["src/types/electrobun-view-stub.d.ts"]
+		},
 		"allowImportingTsExtensions": true,
 		"verbatimModuleSyntax": true,
 		"noEmit": true,

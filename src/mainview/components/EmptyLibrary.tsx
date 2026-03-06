@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { FolderPlus, Music, Loader2, AlertCircle, ChevronDown } from "lucide-react";
+import { AlertCircle, ChevronDown, FolderPlus, Loader2, Music4 } from "lucide-react";
 import { usePlayerStore } from "../store/playerStore";
 
 export function EmptyLibrary() {
@@ -45,32 +45,31 @@ export function EmptyLibrary() {
   };
 
   return (
-    <div className="flex-1 flex flex-col items-center justify-center gap-8 p-12">
-      <div className="w-36 h-36 border-2 border-winamp-border bg-winamp-panel-alt flex items-center justify-center rounded-lg">
-        <Music size={64} className="text-winamp-accent-muted" />
-      </div>
+    <div className="flex flex-1 items-center justify-center p-8">
+      <div className="w-full max-w-3xl rounded-[36px] border border-white/8 bg-[rgba(12,18,28,0.82)] p-10 text-center shadow-[0_24px_80px_rgba(2,6,16,0.36)]">
+        <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-[28px] bg-white/6">
+          <Music4 size={38} className="text-sky-300" />
+        </div>
 
-      <div className="text-center max-w-lg">
-        <h2 className="text-3xl font-bold text-winamp-accent mb-3 tracking-wide">
-          ADD YOUR MUSIC
-        </h2>
-        <p className="text-winamp-accent-muted text-sm mb-8 leading-relaxed">
-          Add a folder to scan for audio files. We&apos;ll search recursively through
-          all subfolders for MP3, FLAC, M4A, and more.
+        <h2 className="mt-6 text-3xl font-semibold text-white">Add your first music folder</h2>
+        <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-white/48">
+          Point the app at your local library and it will scan recursively for supported audio files,
+          cache metadata, and build your queue-ready collection.
         </p>
 
         {library.error && (
-          <div className="flex items-center gap-2 px-4 py-3 mb-6 bg-red-500/10 border border-red-500/30 text-red-400 rounded font-mono text-sm">
+          <div className="mx-auto mt-6 flex max-w-xl items-center gap-2 rounded-2xl border border-red-400/20 bg-red-500/8 px-4 py-3 text-sm text-red-200">
             <AlertCircle size={18} className="flex-shrink-0" />
             <span>{library.error}</span>
           </div>
         )}
 
-        <div className="flex flex-col gap-4">
+        <div className="mx-auto mt-8 flex max-w-xl flex-col gap-4">
           <button
+            type="button"
             onClick={handleAddDefault}
             disabled={loading || !defaultPath}
-            className="flex items-center justify-center gap-3 px-8 py-4 bg-winamp-border hover:bg-winamp-accent-muted text-winamp-bar hover:text-winamp-bg transition-colors font-mono text-base disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center justify-center gap-3 rounded-full bg-white px-8 py-4 text-base font-medium text-slate-950 transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {loading ? (
               <Loader2 size={20} className="animate-spin" />
@@ -81,15 +80,16 @@ export function EmptyLibrary() {
           </button>
 
           {defaultPath && (
-            <p className="text-xs text-winamp-accent-muted font-mono truncate px-4">
+            <p className="truncate px-4 text-xs text-white/40">
               {defaultPath}
             </p>
           )}
 
-          <div className="relative pt-4">
+          <div className="relative pt-2">
             <button
+              type="button"
               onClick={() => setShowCustom(!showCustom)}
-              className="flex items-center justify-center gap-2 text-winamp-accent-muted hover:text-winamp-accent transition-colors text-sm"
+              className="flex items-center justify-center gap-2 text-sm text-white/45 transition hover:text-white/75"
             >
               <ChevronDown
                 size={16}
@@ -99,26 +99,28 @@ export function EmptyLibrary() {
             </button>
 
             {showCustom && (
-              <div className="mt-4 flex flex-col gap-3">
+              <div className="mt-4 flex flex-col gap-3 rounded-[28px] border border-white/8 bg-white/4 p-4">
                 <div className="flex gap-2">
                   <input
                     type="text"
                     value={pathInput}
                     onChange={(e) => setPathInput(e.target.value)}
                     placeholder="Paste or type folder path..."
-                    className="flex-1 px-4 py-2.5 bg-winamp-panel border border-winamp-border text-winamp-bar placeholder-winamp-accent-muted font-mono text-sm focus:border-winamp-accent outline-none transition-colors"
+                    className="flex-1 rounded-full border border-white/10 bg-white/4 px-4 py-3 text-sm text-white placeholder:text-white/28 outline-none transition focus:border-sky-300/40"
                   />
                   <button
+                    type="button"
                     onClick={handlePaste}
-                    className="px-3 py-2.5 bg-winamp-panel border border-winamp-border text-winamp-accent-muted hover:text-winamp-accent text-xs font-mono"
+                    className="rounded-full border border-white/10 bg-white/4 px-4 py-3 text-xs text-white/65 transition hover:bg-white/8 hover:text-white"
                   >
                     Paste
                   </button>
                 </div>
                 <button
+                  type="button"
                   onClick={handleAddCustom}
                   disabled={!pathInput.trim() || loading}
-                  className="px-4 py-2.5 bg-winamp-border hover:bg-winamp-accent-muted disabled:opacity-50 disabled:cursor-not-allowed text-winamp-bar font-mono text-sm"
+                  className="rounded-full border border-white/10 bg-white/8 px-4 py-3 text-sm text-white transition hover:bg-white/12 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Add Folder
                 </button>

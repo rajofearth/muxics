@@ -25,15 +25,17 @@ export function PlaylistHeaderActions({ playlist, onNavigate }: PlaylistHeaderAc
     <>
       <div className="flex items-center gap-1">
         <button
+          type="button"
           onClick={() => setShowEditModal(true)}
-          className="p-1.5 rounded text-winamp-accent-muted hover:text-winamp-accent hover:bg-winamp-hover transition-colors"
+          className="rounded-full p-2 text-white/45 transition hover:bg-white/8 hover:text-white"
           aria-label="Rename playlist"
         >
           <Pencil size={18} />
         </button>
         <button
+          type="button"
           onClick={() => setShowDeleteDialog(true)}
-          className="p-1.5 rounded text-winamp-accent-muted hover:text-red-400 hover:bg-winamp-hover transition-colors"
+          className="rounded-full p-2 text-white/45 transition hover:bg-white/8 hover:text-red-300"
           aria-label="Delete playlist"
         >
           <Trash2 size={18} />

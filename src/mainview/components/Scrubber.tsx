@@ -18,18 +18,18 @@ export function Scrubber({ value, max, currentLabel, maxLabel, onChange }: Scrub
   };
 
   return (
-    <div className="w-full flex items-center gap-4 text-xs text-winamp-text">
+    <div className="flex w-full items-center gap-4 text-xs text-white/42">
       <span className="w-10 text-right">{currentLabel ?? formatTime(value)}</span>
       <div
-        className="flex-1 h-1.5 bg-winamp-border relative rounded-full cursor-pointer group"
+        className="group relative h-1.5 flex-1 cursor-pointer rounded-full bg-white/8"
         onClick={handleClick}
       >
         <div
-          className="absolute top-0 left-0 h-full bg-winamp-accent-muted group-hover:bg-winamp-bar rounded-full transition-colors"
+          className="absolute left-0 top-0 h-full rounded-full bg-gradient-to-r from-sky-400/70 to-cyan-300/70 transition"
           style={{ width: `${percent}%` }}
         />
         <div
-          className="absolute top-1/2 -translate-y-1/2 -ml-2 w-4 h-4 bg-winamp-bar group-hover:bg-winamp-accent rounded-full shadow-[0_0_8px_rgba(113,166,125,0.4)] transition-colors pointer-events-none"
+          className="pointer-events-none absolute top-1/2 h-4 w-4 -translate-y-1/2 -ml-2 rounded-full bg-white shadow-[0_8px_24px_rgba(14,165,233,0.45)] transition group-hover:scale-110"
           style={{ left: `${percent}%` }}
         />
       </div>

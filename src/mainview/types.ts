@@ -4,6 +4,7 @@ export interface Track {
   title: string;
   artist: string;
   album: string;
+  duration: number;
   time: string;
   genre: string;
   picture?: string;
@@ -36,15 +37,25 @@ export interface Radio {
 }
 
 export type NavView =
+  | "home"
   | "library"
   | "artists"
   | "artist_detail"
+  | "albums"
+  | "album_detail"
   | "playlists"
   | "playlist_detail"
   | "folders"
-  | "radio"
+  | "favorites"
   | "recent"
-  | "mix";
+  | "queue";
+
+export type RepeatMode = "off" | "all" | "one";
+
+export interface RecentPlay {
+  path: string;
+  playedAt: number;
+}
 
 export interface NavState {
   view: NavView;

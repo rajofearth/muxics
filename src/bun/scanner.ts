@@ -35,6 +35,10 @@ function walk(dir: string, result: ScannedFile[], seen: Set<string>): void {
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name);
 
+    if (entry.isSymbolicLink()) {
+      continue;
+    }
+
     if (entry.isDirectory()) {
       walk(fullPath, result, seen);
       continue;

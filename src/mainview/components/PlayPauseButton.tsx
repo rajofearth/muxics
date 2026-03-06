@@ -7,8 +7,9 @@ type PlayPauseButtonProps = {
 
 export function PlayPauseButton({ isPlaying, onToggle }: PlayPauseButtonProps) {
   return (
-    <div
-      className="w-10 h-10 rounded-full border border-winamp-border flex items-center justify-center cursor-pointer hover:border-winamp-bar hover:bg-winamp-hover transition-all text-winamp-accent"
+    <button
+      type="button"
+      className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-slate-950 shadow-[0_12px_36px_rgba(255,255,255,0.2)] transition hover:scale-[1.02]"
       onClick={onToggle}
     >
       {isPlaying ? (
@@ -16,6 +17,6 @@ export function PlayPauseButton({ isPlaying, onToggle }: PlayPauseButtonProps) {
       ) : (
         <Play size={20} className="fill-current ml-1" />
       )}
-    </div>
+    </button>
   );
 }

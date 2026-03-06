@@ -24,10 +24,22 @@ export interface PlaylistResult {
   entries: PlaylistEntryResult[];
 }
 
+export interface LibraryTrackResult {
+  path: string;
+  title: string;
+  artist: string;
+  album: string;
+  duration: number;
+  time: string;
+  genre: string;
+  picture?: string;
+}
+
 export type WinampRPCSchema = {
   bun: {
     requests: {
       getDefaultMusicPath: { params: void; response: string };
+      scanLibrary: { params: { paths: string[] }; response: { tracks: LibraryTrackResult[] } };
       scanFolders: { params: { paths: string[] }; response: { files: ScannedFileResult[] } };
       getTrackMetadata: { params: { path: string }; response: TrackMetadataResult | null };
       getPlaybackUrl: { params: { path: string }; response: string };

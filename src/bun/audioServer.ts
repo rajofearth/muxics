@@ -4,14 +4,22 @@ import { MIME_TYPES } from "../shared/constants";
 let allowedPaths: Set<string> = new Set();
 let serverPort = 0;
 
+function normalizeForCompare(targetPath: string): string {
+  const resolved = path.resolve(targetPath);
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+}
+
 export function setAllowedPaths(paths: string[]): void {
-  allowedPaths = new Set(paths.map((p) => path.resolve(p).toLowerCase()));
+  allowedPaths = new Set(paths.map((targetPath) => normalizeForCompare(targetPath)));
 }
 
 function isPathAllowed(filePath: string): boolean {
-  const resolved = path.resolve(filePath).toLowerCase();
+  const resolved = normalizeForCompare(filePath);
   for (const allowed of allowedPaths) {
-    if (resolved.startsWith(allowed)) return true;
+    const relative = path.relative(allowed, resolved);
+    if (relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))) {
+      return true;
+    }
   }
   return false;
 }
@@ -100,7 +108,7 @@ export async function startAudioServer(): Promise<number> {
     },
   });
 
-  serverPort = server.port;
+  serverPort = server.port ?? 0;
   return serverPort;
 }
 

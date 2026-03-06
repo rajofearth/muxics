@@ -17,23 +17,24 @@ const maxWidthClass = {
 export function Dialog({ title, onClose, children, maxWidth = "md" }: DialogProps) {
   return createPortal(
     <div
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-[9999]"
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-[rgba(2,5,10,0.72)] px-4 backdrop-blur-md"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-labelledby="dialog-title"
     >
       <div
-        className={`bg-winamp-panel border border-winamp-border p-6 w-full mx-4 max-h-[90vh] overflow-y-auto ${maxWidthClass[maxWidth]} rounded-lg shadow-xl`}
+        className={`max-h-[90vh] w-full overflow-y-auto rounded-[30px] border border-white/10 bg-[rgba(10,16,26,0.96)] p-6 shadow-[0_30px_120px_rgba(2,6,16,0.5)] ${maxWidthClass[maxWidth]}`}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex justify-between items-center mb-4">
-          <h2 id="dialog-title" className="text-lg font-bold text-winamp-accent">
+        <div className="mb-5 flex items-center justify-between">
+          <h2 id="dialog-title" className="text-lg font-semibold text-white">
             {title}
           </h2>
           <button
+            type="button"
             onClick={onClose}
-            className="text-winamp-accent-muted hover:text-winamp-accent p-1 rounded transition-colors"
+            className="rounded-full p-2 text-white/40 transition hover:bg-white/8 hover:text-white"
             aria-label="Close"
           >
             <X size={18} />

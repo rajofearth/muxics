@@ -1,5 +1,3 @@
-import { Volume2 } from "lucide-react";
-
 type VolumeSliderProps = {
   value: number;
   onChange: (value: number) => void;
@@ -15,18 +13,17 @@ export function VolumeSlider({ value, onChange }: VolumeSliderProps) {
   };
 
   return (
-    <div className="flex items-center gap-3 w-32">
-      <Volume2 size={18} className="text-winamp-text" />
+    <div className="w-28">
       <div
-        className="flex-1 h-1 bg-winamp-border relative rounded-full cursor-pointer group"
+        className="group relative h-1.5 cursor-pointer rounded-full bg-white/8"
         onClick={handleClick}
       >
         <div
-          className="absolute top-0 left-0 h-full bg-winamp-text group-hover:bg-winamp-accent rounded-full transition-colors"
+          className="absolute left-0 top-0 h-full rounded-full bg-gradient-to-r from-sky-400/60 to-cyan-300/60 transition"
           style={{ width: `${percent}%` }}
         />
         <div
-          className="absolute top-1/2 -translate-y-1/2 -ml-2 w-3 h-3 bg-winamp-bar group-hover:bg-winamp-accent rounded-full transition-colors pointer-events-none"
+          className="pointer-events-none absolute top-1/2 h-3.5 w-3.5 -translate-y-1/2 -ml-2 rounded-full bg-white transition group-hover:scale-110"
           style={{ left: `${percent}%` }}
         />
       </div>

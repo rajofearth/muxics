@@ -12,16 +12,7 @@ const MINI_WIDTH = 380;
 const MINI_HEIGHT = 776;
 
 type WinampElectrobun = {
-  rpc?: {
-    send?: {
-      resizeWindow: (p: { width: number; height: number }) => void;
-      setMinSize: (p: { width: number; height: number }) => void;
-      closeWindow: () => void;
-      minimizeWindow: () => void;
-      maximizeWindow: () => void;
-    };
-    request?: unknown;
-  };
+  rpc?: any;
 };
 
 type AppProps = {
@@ -42,6 +33,10 @@ export default function App({ electrobun }: AppProps) {
   const setVolume = usePlayerStore((s) => s.setVolume);
   const handleNext = usePlayerStore((s) => s.handleNext);
   const handlePrev = usePlayerStore((s) => s.handlePrev);
+  const toggleLikedTrack = usePlayerStore((s) => s.toggleLikedTrack);
+  const toggleShuffle = usePlayerStore((s) => s.toggleShuffle);
+  const cycleRepeatMode = usePlayerStore((s) => s.cycleRepeatMode);
+  const likedTrackPaths = usePlayerStore((s) => s.preferences.likedTrackPaths);
 
   const { analyserRef, analyserReady, seek } = useAudioEngine();
   useThemeFromArt();
@@ -99,6 +94,38 @@ export default function App({ electrobun }: AppProps) {
     return () => document.removeEventListener("winamp-context-action", wrapped);
   }, [togglePlay, handlePrev, handleNext, electrobun]);
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const isEditable =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        !!target?.closest("[contenteditable='true']");
+
+      if (isEditable) {
+        return;
+      }
+
+      if (event.code === "Space") {
+        event.preventDefault();
+        togglePlay();
+      } else if (event.code === "ArrowRight" && event.altKey) {
+        event.preventDefault();
+        handleNext();
+      } else if (event.code === "ArrowLeft" && event.altKey) {
+        event.preventDefault();
+        if (player.currentTime > 3) {
+          seek(0);
+        } else {
+          handlePrev();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [handleNext, handlePrev, player.currentTime, seek, togglePlay]);
+
   const switchToMini = useCallback(() => {
     electrobun.rpc?.send?.setMinSize?.({ width: MINI_WIDTH, height: 600 });
     electrobun.rpc?.send?.resizeWindow?.({
@@ -129,11 +156,23 @@ export default function App({ electrobun }: AppProps) {
             playQueue={player.queue}
             currentTimeMs={player.currentTime}
             volume={player.volume}
+            isLiked={!!player.currentTrack && likedTrackPaths.includes(player.currentTrack.path)}
+            shuffleEnabled={player.shuffleEnabled}
+            repeatMode={player.repeatMode}
             onPlayPause={togglePlay}
             onNext={handleNext}
-            onPrev={handlePrev}
+            onPrev={() => {
+              if (player.currentTime > 3) {
+                seek(0);
+              } else {
+                handlePrev();
+              }
+            }}
             onScrubberChange={seek}
             onVolumeChange={setVolume}
+            onToggleLike={() => player.currentTrack && toggleLikedTrack(player.currentTrack)}
+            onToggleShuffle={toggleShuffle}
+            onCycleRepeatMode={cycleRepeatMode}
             onTrackSelect={(track, queue) => playTrack(track, queue)}
           />
         </div>
@@ -150,7 +189,13 @@ export default function App({ electrobun }: AppProps) {
             onPlayTrack={(track, queue) => playTrack(track, queue)}
             onPlayPause={togglePlay}
             onNext={handleNext}
-            onPrev={handlePrev}
+            onPrev={() => {
+              if (player.currentTime > 3) {
+                seek(0);
+              } else {
+                handlePrev();
+              }
+            }}
             onScrubberChange={seek}
             onVolumeChange={setVolume}
           />

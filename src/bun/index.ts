@@ -5,6 +5,7 @@ import type { WinampRPCSchema } from "../shared/rpc-types";
 import { getDefaultMusicPath } from "./paths";
 import { scanFolders } from "./scanner";
 import { getTrackMetadata, formatMetadataTime } from "./metadata";
+import { scanLibrary } from "./libraryCache";
 import { startAudioServer, setAllowedPaths, getAudioServerPort } from "./audioServer";
 import { loadPlaylist, savePlaylist, listPlaylists } from "./playlists";
 import { loadSettings, saveSettings } from "./settings";
@@ -32,12 +33,17 @@ const rpc = BrowserView.defineRPC<WinampRPCSchema>({
     requests: {
       getDefaultMusicPath: () => getDefaultMusicPath(),
 
-      scanFolders: ({ paths }) => {
+      scanLibrary: async ({ paths }: { paths: string[] }) => {
+        const tracks = await scanLibrary(paths);
+        return { tracks };
+      },
+
+      scanFolders: ({ paths }: { paths: string[] }) => {
         const files = scanFolders(paths);
         return { files };
       },
 
-      getTrackMetadata: async ({ path: filePath }) => {
+      getTrackMetadata: async ({ path: filePath }: { path: string }) => {
         const meta = await getTrackMetadata(filePath);
         if (!meta) return null;
         return {
@@ -51,7 +57,7 @@ const rpc = BrowserView.defineRPC<WinampRPCSchema>({
         };
       },
 
-      getPlaybackUrl: ({ path: filePath }) => {
+      getPlaybackUrl: ({ path: filePath }: { path: string }) => {
         const port = getAudioServerPort();
         const encoded = encodeURIComponent(filePath);
         return `http://127.0.0.1:${port}/play?path=${encoded}`;
@@ -59,7 +65,7 @@ const rpc = BrowserView.defineRPC<WinampRPCSchema>({
 
       getWatchFolders: () => loadSettings().watchFolders,
 
-      addFolder: ({ path: folderPath }) => {
+      addFolder: ({ path: folderPath }: { path: string }) => {
         const resolved = path.resolve(folderPath.trim());
         if (!fs.existsSync(resolved)) {
           return { success: false, error: "Folder does not exist" };
@@ -80,7 +86,7 @@ const rpc = BrowserView.defineRPC<WinampRPCSchema>({
         return { success: true };
       },
 
-      validateFolder: ({ path: folderPath }) => {
+      validateFolder: ({ path: folderPath }: { path: string }) => {
         try {
           const resolved = path.resolve(folderPath.trim());
           if (!fs.existsSync(resolved)) {
@@ -98,14 +104,14 @@ const rpc = BrowserView.defineRPC<WinampRPCSchema>({
         }
       },
 
-      removeFolder: ({ path: folderPath }) => {
+      removeFolder: ({ path: folderPath }: { path: string }) => {
         const settings = loadSettings();
         settings.watchFolders = settings.watchFolders.filter((p) => p !== folderPath);
         saveSettings(settings);
         setAllowedPaths(settings.watchFolders);
       },
 
-      loadPlaylist: ({ path: filePath }) => {
+      loadPlaylist: ({ path: filePath }: { path: string }) => {
         const pl = loadPlaylist(filePath);
         if (!pl) return null;
         return {
@@ -115,7 +121,15 @@ const rpc = BrowserView.defineRPC<WinampRPCSchema>({
         };
       },
 
-      savePlaylist: ({ path: targetPath, name, entries }) => {
+      savePlaylist: ({
+        path: targetPath,
+        name,
+        entries,
+      }: {
+        path: string;
+        name: string;
+        entries: string[];
+      }) => {
         savePlaylist(targetPath, name, entries);
       },
 
@@ -130,7 +144,7 @@ const rpc = BrowserView.defineRPC<WinampRPCSchema>({
 
       getPlaylistsDir: () => PLAYLISTS_DIR,
 
-      renamePlaylist: ({ oldPath, newName }) => {
+      renamePlaylist: ({ oldPath, newName }: { oldPath: string; newName: string }) => {
         const pl = loadPlaylist(oldPath);
         if (!pl) return;
         const dir = path.dirname(oldPath);
@@ -139,29 +153,29 @@ const rpc = BrowserView.defineRPC<WinampRPCSchema>({
         fs.unlinkSync(oldPath);
       },
 
-      deletePlaylist: ({ path: filePath }) => {
+      deletePlaylist: ({ path: filePath }: { path: string }) => {
         if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
       },
 
-      importPlaylist: ({ path: filePath }) => {
+      importPlaylist: ({ path: filePath }: { path: string }) => {
         const pl = loadPlaylist(filePath);
         if (!pl) return false;
         savePlaylist(PLAYLISTS_DIR, pl.name, pl.entries.map((e) => e.path));
         return true;
       },
 
-      exportPlaylist: ({ name, entries }) => {
+      exportPlaylist: ({ name, entries }: { name: string; entries: string[] }) => {
         savePlaylist(PLAYLISTS_DIR, name, entries);
         return path.join(PLAYLISTS_DIR, `${name}.m3u8`);
       },
     },
     messages: {
-      resizeWindow: ({ width, height }) => {
+      resizeWindow: ({ width, height }: { width: number; height: number }) => {
         const w = Math.max(width, currentMinWidth);
         const h = Math.max(height, currentMinHeight);
         mainWindow.setSize(w, h);
       },
-      setMinSize: ({ width, height }) => {
+      setMinSize: ({ width, height }: { width: number; height: number }) => {
         currentMinWidth = width;
         currentMinHeight = height;
       },
@@ -188,10 +202,10 @@ const rpc = BrowserView.defineRPC<WinampRPCSchema>({
 });
 winampRpc = rpc;
 
-Electrobun.events.on("context-menu-clicked", (e: { data?: { action?: string } }) => {
-  const action = e?.data?.action;
+Electrobun.events.on("context-menu-clicked", (event: unknown) => {
+  const action = (event as { data?: { action?: string } })?.data?.action;
   if (action) {
-    winampRpc.send.contextMenuAction({ action });
+    winampRpc.send["contextMenuAction"]({ action });
   }
 });
 
@@ -210,8 +224,8 @@ mainWindow = new BrowserWindow({
   rpc,
 });
 
-mainWindow.on("resize", (event: { data: { width: number; height: number } }) => {
-  const { width, height } = event.data;
+mainWindow.on("resize", (event: unknown) => {
+  const { width, height } = (event as { data: { width: number; height: number } }).data;
   if (width < currentMinWidth || height < currentMinHeight) {
     mainWindow.setSize(
       Math.max(width, currentMinWidth),
