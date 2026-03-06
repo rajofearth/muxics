@@ -1,33 +1,51 @@
-import { Visualizer } from "./Visualizer";
+import { memo } from "react";
 
 type HeroHeaderProps = {
   title: string;
   subtitle: string;
   meta: React.ReactNode;
-  ascii: string;
-  isPlaying?: boolean;
+  icon?: React.ReactNode;
   actions?: React.ReactNode;
+  gradient?: string;
 };
 
-export function HeroHeader({ title, subtitle, meta, ascii, isPlaying = true, actions }: HeroHeaderProps) {
+export const HeroHeader = memo(function HeroHeader({
+  title,
+  subtitle,
+  meta,
+  icon,
+  actions,
+  gradient,
+}: HeroHeaderProps) {
   return (
-    <div className="h-64 border-b border-winamp-border p-8 flex flex-col justify-end relative overflow-hidden shrink-0">
-      <div className="absolute inset-0 flex items-end gap-1 opacity-10 pointer-events-none pb-0 px-8">
-        <Visualizer count={100} heightClass="h-full" isPlaying={isPlaying} />
-      </div>
-      <div className="relative z-10 flex gap-8 items-end">
-        <div className="w-40 h-40 border border-winamp-border bg-winamp-panel-alt flex items-center justify-center p-2 text-[0.45rem] leading-[0.55rem] text-winamp-accent-muted select-none whitespace-pre font-mono">
-          {ascii}
-        </div>
-        <div className="pb-2 flex-1 min-w-0">
-          <div className="text-winamp-accent-muted text-sm tracking-widest mb-2">{subtitle}</div>
-          <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-5xl font-bold text-winamp-accent tracking-wider">{title}</h1>
-            {actions}
+    <div className="relative shrink-0 overflow-hidden">
+      {gradient && (
+        <div
+          className="absolute inset-0 opacity-30"
+          style={{ background: gradient }}
+        />
+      )}
+      <div className="relative px-8 pt-8 pb-6">
+        <div className="flex items-end gap-5">
+          {icon && (
+            <div className="w-32 h-32 rounded-xl bg-app-elevated shadow-lg flex items-center justify-center shrink-0 overflow-hidden">
+              {icon}
+            </div>
+          )}
+          <div className="min-w-0 flex-1 pb-1">
+            <div className="text-[11px] font-medium text-app-text-tertiary uppercase tracking-wider mb-1">
+              {subtitle}
+            </div>
+            <div className="flex items-center gap-3 flex-wrap">
+              <h1 className="text-3xl font-bold text-app-text-primary tracking-tight leading-tight">
+                {title}
+              </h1>
+              {actions}
+            </div>
+            <div className="text-[13px] text-app-text-secondary mt-1.5">{meta}</div>
           </div>
-          <div className="text-winamp-text text-sm flex items-center gap-4 mt-2">{meta}</div>
         </div>
       </div>
     </div>
   );
-}
+});

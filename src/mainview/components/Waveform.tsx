@@ -33,10 +33,9 @@ export function Waveform({ width = 200, height = 40, className = "" }: WaveformP
       frameId = requestAnimationFrame(draw);
       analyser.getByteTimeDomainData(dataArray);
 
-      ctx.fillStyle = "transparent";
-      ctx.fillRect(0, 0, width, height);
+      ctx.clearRect(0, 0, width, height);
 
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 1.5;
       ctx.strokeStyle = theme.accentColor;
       ctx.beginPath();
 
@@ -45,7 +44,7 @@ export function Waveform({ width = 200, height = 40, className = "" }: WaveformP
 
       for (let i = 0; i < bufferLength; i++) {
         const v = dataArray[i] / 128;
-        const y = (v * height) / 2 + height / 2;
+        const y = (v * height) / 2;
         if (i === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
         x += sliceWidth;

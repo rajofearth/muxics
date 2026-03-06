@@ -12,10 +12,10 @@ type MenuSeparator = { type: "separator" };
 
 const MENU_ITEMS: (MenuItem | MenuSeparator)[] = [
   { label: "Play / Pause", action: "playPause", accelerator: "Space" },
-  { label: "Previous Track", action: "prev", accelerator: "Left", icon: <SkipBack size={14} /> },
-  { label: "Next Track", action: "next", accelerator: "Right", icon: <SkipForward size={14} /> },
+  { label: "Previous", action: "prev", accelerator: "←", icon: <SkipBack size={14} /> },
+  { label: "Next", action: "next", accelerator: "→", icon: <SkipForward size={14} /> },
   { type: "separator" },
-  { label: "Close", action: "close", accelerator: "Q", icon: <X size={14} /> },
+  { label: "Close", action: "close", accelerator: "⌘Q", icon: <X size={14} /> },
 ];
 
 type WinampContextMenuProps = {
@@ -26,88 +26,59 @@ type WinampContextMenuProps = {
   onClose: () => void;
 };
 
-export function WinampContextMenu({
-  x,
-  y,
-  isPlaying,
-  onAction,
-  onClose,
-}: WinampContextMenuProps) {
+export function WinampContextMenu({ x, y, isPlaying, onAction, onClose }: WinampContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState({ x, y });
 
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        onClose();
-      }
+    const handleClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) onClose();
     };
-    const handleKeyDown = (e: KeyboardEvent) => {
+    const handleKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
-    document.addEventListener("mousedown", handleClickOutside);
-    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("mousedown", handleClick);
+    document.addEventListener("keydown", handleKey);
     return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleKey);
     };
   }, [onClose]);
-
-  const [position, setPosition] = useState({ x, y });
 
   useLayoutEffect(() => {
     const el = menuRef.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    let adjX = x;
-    let adjY = y;
-    if (x + rect.width > vw) adjX = vw - rect.width - 8;
-    if (y + rect.height > vh) adjY = vh - rect.height - 8;
+    let adjX = x, adjY = y;
+    if (x + rect.width > window.innerWidth) adjX = window.innerWidth - rect.width - 8;
+    if (y + rect.height > window.innerHeight) adjY = window.innerHeight - rect.height - 8;
     if (adjX !== x || adjY !== y) setPosition({ x: adjX, y: adjY });
   }, [x, y]);
 
   return (
     <div
       ref={menuRef}
-      className="fixed z-[9999] min-w-[180px] py-1 rounded-md border border-winamp-border shadow-2xl bg-winamp-panel font-mono text-winamp-text text-sm overflow-hidden"
+      className="fixed z-[9999] min-w-[200px] py-1.5 rounded-xl border border-app-border shadow-2xl bg-app-surface/95 backdrop-blur-xl text-[13px] animate-fade-in"
       style={{ left: position.x, top: position.y }}
     >
       {MENU_ITEMS.map((item, i) => {
-        if ("type" in item && item.type === "separator") {
-          return (
-            <div
-              key={`sep-${i}`}
-              className="my-1 h-px bg-winamp-border"
-              role="separator"
-            />
-          );
+        if ("type" in item) {
+          return <div key={`sep-${i}`} className="my-1 h-px bg-app-border mx-2" />;
         }
-        const menuItem = item as MenuItem;
+        const mi = item as MenuItem;
         return (
           <button
-            key={menuItem.action}
+            key={mi.action}
             type="button"
-            onClick={() => {
-              onAction(menuItem.action);
-              onClose();
-            }}
-            className="w-full flex items-center gap-2 px-3 py-2 text-left text-winamp-bar hover:bg-winamp-hover hover:text-winamp-accent transition-colors"
+            onClick={() => { onAction(mi.action); onClose(); }}
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-app-text-primary hover:bg-app-hover rounded-md mx-0"
           >
-            {menuItem.action === "playPause" ? (
-              isPlaying ? (
-                <Pause size={14} />
-              ) : (
-                <Play size={14} />
-              )
-            ) : (
-              menuItem.icon
-            )}
-            <span className="flex-1">{menuItem.label}</span>
-            {menuItem.accelerator && (
-              <span className="text-winamp-muted text-xs">
-                {menuItem.accelerator}
-              </span>
+            {mi.action === "playPause" ? (
+              isPlaying ? <Pause size={14} /> : <Play size={14} />
+            ) : mi.icon}
+            <span className="flex-1">{mi.label}</span>
+            {mi.accelerator && (
+              <span className="text-app-text-tertiary text-[11px]">{mi.accelerator}</span>
             )}
           </button>
         );

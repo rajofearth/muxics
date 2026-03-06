@@ -1,5 +1,6 @@
 import { create } from "zustand";
-import type { Track, Playlist } from "../types";
+import type { Track, Playlist, RepeatMode } from "../types";
+import { shuffleArray, parseTime } from "../utils";
 
 const CONCURRENCY = 10;
 
@@ -66,25 +67,30 @@ export type WinampRPC = {
 
 interface PlayerState {
   rpc: WinampRPC | null;
-  library: { tracks: Track[]; loading: boolean; error: string | null };
+  library: { tracks: Track[]; loading: boolean; error: string | null; scanProgress: number };
   playlists: { items: Playlist[]; activeId: string | null };
   player: {
     currentTrack: Track | null;
     queue: Track[];
+    originalQueue: Track[];
     isPlaying: boolean;
     currentTime: number;
     volume: number;
     playbackUrl: string | null;
+    shuffle: boolean;
+    repeat: RepeatMode;
   };
   settings: { watchFolders: string[] };
   theme: { accentColor: string; palette: string[] };
+  search: { query: string; results: Track[] };
+  recentlyPlayed: Track[];
 }
 
 interface PlayerActions {
   setRpc: (rpc: WinampRPC | null) => void;
   loadLibrary: () => Promise<void>;
   addFolder: (path: string) => Promise<void>;
-  removeFolder: (path: string) => void;
+  removeFolder: (path: string) => Promise<void>;
   playTrack: (track: Track, queue?: Track[] | null) => void;
   togglePlay: () => void;
   handleNext: () => void;
@@ -100,27 +106,39 @@ interface PlayerActions {
   renamePlaylist: (playlistId: string, newName: string) => Promise<void>;
   deletePlaylist: (playlistId: string) => Promise<void>;
   addTrackToPlaylist: (playlistId: string, track: Track) => Promise<void>;
+  removeTrackFromPlaylist: (playlistId: string, trackPath: string) => Promise<void>;
   loadPlaylistTracks: (playlistId: string) => Track[];
   getQueueFromLibrary: () => Track[];
+  toggleShuffle: () => void;
+  cycleRepeat: () => void;
+  setSearchQuery: (query: string) => void;
+  addToRecentlyPlayed: (track: Track) => void;
 }
 
-const defaultTheme = { accentColor: "#98e0a7", palette: ["#98e0a7", "#71a67d", "#4b7556"] };
+const defaultTheme = { accentColor: "#ff6b6b", palette: ["#ff6b6b", "#e55a5a", "#cc4c4c"] };
+
+const MAX_RECENTLY_PLAYED = 50;
 
 export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => ({
   rpc: null,
 
-  library: { tracks: [], loading: false, error: null },
+  library: { tracks: [], loading: false, error: null, scanProgress: 0 },
   playlists: { items: [], activeId: null },
   player: {
     currentTrack: null,
     queue: [],
+    originalQueue: [],
     isPlaying: false,
     currentTime: 0,
     volume: 0.75,
     playbackUrl: null,
+    shuffle: false,
+    repeat: "off",
   },
   settings: { watchFolders: [] },
   theme: defaultTheme,
+  search: { query: "", results: [] },
+  recentlyPlayed: [],
 
   setRpc: (rpc) => set({ rpc }),
 
@@ -128,7 +146,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
     const { rpc } = get();
     if (!rpc) return;
 
-    set((s) => ({ library: { ...s.library, loading: true, error: null } }));
+    set((s) => ({ library: { ...s.library, loading: true, error: null, scanProgress: 0 } }));
 
     try {
       let folders = await rpc.request.getWatchFolders();
@@ -136,24 +154,24 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
         const defaultPath = await rpc.request.getDefaultMusicPath();
         const addResult = await rpc.request.addFolder({ path: defaultPath });
         if (!addResult.success) {
-          set((s) => ({
-            library: {
-              tracks: [],
-              loading: false,
-              error: addResult.error ?? "Could not add folder",
-            },
+          set({
+            library: { tracks: [], loading: false, error: addResult.error ?? "Could not add folder", scanProgress: 0 },
             settings: { watchFolders: [] },
-          }));
+          });
           return;
         }
         folders = await rpc.request.getWatchFolders();
       }
 
-      const allFolders = folders;
-      const { files } = await rpc.request.scanFolders({ paths: allFolders });
+      const { files } = await rpc.request.scanFolders({ paths: folders });
+      let completed = 0;
 
       const results = await pLimit(files, async (f) => {
         const meta = await rpc.request.getTrackMetadata({ path: f.path });
+        completed++;
+        if (completed % 10 === 0 || completed === files.length) {
+          set((s) => ({ library: { ...s.library, scanProgress: Math.round((completed / files.length) * 100) } }));
+        }
         if (!meta) return null;
         return {
           id: hashPath(f.path),
@@ -162,6 +180,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
           artist: meta.artist,
           album: meta.album,
           time: meta.time,
+          duration: meta.duration || parseTime(meta.time),
           genre: meta.genre,
           picture: meta.picture,
         } as Track;
@@ -169,16 +188,17 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
 
       const tracks = results.filter((t): t is Track => t != null);
 
-      set((s) => ({
-        library: { tracks, loading: false, error: null },
-        settings: { watchFolders: allFolders },
-      }));
+      set({
+        library: { tracks, loading: false, error: null, scanProgress: 100 },
+        settings: { watchFolders: folders },
+      });
     } catch (err) {
       set((s) => ({
         library: {
           ...s.library,
           loading: false,
           error: err instanceof Error ? err.message : "Failed to load library",
+          scanProgress: 0,
         },
       }));
     }
@@ -194,13 +214,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
     const result = await rpc.request.addFolder({ path: folderPath });
     if (!result.success) {
       const msg = result.error ?? "Failed to add folder";
-      const hint =
-        msg.includes("does not exist") && folderPath.includes("Music")
-          ? " Create the Music folder first, or add a different folder."
-          : "";
-      set((s) => ({
-        library: { ...s.library, loading: false, error: msg + hint },
-      }));
+      set((s) => ({ library: { ...s.library, loading: false, error: msg } }));
       return;
     }
 
@@ -209,32 +223,29 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
     await get().loadLibrary();
   },
 
-  removeFolder: (folderPath) => {
+  removeFolder: async (folderPath) => {
     const { rpc } = get();
     if (!rpc) return;
 
-    rpc.request.removeFolder({ path: folderPath });
+    await rpc.request.removeFolder({ path: folderPath });
     const sep = folderPath.includes("\\") ? "\\" : "/";
     const prefix = folderPath.endsWith(sep) ? folderPath : folderPath + sep;
     set((s) => ({
-      settings: {
-        watchFolders: s.settings.watchFolders.filter((p) => p !== folderPath),
-      },
-      library: {
-        tracks: s.library.tracks.filter((t) => !t.path.startsWith(prefix)),
-        loading: false,
-        error: null,
-      },
+      settings: { watchFolders: s.settings.watchFolders.filter((p) => p !== folderPath) },
+      library: { tracks: s.library.tracks.filter((t) => !t.path.startsWith(prefix)), loading: false, error: null, scanProgress: s.library.scanProgress },
     }));
   },
 
   playTrack: (track, queue = null) => {
-    const q = queue ?? get().player.queue;
+    const state = get();
+    const q = queue ?? state.player.queue;
+    state.addToRecentlyPlayed(track);
     set({
       player: {
-        ...get().player,
+        ...state.player,
         currentTrack: track,
-        queue: q,
+        queue: state.player.shuffle && queue ? shuffleArray(q) : q,
+        originalQueue: queue ?? state.player.originalQueue,
         isPlaying: true,
         currentTime: 0,
       },
@@ -244,19 +255,37 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
   togglePlay: () => set((s) => ({ player: { ...s.player, isPlaying: !s.player.isPlaying } })),
 
   handleNext: () => {
-    const { queue, currentTrack } = get().player;
+    const { queue, currentTrack, repeat } = get().player;
     if (queue.length === 0) return;
+
+    if (repeat === "one") {
+      set((s) => ({ player: { ...s.player, currentTime: 0 } }));
+      return;
+    }
+
     const idx = queue.findIndex((t) => t.id === currentTrack?.id);
-    const next = idx >= 0 && idx < queue.length - 1 ? queue[idx + 1] : queue[0];
-    if (next) get().playTrack(next, queue);
+    if (idx >= 0 && idx < queue.length - 1) {
+      get().playTrack(queue[idx + 1]);
+    } else if (repeat === "all") {
+      get().playTrack(queue[0]);
+    } else if (idx === queue.length - 1) {
+      set((s) => ({ player: { ...s.player, isPlaying: false, currentTime: 0 } }));
+    }
   },
 
   handlePrev: () => {
-    const { queue, currentTrack } = get().player;
+    const { queue, currentTrack, currentTime } = get().player;
     if (queue.length === 0) return;
+
+    if (currentTime > 3 && currentTrack) {
+      document.dispatchEvent(new CustomEvent("player-seek", { detail: 0 }));
+      set((s) => ({ player: { ...s.player, currentTime: 0 } }));
+      return;
+    }
+
     const idx = queue.findIndex((t) => t.id === currentTrack?.id);
     const prev = idx > 0 ? queue[idx - 1] : queue[queue.length - 1];
-    if (prev) get().playTrack(prev, queue);
+    if (prev) get().playTrack(prev);
   },
 
   setCurrentTime: (seconds) =>
@@ -290,23 +319,16 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
   createPlaylist: async (name) => {
     const { rpc } = get();
     if (!rpc) return;
-
     const dir = await rpc.request.getPlaylistsDir();
-    await rpc.request.savePlaylist({
-      path: dir,
-      name,
-      entries: [],
-    });
+    await rpc.request.savePlaylist({ path: dir, name, entries: [] });
     await get().loadPlaylists();
   },
 
   renamePlaylist: async (playlistId, newName) => {
     const { rpc, playlists } = get();
     if (!rpc) return;
-
     const pl = playlists.items.find((p) => p.id === playlistId);
     if (!pl) return;
-
     await rpc.request.renamePlaylist({ oldPath: pl.path, newName: newName.trim() });
     await get().loadPlaylists();
   },
@@ -314,10 +336,8 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
   deletePlaylist: async (playlistId) => {
     const { rpc, playlists } = get();
     if (!rpc) return;
-
     const pl = playlists.items.find((p) => p.id === playlistId);
     if (!pl) return;
-
     await rpc.request.deletePlaylist({ path: pl.path });
     await get().loadPlaylists();
   },
@@ -325,11 +345,21 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
   addTrackToPlaylist: async (playlistId, track) => {
     const { rpc, playlists } = get();
     if (!rpc) return;
-
     const pl = playlists.items.find((p) => p.id === playlistId);
     if (!pl) return;
-
     const entries = [...pl.trackIds, track.path];
+    const dir = pl.path.replace(/[/\\][^/\\]+$/, "");
+    const name = pl.name.replace(/\.m3u8?$/, "");
+    await rpc.request.savePlaylist({ path: dir, name, entries });
+    await get().loadPlaylists();
+  },
+
+  removeTrackFromPlaylist: async (playlistId, trackPath) => {
+    const { rpc, playlists } = get();
+    if (!rpc) return;
+    const pl = playlists.items.find((p) => p.id === playlistId);
+    if (!pl) return;
+    const entries = pl.trackIds.filter((p) => p !== trackPath);
     const dir = pl.path.replace(/[/\\][^/\\]+$/, "");
     const name = pl.name.replace(/\.m3u8?$/, "");
     await rpc.request.savePlaylist({ path: dir, name, entries });
@@ -345,4 +375,51 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
   },
 
   getQueueFromLibrary: () => get().library.tracks,
+
+  toggleShuffle: () => {
+    const { player } = get();
+    const newShuffle = !player.shuffle;
+    if (newShuffle) {
+      const current = player.currentTrack;
+      const rest = player.queue.filter((t) => t.id !== current?.id);
+      const shuffled = current ? [current, ...shuffleArray(rest)] : shuffleArray(player.queue);
+      set((s) => ({
+        player: { ...s.player, shuffle: true, originalQueue: s.player.queue, queue: shuffled },
+      }));
+    } else {
+      set((s) => ({
+        player: { ...s.player, shuffle: false, queue: s.player.originalQueue },
+      }));
+    }
+  },
+
+  cycleRepeat: () => {
+    const modes: RepeatMode[] = ["off", "all", "one"];
+    const current = get().player.repeat;
+    const idx = modes.indexOf(current);
+    set((s) => ({ player: { ...s.player, repeat: modes[(idx + 1) % modes.length] } }));
+  },
+
+  setSearchQuery: (query) => {
+    const { library } = get();
+    if (!query.trim()) {
+      set({ search: { query: "", results: [] } });
+      return;
+    }
+    const q = query.toLowerCase();
+    const results = library.tracks.filter(
+      (t) =>
+        t.title.toLowerCase().includes(q) ||
+        t.artist.toLowerCase().includes(q) ||
+        t.album.toLowerCase().includes(q)
+    );
+    set({ search: { query, results } });
+  },
+
+  addToRecentlyPlayed: (track) => {
+    set((s) => {
+      const filtered = s.recentlyPlayed.filter((t) => t.id !== track.id);
+      return { recentlyPlayed: [track, ...filtered].slice(0, MAX_RECENTLY_PLAYED) };
+    });
+  },
 }));

@@ -5,15 +5,9 @@ export interface Track {
   artist: string;
   album: string;
   time: string;
+  duration: number;
   genre: string;
   picture?: string;
-}
-
-export interface Mix {
-  id: string;
-  name: string;
-  tracks: string[];
-  desc: string;
 }
 
 export interface Playlist {
@@ -23,28 +17,20 @@ export interface Playlist {
   trackIds: string[];
 }
 
-export interface Artist {
-  id: string;
-  name: string;
-  desc: string;
-}
-
-export interface Radio {
-  id: string;
-  name: string;
-  desc: string;
-}
+export type RepeatMode = "off" | "all" | "one";
 
 export type NavView =
   | "library"
   | "artists"
   | "artist_detail"
+  | "albums"
+  | "album_detail"
   | "playlists"
   | "playlist_detail"
   | "folders"
-  | "radio"
   | "recent"
-  | "mix";
+  | "queue"
+  | "search";
 
 export interface NavState {
   view: NavView;

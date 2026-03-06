@@ -3,19 +3,28 @@ import { Play, Pause } from "lucide-react";
 type PlayPauseButtonProps = {
   isPlaying: boolean;
   onToggle: () => void;
+  size?: "sm" | "md" | "lg";
 };
 
-export function PlayPauseButton({ isPlaying, onToggle }: PlayPauseButtonProps) {
+const sizes = {
+  sm: { button: "w-7 h-7", icon: 14 },
+  md: { button: "w-9 h-9", icon: 18 },
+  lg: { button: "w-11 h-11", icon: 22 },
+};
+
+export function PlayPauseButton({ isPlaying, onToggle, size = "md" }: PlayPauseButtonProps) {
+  const s = sizes[size];
   return (
-    <div
-      className="w-10 h-10 rounded-full border border-winamp-border flex items-center justify-center cursor-pointer hover:border-winamp-bar hover:bg-winamp-hover transition-all text-winamp-accent"
+    <button
+      type="button"
+      className={`${s.button} rounded-full bg-app-text-primary flex items-center justify-center cursor-pointer hover:scale-105 active:scale-95 transition-transform text-app-bg`}
       onClick={onToggle}
     >
       {isPlaying ? (
-        <Pause size={20} className="fill-current" />
+        <Pause size={s.icon} className="fill-current" />
       ) : (
-        <Play size={20} className="fill-current ml-1" />
+        <Play size={s.icon} className="fill-current ml-0.5" />
       )}
-    </div>
+    </button>
   );
 }

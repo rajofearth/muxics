@@ -1,25 +1,24 @@
-@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");
 @import "tailwindcss";
 
 @theme {
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 
-  /* Core palette - unified from reference and current app */
-  --color-winamp-bg: #080c09;
-  --color-winamp-panel: #0d1410;
-  --color-winamp-panel-alt: #0a0f0c;
-  --color-winamp-border: #1a2b1f;
-  --color-winamp-muted: #4b7556;
-  --color-winamp-bar: #71a67d;
-  --color-winamp-text: #5c8a68;
-  --color-winamp-text-bright: #98e0a7;
-
-  /* Semantic aliases */
-  --color-winamp-hover: #121c15;
-  --color-winamp-accent: #98e0a7;
-  --color-winamp-accent-muted: #4b7556;
-  --color-winamp-scrollbar: #2a4030;
-  --color-winamp-scrollbar-hover: #4b7556;
+  --color-app-bg: #0a0a0a;
+  --color-app-surface: #141414;
+  --color-app-surface-alt: #111111;
+  --color-app-elevated: #1a1a1a;
+  --color-app-border: #ffffff0d;
+  --color-app-border-strong: #ffffff1a;
+  --color-app-text-primary: #f5f5f5;
+  --color-app-text-secondary: #a1a1a1;
+  --color-app-text-tertiary: #666666;
+  --color-app-accent: #ff6b6b;
+  --color-app-accent-dim: #ff6b6b33;
+  --color-app-hover: #ffffff08;
+  --color-app-active: #ffffff12;
+  --color-app-scrollbar: #333333;
+  --color-app-scrollbar-hover: #555555;
 }
 
 html,
@@ -27,9 +26,11 @@ body {
   margin: 0;
   padding: 0;
   overflow: hidden;
-  background-color: var(--color-winamp-bg);
-  font-family: var(--font-mono);
-  color: var(--color-winamp-bar);
+  background-color: var(--color-app-bg);
+  font-family: var(--font-sans);
+  color: var(--color-app-text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 body {
@@ -42,55 +43,96 @@ body {
   width: 100%;
 }
 
-/* --- Animations --- */
-@keyframes equalize {
-  0% {
-    transform: scaleY(0.3);
-  }
-  50% {
-    transform: scaleY(1);
-  }
-  100% {
-    transform: scaleY(0.3);
-  }
-}
-
-.visualizer-bar {
-  animation: equalize 1s infinite ease-in-out;
-  transform-origin: bottom;
-}
-
-/* --- Custom Terminal Scrollbar --- */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--color-winamp-bg);
-  border-left: 1px solid var(--color-winamp-border);
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--color-winamp-scrollbar);
+  background: var(--color-app-scrollbar);
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-winamp-scrollbar-hover);
+  background: var(--color-app-scrollbar-hover);
 }
 
-/* --- Selection --- */
 ::selection {
-  background: var(--color-winamp-accent);
-  color: var(--color-winamp-bg);
+  background: var(--color-app-accent);
+  color: #fff;
 }
 
-/* --- Theme transitions --- */
-.bg-winamp-accent,
-.bg-winamp-bar,
-.text-winamp-accent,
-.text-winamp-bar,
-.text-winamp-accent-muted,
-.border-winamp-accent {
-  transition: color 0.3s ease, background-color 0.3s ease, border-color 0.3s ease;
+.slider-track {
+  transition: background-color 0.15s ease;
+}
+
+.slider-thumb {
+  transition: transform 0.1s ease, opacity 0.15s ease;
+  opacity: 0;
+}
+
+.slider-container:hover .slider-thumb,
+.slider-container:active .slider-thumb,
+.slider-container.dragging .slider-thumb {
+  opacity: 1;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out;
+}
+
+.animate-slide-up {
+  animation: slideUp 0.3s ease-out;
+}
+
+.animate-pulse-soft {
+  animation: pulse-soft 2s ease-in-out infinite;
+}
+
+input:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--color-app-accent);
+  outline-offset: 1px;
+}
+
+.line-clamp-1 {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }

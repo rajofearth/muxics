@@ -17,26 +17,26 @@ const maxWidthClass = {
 export function Dialog({ title, onClose, children, maxWidth = "md" }: DialogProps) {
   return createPortal(
     <div
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-[9999]"
+      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[9999] animate-fade-in"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-labelledby="dialog-title"
     >
       <div
-        className={`bg-winamp-panel border border-winamp-border p-6 w-full mx-4 max-h-[90vh] overflow-y-auto ${maxWidthClass[maxWidth]} rounded-lg shadow-xl`}
+        className={`bg-app-surface border border-app-border p-6 w-full mx-4 max-h-[90vh] overflow-y-auto ${maxWidthClass[maxWidth]} rounded-2xl shadow-2xl animate-slide-up`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-center mb-4">
-          <h2 id="dialog-title" className="text-lg font-bold text-winamp-accent">
+          <h2 id="dialog-title" className="text-[15px] font-semibold text-app-text-primary">
             {title}
           </h2>
           <button
             onClick={onClose}
-            className="text-winamp-accent-muted hover:text-winamp-accent p-1 rounded transition-colors"
+            className="text-app-text-tertiary hover:text-app-text-primary p-1 rounded-lg hover:bg-app-hover"
             aria-label="Close"
           >
-            <X size={18} />
+            <X size={16} />
           </button>
         </div>
         {children}

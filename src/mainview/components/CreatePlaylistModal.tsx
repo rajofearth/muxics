@@ -18,28 +18,28 @@ export function CreatePlaylistModal({ onClose }: CreatePlaylistModalProps) {
   };
 
   return (
-    <Dialog title="CREATE PLAYLIST" onClose={onClose}>
+    <Dialog title="New Playlist" onClose={onClose} maxWidth="sm">
       <form onSubmit={handleSubmit}>
         <input
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Playlist name"
-          className="w-full px-4 py-2.5 bg-winamp-panel-alt border border-winamp-border text-winamp-text-bright font-mono text-sm mb-4 placeholder:text-winamp-accent-muted focus:border-winamp-accent focus:outline-none transition-colors"
+          className="w-full px-3 py-2.5 bg-app-elevated border border-app-border rounded-lg text-[13px] text-app-text-primary placeholder-app-text-tertiary mb-4 focus:border-app-text-tertiary outline-none"
           autoFocus
         />
         <div className="flex justify-end gap-2">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-winamp-accent-muted hover:text-winamp-accent"
+            className="px-4 py-2 text-[13px] text-app-text-secondary hover:text-app-text-primary rounded-lg hover:bg-app-hover"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={!name.trim()}
-            className="px-4 py-2 bg-winamp-accent text-winamp-bg font-mono disabled:opacity-50"
+            className="px-4 py-2 text-[13px] font-medium bg-app-text-primary text-app-bg rounded-lg hover:opacity-90 disabled:opacity-50"
           >
             Create
           </button>

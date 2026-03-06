@@ -26,17 +26,17 @@ export function PlaylistHeaderActions({ playlist, onNavigate }: PlaylistHeaderAc
       <div className="flex items-center gap-1">
         <button
           onClick={() => setShowEditModal(true)}
-          className="p-1.5 rounded text-winamp-accent-muted hover:text-winamp-accent hover:bg-winamp-hover transition-colors"
+          className="p-1.5 rounded-lg text-app-text-tertiary hover:text-app-text-primary hover:bg-app-hover"
           aria-label="Rename playlist"
         >
-          <Pencil size={18} />
+          <Pencil size={16} />
         </button>
         <button
           onClick={() => setShowDeleteDialog(true)}
-          className="p-1.5 rounded text-winamp-accent-muted hover:text-red-400 hover:bg-winamp-hover transition-colors"
+          className="p-1.5 rounded-lg text-app-text-tertiary hover:text-red-400 hover:bg-red-500/10"
           aria-label="Delete playlist"
         >
-          <Trash2 size={18} />
+          <Trash2 size={16} />
         </button>
       </div>
       {showEditModal && (
@@ -44,8 +44,8 @@ export function PlaylistHeaderActions({ playlist, onNavigate }: PlaylistHeaderAc
       )}
       {showDeleteDialog && (
         <ConfirmDialog
-          title="DELETE PLAYLIST"
-          message={`Delete playlist "${playlist.name}"? This will not remove the tracks from your library.`}
+          title="Delete Playlist"
+          message={`Delete "${playlist.name}"? This won't remove the songs from your library.`}
           confirmLabel="Delete"
           cancelLabel="Cancel"
           variant="danger"

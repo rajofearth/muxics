@@ -1,6 +1,6 @@
-import { Shuffle, Repeat, SkipBack, SkipForward, Minimize2 } from "lucide-react";
-import type { Track } from "../types";
-import { parseTime } from "../utils";
+import { memo } from "react";
+import { Shuffle, Repeat, Repeat1, SkipBack, SkipForward, Minimize2, LayoutList } from "lucide-react";
+import type { Track, RepeatMode } from "../types";
 import { Scrubber } from "./Scrubber";
 import { VolumeSlider } from "./VolumeSlider";
 import { PlayPauseButton } from "./PlayPauseButton";
@@ -8,87 +8,154 @@ import { PlayPauseButton } from "./PlayPauseButton";
 type PlayerBarProps = {
   currentTrack: Track | null;
   isPlaying: boolean;
-  currentTimeMs: number;
+  currentTime: number;
   volume: number;
+  shuffle: boolean;
+  repeat: RepeatMode;
   onPlayPause: () => void;
   onNext: () => void;
   onPrev: () => void;
   onScrubberChange: (seconds: number) => void;
   onVolumeChange: (value: number) => void;
   onToggleMini?: () => void;
+  onToggleShuffle: () => void;
+  onCycleRepeat: () => void;
+  onNavigateToQueue?: () => void;
 };
 
-export function PlayerBar({
+export const PlayerBar = memo(function PlayerBar({
   currentTrack,
   isPlaying,
-  currentTimeMs,
+  currentTime,
   volume,
+  shuffle,
+  repeat,
   onPlayPause,
   onNext,
   onPrev,
   onScrubberChange,
   onVolumeChange,
   onToggleMini,
+  onToggleShuffle,
+  onCycleRepeat,
+  onNavigateToQueue,
 }: PlayerBarProps) {
-  const totalCurrentSecs = currentTrack ? parseTime(currentTrack.time) : 0;
+  const duration = currentTrack?.duration ?? 0;
+
+  const RepeatIcon = repeat === "one" ? Repeat1 : Repeat;
 
   return (
-    <div className="h-28 bg-winamp-panel border-t border-winamp-border flex flex-col shrink-0">
-      <div className="flex-1 flex items-center justify-between px-6">
-        <div className="w-1/4 flex items-center gap-4">
-          {currentTrack && (
+    <div className="h-[88px] bg-app-surface border-t border-app-border flex flex-col shrink-0">
+      <div className="px-4 pt-2">
+        <Scrubber
+          value={currentTime}
+          max={duration}
+          onChange={onScrubberChange}
+          size="sm"
+          showLabels={false}
+        />
+      </div>
+
+      <div className="flex-1 flex items-center justify-between px-5">
+        <div className="w-[30%] min-w-0 flex items-center gap-3">
+          {currentTrack ? (
             <>
-              {currentTrack.picture && (
+              {currentTrack.picture ? (
                 <img
                   src={currentTrack.picture}
                   alt=""
-                  className="w-12 h-12 object-cover border border-winamp-border flex-shrink-0"
+                  className="w-11 h-11 rounded-md object-cover shadow-sm shrink-0"
                 />
+              ) : (
+                <div className="w-11 h-11 rounded-md bg-app-elevated flex items-center justify-center shrink-0">
+                  <span className="text-app-text-tertiary text-lg">♪</span>
+                </div>
               )}
-              <div>
-                <div className="text-lg font-bold text-winamp-accent mb-1 leading-none">{currentTrack.title}</div>
-                <div className="text-sm text-winamp-accent-muted leading-none">{currentTrack.artist}</div>
+              <div className="min-w-0">
+                <div className="text-[13px] font-medium text-app-text-primary truncate leading-tight">
+                  {currentTrack.title}
+                </div>
+                <div className="text-[12px] text-app-text-tertiary truncate leading-tight mt-0.5">
+                  {currentTrack.artist}
+                </div>
               </div>
             </>
+          ) : (
+            <div className="text-[13px] text-app-text-tertiary">No track playing</div>
           )}
         </div>
 
-        <div className="w-2/4 flex flex-col items-center justify-center gap-2 max-w-2xl">
-          <Scrubber
-            value={currentTimeMs}
-            max={totalCurrentSecs}
-            maxLabel={currentTrack?.time ?? "0:00"}
-            onChange={onScrubberChange}
-          />
-          <div className="flex items-center gap-6 mt-1">
-            <Shuffle size={16} className="text-winamp-accent-muted hover:text-winamp-accent cursor-pointer transition-colors" />
-            <SkipBack
-              onClick={onPrev}
-              size={20}
-              className="text-winamp-bar hover:text-winamp-accent cursor-pointer fill-current transition-colors"
-            />
-            <PlayPauseButton isPlaying={isPlaying} onToggle={onPlayPause} />
-            <SkipForward
-              onClick={onNext}
-              size={20}
-              className="text-winamp-bar hover:text-winamp-accent cursor-pointer fill-current transition-colors"
-            />
-            <Repeat size={16} className="text-winamp-accent-muted hover:text-winamp-accent cursor-pointer transition-colors" />
-          </div>
-        </div>
-
-        <div className="w-1/4 flex items-center justify-end gap-6">
-          <VolumeSlider value={volume} onChange={onVolumeChange} />
+        <div className="flex items-center gap-5">
           <button
             type="button"
-            onClick={onToggleMini}
-            aria-label="Open mini player"
-            className="text-winamp-accent-muted hover:text-winamp-accent cursor-pointer transition-colors"
+            onClick={onToggleShuffle}
+            className={`transition-colors ${
+              shuffle ? "text-app-accent" : "text-app-text-tertiary hover:text-app-text-primary"
+            }`}
           >
-            <Minimize2 size={16} />
+            <Shuffle size={15} />
           </button>
+          <button
+            type="button"
+            onClick={onPrev}
+            className="text-app-text-secondary hover:text-app-text-primary"
+          >
+            <SkipBack size={18} className="fill-current" />
+          </button>
+          <PlayPauseButton isPlaying={isPlaying} onToggle={onPlayPause} />
+          <button
+            type="button"
+            onClick={onNext}
+            className="text-app-text-secondary hover:text-app-text-primary"
+          >
+            <SkipForward size={18} className="fill-current" />
+          </button>
+          <button
+            type="button"
+            onClick={onCycleRepeat}
+            className={`transition-colors ${
+              repeat !== "off" ? "text-app-accent" : "text-app-text-tertiary hover:text-app-text-primary"
+            }`}
+          >
+            <RepeatIcon size={15} />
+          </button>
+        </div>
+
+        <div className="w-[30%] flex items-center justify-end gap-3">
+          <div className="flex items-center gap-4 text-[11px] text-app-text-tertiary tabular-nums select-none">
+            <span>{currentTrack ? `${formatCompact(currentTime)} / ${formatCompact(duration)}` : ""}</span>
+          </div>
+          <VolumeSlider value={volume} onChange={onVolumeChange} />
+          {onNavigateToQueue && (
+            <button
+              type="button"
+              onClick={onNavigateToQueue}
+              className="text-app-text-tertiary hover:text-app-text-primary"
+              title="Up Next"
+            >
+              <LayoutList size={16} />
+            </button>
+          )}
+          {onToggleMini && (
+            <button
+              type="button"
+              onClick={onToggleMini}
+              className="text-app-text-tertiary hover:text-app-text-primary"
+              title="Mini Player"
+            >
+              <Minimize2 size={15} />
+            </button>
+          )}
         </div>
       </div>
     </div>
   );
+});
+
+function formatCompact(seconds: number): string {
+  if (!isFinite(seconds) || seconds < 0) return "0:00";
+  const s = Math.floor(seconds);
+  const min = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${min}:${sec.toString().padStart(2, "0")}`;
 }

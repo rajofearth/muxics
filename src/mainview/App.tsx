@@ -8,10 +8,11 @@ import { useAudioEngine } from "./hooks/useAudioEngine";
 import { useThemeFromArt } from "./hooks/useThemeFromArt";
 import { AudioEngineProvider } from "./context/AudioEngineContext";
 import { ThemeProvider } from "./components/ThemeProvider";
+
 const MINI_WIDTH = 380;
 const MINI_HEIGHT = 776;
 
-type WinampElectrobun = {
+type AppElectrobun = {
   rpc?: {
     send?: {
       resizeWindow: (p: { width: number; height: number }) => void;
@@ -25,7 +26,7 @@ type WinampElectrobun = {
 };
 
 type AppProps = {
-  electrobun: WinampElectrobun;
+  electrobun: AppElectrobun;
 };
 
 const MAIN_WINDOW_WIDTH = 1200;
@@ -42,6 +43,8 @@ export default function App({ electrobun }: AppProps) {
   const setVolume = usePlayerStore((s) => s.setVolume);
   const handleNext = usePlayerStore((s) => s.handleNext);
   const handlePrev = usePlayerStore((s) => s.handlePrev);
+  const toggleShuffle = usePlayerStore((s) => s.toggleShuffle);
+  const cycleRepeat = usePlayerStore((s) => s.cycleRepeat);
 
   const { analyserRef, analyserReady, seek } = useAudioEngine();
   useThemeFromArt();
@@ -101,19 +104,13 @@ export default function App({ electrobun }: AppProps) {
 
   const switchToMini = useCallback(() => {
     electrobun.rpc?.send?.setMinSize?.({ width: MINI_WIDTH, height: 600 });
-    electrobun.rpc?.send?.resizeWindow?.({
-      width: MINI_WIDTH,
-      height: MINI_HEIGHT,
-    });
+    electrobun.rpc?.send?.resizeWindow?.({ width: MINI_WIDTH, height: MINI_HEIGHT });
     setWindowMode("mini");
   }, [electrobun]);
 
   const switchToMain = useCallback(() => {
     electrobun.rpc?.send?.setMinSize?.({ width: 800, height: 600 });
-    electrobun.rpc?.send?.resizeWindow?.({
-      width: MAIN_WINDOW_WIDTH,
-      height: MAIN_WINDOW_HEIGHT,
-    });
+    electrobun.rpc?.send?.resizeWindow?.({ width: MAIN_WINDOW_WIDTH, height: MAIN_WINDOW_HEIGHT });
     setWindowMode("main");
   }, [electrobun]);
 
@@ -127,7 +124,7 @@ export default function App({ electrobun }: AppProps) {
             currentTrack={player.currentTrack}
             isPlaying={player.isPlaying}
             playQueue={player.queue}
-            currentTimeMs={player.currentTime}
+            currentTime={player.currentTime}
             volume={player.volume}
             onPlayPause={togglePlay}
             onNext={handleNext}
@@ -145,14 +142,18 @@ export default function App({ electrobun }: AppProps) {
             currentTrack={player.currentTrack}
             isPlaying={player.isPlaying}
             playQueue={player.queue}
-            currentTimeMs={player.currentTime}
+            currentTime={player.currentTime}
             volume={player.volume}
+            shuffle={player.shuffle}
+            repeat={player.repeat}
             onPlayTrack={(track, queue) => playTrack(track, queue)}
             onPlayPause={togglePlay}
             onNext={handleNext}
             onPrev={handlePrev}
             onScrubberChange={seek}
             onVolumeChange={setVolume}
+            onToggleShuffle={toggleShuffle}
+            onCycleRepeat={cycleRepeat}
           />
         </AudioEngineProvider>
       )}

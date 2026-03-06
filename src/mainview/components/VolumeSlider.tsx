@@ -1,4 +1,5 @@
-import { Volume2 } from "lucide-react";
+import { useCallback, useRef, useState } from "react";
+import { Volume2, Volume1, VolumeX } from "lucide-react";
 
 type VolumeSliderProps = {
   value: number;
@@ -6,28 +7,71 @@ type VolumeSliderProps = {
 };
 
 export function VolumeSlider({ value, onChange }: VolumeSliderProps) {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const [dragging, setDragging] = useState(false);
   const percent = Math.max(0, Math.min(1, value)) * 100;
+  const prevVolume = useRef(value || 0.75);
 
-  const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const pct = (e.clientX - rect.left) / rect.width;
-    onChange(Math.max(0, Math.min(1, pct)));
+  const calcValue = useCallback((clientX: number) => {
+    const el = trackRef.current;
+    if (!el) return 0;
+    const rect = el.getBoundingClientRect();
+    return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+  }, []);
+
+  const onPointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      e.preventDefault();
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      setDragging(true);
+      onChange(calcValue(e.clientX));
+    },
+    [calcValue, onChange]
+  );
+
+  const onPointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      if (dragging) onChange(calcValue(e.clientX));
+    },
+    [dragging, calcValue, onChange]
+  );
+
+  const onPointerUp = useCallback(() => setDragging(false), []);
+
+  const toggleMute = () => {
+    if (value > 0) {
+      prevVolume.current = value;
+      onChange(0);
+    } else {
+      onChange(prevVolume.current);
+    }
   };
 
+  const Icon = value === 0 ? VolumeX : value < 0.5 ? Volume1 : Volume2;
+
   return (
-    <div className="flex items-center gap-3 w-32">
-      <Volume2 size={18} className="text-winamp-text" />
+    <div className="flex items-center gap-2 w-32 group/vol">
+      <button
+        onClick={toggleMute}
+        className="text-app-text-tertiary hover:text-app-text-primary shrink-0"
+        type="button"
+      >
+        <Icon size={16} />
+      </button>
       <div
-        className="flex-1 h-1 bg-winamp-border relative rounded-full cursor-pointer group"
-        onClick={handleClick}
+        ref={trackRef}
+        className={`slider-container flex-1 h-1 bg-app-border-strong relative rounded-full cursor-pointer ${dragging ? "dragging" : ""}`}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
       >
         <div
-          className="absolute top-0 left-0 h-full bg-winamp-text group-hover:bg-winamp-accent rounded-full transition-colors"
+          className="slider-track absolute top-0 left-0 h-full bg-app-text-secondary rounded-full"
           style={{ width: `${percent}%` }}
         />
         <div
-          className="absolute top-1/2 -translate-y-1/2 -ml-2 w-3 h-3 bg-winamp-bar group-hover:bg-winamp-accent rounded-full transition-colors pointer-events-none"
-          style={{ left: `${percent}%` }}
+          className="slider-thumb absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-app-text-primary rounded-full shadow pointer-events-none"
+          style={{ left: `calc(${percent}% - 6px)` }}
         />
       </div>
     </div>

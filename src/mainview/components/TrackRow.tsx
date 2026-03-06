@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Volume2 } from "lucide-react";
+import { memo, useState, useCallback } from "react";
+import { Volume2, Play } from "lucide-react";
 import type { Track } from "../types";
 import { TrackContextMenu } from "./TrackContextMenu";
 
@@ -9,53 +9,106 @@ type TrackRowProps = {
   isActive: boolean;
   isPlaying: boolean;
   onClick: () => void;
+  compact?: boolean;
+  playlistId?: string;
 };
 
-export function TrackRow({ track, index, isActive, isPlaying, onClick }: TrackRowProps) {
+export const TrackRow = memo(function TrackRow({
+  track,
+  index,
+  isActive,
+  isPlaying,
+  onClick,
+  compact = false,
+  playlistId,
+}: TrackRowProps) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+
+  const onContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ x: e.clientX, y: e.clientY });
+  }, []);
+
+  const closeContextMenu = useCallback(() => setContextMenu(null), []);
 
   return (
     <>
       <div
         onClick={onClick}
-        onContextMenu={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          setContextMenu({ x: e.clientX, y: e.clientY });
-        }}
-      className={`flex px-8 py-3 text-sm group transition-colors border-b border-winamp-border/30 cursor-pointer ${
-        isActive ? "bg-winamp-hover text-winamp-accent" : "text-winamp-text hover:bg-winamp-panel-alt hover:text-winamp-bar"
-      }`}
-    >
-      <div className="w-12 flex items-center">
-        {isActive ? (
-          <Volume2 size={14} className={isPlaying ? "animate-pulse" : ""} />
-        ) : (
-          <span className="text-winamp-accent-muted">{(index + 1).toString().padStart(2, "0")}</span>
+        onContextMenu={onContextMenu}
+        className={`flex items-center ${compact ? "px-4 py-2" : "px-6 py-2.5"} text-[13px] group cursor-pointer rounded-md mx-2 ${
+          isActive
+            ? "bg-app-active"
+            : "hover:bg-app-hover"
+        }`}
+      >
+        <div className="w-8 flex items-center justify-center shrink-0">
+          {isActive ? (
+            isPlaying ? (
+              <Volume2 size={14} className="text-app-accent animate-pulse-soft" />
+            ) : (
+              <Volume2 size={14} className="text-app-accent" />
+            )
+          ) : (
+            <>
+              <span className="text-app-text-tertiary text-xs group-hover:hidden">
+                {index + 1}
+              </span>
+              <Play size={12} className="text-app-text-primary fill-current hidden group-hover:block" />
+            </>
+          )}
+        </div>
+
+        <div className="flex-1 min-w-0 flex items-center gap-3 ml-2">
+          {track.picture && !compact && (
+            <img
+              src={track.picture}
+              alt=""
+              className="w-9 h-9 rounded object-cover shrink-0"
+              loading="lazy"
+            />
+          )}
+          <div className="min-w-0 flex-1">
+            <div className={`truncate leading-tight ${isActive ? "text-app-accent font-medium" : "text-app-text-primary"}`}>
+              {track.title}
+            </div>
+            {compact && (
+              <div className="text-[12px] text-app-text-tertiary truncate leading-tight mt-0.5">
+                {track.artist}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {!compact && (
+          <>
+            <div className="w-[22%] truncate text-app-text-secondary px-2 hidden md:block">
+              {track.artist}
+            </div>
+            <div className="w-[22%] truncate text-app-text-tertiary px-2 hidden lg:block">
+              {track.album}
+            </div>
+          </>
         )}
+
+        <div className="w-12 text-right text-app-text-tertiary text-xs tabular-nums shrink-0">
+          {track.time}
+        </div>
       </div>
-      <div className="flex-1 flex items-center">{track.title}</div>
-      <div className="flex-1 flex items-center">{track.artist}</div>
-      <div className="flex-1 hidden md:flex items-center text-winamp-accent-muted group-hover:text-winamp-text">
-        {track.album}
-      </div>
-      <div className="w-16 text-right flex items-center justify-end">{track.time}</div>
-    </div>
-    {contextMenu && (
-      <TrackContextMenu
-        x={contextMenu.x}
-        y={contextMenu.y}
-        track={track}
-        onClose={() => setContextMenu(null)}
-      />
-    )}
-    {contextMenu && (
-      <div
-        className="fixed inset-0 z-40"
-        onClick={() => setContextMenu(null)}
-        aria-hidden
-      />
-    )}
+
+      {contextMenu && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={closeContextMenu} aria-hidden />
+          <TrackContextMenu
+            x={contextMenu.x}
+            y={contextMenu.y}
+            track={track}
+            onClose={closeContextMenu}
+            playlistId={playlistId}
+          />
+        </>
+      )}
     </>
   );
-}
+});
