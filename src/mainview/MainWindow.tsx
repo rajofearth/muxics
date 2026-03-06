@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback, useEffect } from "react";
 import type { Track, NavState, NavView } from "./types";
 import { usePlayerStore } from "./store/playerStore";
 import { formatTotalDuration } from "./utils";
-import { Library, Mic2, Disc3, ListMusic, Music, Play } from "lucide-react";
+import { Library, Mic2, Disc3, ListMusic, Music, Play, Heart } from "lucide-react";
 import { TitleBar } from "./components/TitleBar";
 import { Sidebar } from "./components/Sidebar";
 import { PlayerBar } from "./components/PlayerBar";
@@ -15,6 +15,7 @@ import { EmptyLibrary } from "./components/EmptyLibrary";
 import { PlaylistHeaderActions } from "./components/PlaylistHeaderActions";
 import { SearchView } from "./components/SearchView";
 import { QueueView } from "./components/QueueView";
+import { NowPlayingView } from "./components/NowPlayingView";
 
 type WinampElectrobun = {
   rpc?: {
@@ -69,7 +70,7 @@ export function MainWindow({
   const [navState, setNavState] = useState<NavState>({ view: "library", id: undefined });
   const [activeTab, setActiveTab] = useState<string>("All");
 
-  const { library, playlists, loadPlaylistTracks, settings, recentlyPlayed } = usePlayerStore();
+  const { library, playlists, loadPlaylistTracks, settings, recentlyPlayed, getFavoriteTracks } = usePlayerStore();
 
   const handleNavigate = useCallback((view: NavView, id?: string) => {
     setNavState({ view, id });
@@ -99,6 +100,13 @@ export function MainWindow({
         case "f":
         case "F":
           if (e.metaKey || e.ctrlKey) { handleNavigate("search"); e.preventDefault(); }
+          break;
+        case "Escape":
+          if (navState.view === "now_playing") { handleNavigate("library"); e.preventDefault(); }
+          else if (navState.view === "artist_detail") { handleNavigate("artists"); e.preventDefault(); }
+          else if (navState.view === "album_detail") { handleNavigate("albums"); e.preventDefault(); }
+          else if (navState.view === "playlist_detail") { handleNavigate("playlists"); e.preventDefault(); }
+          else if (navState.view === "search") { handleNavigate("library"); e.preventDefault(); }
           break;
       }
     };
@@ -246,14 +254,48 @@ export function MainWindow({
     }
 
     switch (navState.view) {
+      case "now_playing":
+        if (currentTrack) {
+          return (
+            <NowPlayingView
+              currentTrack={currentTrack}
+              isPlaying={isPlaying}
+              currentTime={currentTime}
+              volume={volume}
+              shuffle={shuffle}
+              repeat={repeat}
+              onClose={() => handleNavigate("library")}
+              onPlayPause={onPlayPause}
+              onNext={onNext}
+              onPrev={onPrev}
+              onScrubberChange={onScrubberChange}
+              onVolumeChange={onVolumeChange}
+              onToggleShuffle={onToggleShuffle}
+              onCycleRepeat={onCycleRepeat}
+            />
+          );
+        }
+        return renderTrackView("All Songs", "Library", library.tracks, <Library size={40} className="text-app-text-tertiary" />);
+
       case "search":
         return (
           <SearchView
             currentTrack={currentTrack}
             isPlaying={isPlaying}
             onPlayTrack={(track, queue) => onPlayTrack(track, queue)}
+            onNavigate={handleNavigate}
           />
         );
+
+      case "favorites": {
+        const favTracks = getFavoriteTracks();
+        return renderTrackView(
+          "Favorites",
+          "Your Collection",
+          favTracks,
+          <Heart size={40} className="text-app-accent fill-current" />
+        );
+      }
 
       case "library":
         return renderTrackView(
@@ -419,6 +461,7 @@ export function MainWindow({
         onToggleShuffle={onToggleShuffle}
         onCycleRepeat={onCycleRepeat}
         onNavigateToQueue={() => handleNavigate("queue")}
+        onNavigateToNowPlaying={() => handleNavigate("now_playing")}
       />
     </div>
   );

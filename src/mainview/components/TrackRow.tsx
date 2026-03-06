@@ -1,6 +1,7 @@
 import { memo, useState, useCallback } from "react";
-import { Volume2, Play } from "lucide-react";
+import { Volume2, Play, Heart } from "lucide-react";
 import type { Track } from "../types";
+import { usePlayerStore } from "../store/playerStore";
 import { TrackContextMenu } from "./TrackContextMenu";
 
 type TrackRowProps = {
@@ -23,6 +24,8 @@ export const TrackRow = memo(function TrackRow({
   playlistId,
 }: TrackRowProps) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const toggleFavorite = usePlayerStore((s) => s.toggleFavorite);
+  const isFav = usePlayerStore((s) => s.favorites.has(track.id));
 
   const onContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -32,15 +35,18 @@ export const TrackRow = memo(function TrackRow({
 
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
 
+  const handleFavorite = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    toggleFavorite(track.id);
+  }, [toggleFavorite, track.id]);
+
   return (
     <>
       <div
         onClick={onClick}
         onContextMenu={onContextMenu}
         className={`flex items-center ${compact ? "px-4 py-2" : "px-6 py-2.5"} text-[13px] group cursor-pointer rounded-md mx-2 ${
-          isActive
-            ? "bg-app-active"
-            : "hover:bg-app-hover"
+          isActive ? "bg-app-active" : "hover:bg-app-hover"
         }`}
       >
         <div className="w-8 flex items-center justify-center shrink-0">
@@ -91,6 +97,17 @@ export const TrackRow = memo(function TrackRow({
             </div>
           </>
         )}
+
+        <button
+          onClick={handleFavorite}
+          className={`w-6 flex items-center justify-center shrink-0 mr-1 ${
+            isFav
+              ? "text-app-accent"
+              : "text-transparent group-hover:text-app-text-tertiary hover:!text-app-accent"
+          }`}
+        >
+          <Heart size={13} className={isFav ? "fill-current" : ""} />
+        </button>
 
         <div className="w-12 text-right text-app-text-tertiary text-xs tabular-nums shrink-0">
           {track.time}

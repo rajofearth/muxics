@@ -30,7 +30,9 @@ export type NavView =
   | "folders"
   | "recent"
   | "queue"
-  | "search";
+  | "search"
+  | "favorites"
+  | "now_playing";
 
 export interface NavState {
   view: NavView;

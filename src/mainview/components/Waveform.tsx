@@ -27,7 +27,7 @@ export function Waveform({ width = 200, height = 40, className = "" }: WaveformP
 
     const bufferLength = analyser.fftSize;
     const dataArray = new Uint8Array(bufferLength);
-    let frameId: number;
+    let frameId = 0;
 
     const draw = () => {
       frameId = requestAnimationFrame(draw);
@@ -54,8 +54,13 @@ export function Waveform({ width = 200, height = 40, className = "" }: WaveformP
       ctx.stroke();
     };
 
-    if (isPlaying) draw();
-    return () => cancelAnimationFrame(frameId);
+    if (isPlaying) {
+      frameId = requestAnimationFrame(draw);
+    }
+
+    return () => {
+      if (frameId) cancelAnimationFrame(frameId);
+    };
   }, [analyserRef, analyserReady, isPlaying, width, height, theme.accentColor]);
 
   return <canvas ref={canvasRef} width={width} height={height} className={className} />;

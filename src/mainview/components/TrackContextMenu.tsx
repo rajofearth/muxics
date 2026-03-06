@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Plus, Check, Trash2, LayoutList, ListMusic } from "lucide-react";
+import { Plus, Check, Trash2, LayoutList, ListMusic, ListEnd, Heart } from "lucide-react";
 import type { Track } from "../types";
 import { usePlayerStore } from "../store/playerStore";
 
@@ -13,10 +13,11 @@ type TrackContextMenuProps = {
 };
 
 export function TrackContextMenu({ x, y, track, onClose, playlistId }: TrackContextMenuProps) {
-  const { playlists, addTrackToPlaylist, removeTrackFromPlaylist, playTrack, player } = usePlayerStore();
+  const { playlists, addTrackToPlaylist, removeTrackFromPlaylist, playNext, addToQueue, toggleFavorite, favorites } = usePlayerStore();
   const menuRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ x, y });
   const [showPlaylists, setShowPlaylists] = useState(false);
+  const isFav = favorites.has(track.id);
 
   useLayoutEffect(() => {
     const el = menuRef.current;
@@ -30,32 +31,35 @@ export function TrackContextMenu({ x, y, track, onClose, playlistId }: TrackCont
     if (adjX !== x || adjY !== y) setPosition({ x: adjX, y: adjY });
   }, [x, y]);
 
-  const handlePlayNext = () => {
-    const queue = [...player.queue];
-    const idx = queue.findIndex((t) => t.id === player.currentTrack?.id);
-    if (idx >= 0) {
-      queue.splice(idx + 1, 0, track);
-    } else {
-      queue.push(track);
-    }
-    if (player.currentTrack) {
-      playTrack(player.currentTrack, queue);
-    }
-    onClose();
-  };
-
   return createPortal(
     <div
       ref={menuRef}
-      className="fixed z-50 bg-app-surface border border-app-border shadow-2xl rounded-xl py-1 min-w-[200px] animate-fade-in backdrop-blur-xl"
+      className="fixed z-50 bg-app-surface/95 border border-app-border shadow-2xl rounded-xl py-1 min-w-[200px] animate-fade-in backdrop-blur-xl"
       style={{ left: position.x, top: position.y }}
     >
       <button
-        onClick={handlePlayNext}
+        onClick={() => { playNext(track); onClose(); }}
         className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] text-left text-app-text-primary hover:bg-app-hover rounded-md"
       >
         <LayoutList size={14} className="text-app-text-tertiary" />
         Play Next
+      </button>
+      <button
+        onClick={() => { addToQueue(track); onClose(); }}
+        className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] text-left text-app-text-primary hover:bg-app-hover rounded-md"
+      >
+        <ListEnd size={14} className="text-app-text-tertiary" />
+        Add to Queue
+      </button>
+
+      <div className="h-px bg-app-border mx-2 my-1" />
+
+      <button
+        onClick={() => { toggleFavorite(track.id); onClose(); }}
+        className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] text-left text-app-text-primary hover:bg-app-hover rounded-md"
+      >
+        <Heart size={14} className={isFav ? "text-app-accent fill-app-accent" : "text-app-text-tertiary"} />
+        {isFav ? "Remove from Favorites" : "Add to Favorites"}
       </button>
 
       <div className="h-px bg-app-border mx-2 my-1" />

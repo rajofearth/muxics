@@ -136,3 +136,31 @@ button:focus-visible {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 3s linear infinite;
+}
+
+@keyframes eq-bar {
+  0%, 100% { height: 20%; }
+  50% { height: 80%; }
+}
+
+.eq-bar {
+  animation: eq-bar 0.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse-soft,
+  .animate-spin-slow,
+  .eq-bar,
+  .animate-fade-in,
+  .animate-slide-up {
+    animation: none;
+  }
+}

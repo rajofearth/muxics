@@ -1,6 +1,7 @@
-import { memo } from "react";
-import { Shuffle, Repeat, Repeat1, SkipBack, SkipForward, Minimize2, LayoutList } from "lucide-react";
+import { memo, useCallback } from "react";
+import { Shuffle, Repeat, Repeat1, SkipBack, SkipForward, Minimize2, LayoutList, Heart } from "lucide-react";
 import type { Track, RepeatMode } from "../types";
+import { usePlayerStore } from "../store/playerStore";
 import { Scrubber } from "./Scrubber";
 import { VolumeSlider } from "./VolumeSlider";
 import { PlayPauseButton } from "./PlayPauseButton";
@@ -21,6 +22,7 @@ type PlayerBarProps = {
   onToggleShuffle: () => void;
   onCycleRepeat: () => void;
   onNavigateToQueue?: () => void;
+  onNavigateToNowPlaying?: () => void;
 };
 
 export const PlayerBar = memo(function PlayerBar({
@@ -39,13 +41,19 @@ export const PlayerBar = memo(function PlayerBar({
   onToggleShuffle,
   onCycleRepeat,
   onNavigateToQueue,
+  onNavigateToNowPlaying,
 }: PlayerBarProps) {
   const duration = currentTrack?.duration ?? 0;
-
   const RepeatIcon = repeat === "one" ? Repeat1 : Repeat;
+  const toggleFavorite = usePlayerStore((s) => s.toggleFavorite);
+  const isFav = usePlayerStore((s) => currentTrack ? s.favorites.has(currentTrack.id) : false);
+
+  const handleFav = useCallback(() => {
+    if (currentTrack) toggleFavorite(currentTrack.id);
+  }, [currentTrack, toggleFavorite]);
 
   return (
-    <div className="h-[88px] bg-app-surface border-t border-app-border flex flex-col shrink-0">
+    <div className="h-[90px] bg-app-surface border-t border-app-border flex flex-col shrink-0">
       <div className="px-4 pt-2">
         <Scrubber
           value={currentTime}
@@ -60,28 +68,40 @@ export const PlayerBar = memo(function PlayerBar({
         <div className="w-[30%] min-w-0 flex items-center gap-3">
           {currentTrack ? (
             <>
-              {currentTrack.picture ? (
-                <img
-                  src={currentTrack.picture}
-                  alt=""
-                  className="w-11 h-11 rounded-md object-cover shadow-sm shrink-0"
-                />
-              ) : (
-                <div className="w-11 h-11 rounded-md bg-app-elevated flex items-center justify-center shrink-0">
-                  <span className="text-app-text-tertiary text-lg">♪</span>
-                </div>
-              )}
+              <button
+                onClick={onNavigateToNowPlaying}
+                className="shrink-0 group/art"
+                title="Now Playing"
+              >
+                {currentTrack.picture ? (
+                  <img
+                    src={currentTrack.picture}
+                    alt=""
+                    className="w-12 h-12 rounded-lg object-cover shadow-md group-hover/art:shadow-lg group-hover/art:scale-105 transition-transform"
+                  />
+                ) : (
+                  <div className="w-12 h-12 rounded-lg bg-app-elevated flex items-center justify-center group-hover/art:bg-app-active transition-colors">
+                    <span className="text-app-text-tertiary text-lg">♪</span>
+                  </div>
+                )}
+              </button>
               <div className="min-w-0">
                 <div className="text-[13px] font-medium text-app-text-primary truncate leading-tight">
                   {currentTrack.title}
                 </div>
-                <div className="text-[12px] text-app-text-tertiary truncate leading-tight mt-0.5">
+                <div className="text-[11px] text-app-text-tertiary truncate leading-tight mt-0.5">
                   {currentTrack.artist}
                 </div>
               </div>
+              <button
+                onClick={handleFav}
+                className={`shrink-0 ml-1 ${isFav ? "text-app-accent" : "text-app-text-tertiary hover:text-app-text-primary"}`}
+              >
+                <Heart size={14} className={isFav ? "fill-current" : ""} />
+              </button>
             </>
           ) : (
-            <div className="text-[13px] text-app-text-tertiary">No track playing</div>
+            <div className="text-[13px] text-app-text-tertiary">Not playing</div>
           )}
         </div>
 
@@ -92,6 +112,7 @@ export const PlayerBar = memo(function PlayerBar({
             className={`transition-colors ${
               shuffle ? "text-app-accent" : "text-app-text-tertiary hover:text-app-text-primary"
             }`}
+            title={shuffle ? "Shuffle on" : "Shuffle off"}
           >
             <Shuffle size={15} />
           </button>
@@ -99,6 +120,7 @@ export const PlayerBar = memo(function PlayerBar({
             type="button"
             onClick={onPrev}
             className="text-app-text-secondary hover:text-app-text-primary"
+            title="Previous"
           >
             <SkipBack size={18} className="fill-current" />
           </button>
@@ -107,6 +129,7 @@ export const PlayerBar = memo(function PlayerBar({
             type="button"
             onClick={onNext}
             className="text-app-text-secondary hover:text-app-text-primary"
+            title="Next"
           >
             <SkipForward size={18} className="fill-current" />
           </button>
@@ -116,14 +139,15 @@ export const PlayerBar = memo(function PlayerBar({
             className={`transition-colors ${
               repeat !== "off" ? "text-app-accent" : "text-app-text-tertiary hover:text-app-text-primary"
             }`}
+            title={repeat === "off" ? "Repeat off" : repeat === "all" ? "Repeat all" : "Repeat one"}
           >
             <RepeatIcon size={15} />
           </button>
         </div>
 
         <div className="w-[30%] flex items-center justify-end gap-3">
-          <div className="flex items-center gap-4 text-[11px] text-app-text-tertiary tabular-nums select-none">
-            <span>{currentTrack ? `${formatCompact(currentTime)} / ${formatCompact(duration)}` : ""}</span>
+          <div className="text-[11px] text-app-text-tertiary tabular-nums select-none whitespace-nowrap">
+            {currentTrack ? `${formatCompact(currentTime)} / ${formatCompact(duration)}` : ""}
           </div>
           <VolumeSlider value={volume} onChange={onVolumeChange} />
           {onNavigateToQueue && (

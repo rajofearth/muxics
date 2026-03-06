@@ -84,6 +84,7 @@ interface PlayerState {
   theme: { accentColor: string; palette: string[] };
   search: { query: string; results: Track[] };
   recentlyPlayed: Track[];
+  favorites: Set<string>;
 }
 
 interface PlayerActions {
@@ -113,6 +114,12 @@ interface PlayerActions {
   cycleRepeat: () => void;
   setSearchQuery: (query: string) => void;
   addToRecentlyPlayed: (track: Track) => void;
+  toggleFavorite: (trackId: string) => void;
+  isFavorite: (trackId: string) => boolean;
+  getFavoriteTracks: () => Track[];
+  updateQueue: (newQueue: Track[]) => void;
+  playNext: (track: Track) => void;
+  addToQueue: (track: Track) => void;
 }
 
 const defaultTheme = { accentColor: "#ff6b6b", palette: ["#ff6b6b", "#e55a5a", "#cc4c4c"] };
@@ -139,6 +146,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
   theme: defaultTheme,
   search: { query: "", results: [] },
   recentlyPlayed: [],
+  favorites: new Set<string>(),
 
   setRpc: (rpc) => set({ rpc }),
 
@@ -421,5 +429,53 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
       const filtered = s.recentlyPlayed.filter((t) => t.id !== track.id);
       return { recentlyPlayed: [track, ...filtered].slice(0, MAX_RECENTLY_PLAYED) };
     });
+  },
+
+  toggleFavorite: (trackId) => {
+    set((s) => {
+      const next = new Set(s.favorites);
+      if (next.has(trackId)) next.delete(trackId);
+      else next.add(trackId);
+      return { favorites: next };
+    });
+  },
+
+  isFavorite: (trackId) => get().favorites.has(trackId),
+
+  getFavoriteTracks: () => {
+    const { library, favorites } = get();
+    return library.tracks.filter((t) => favorites.has(t.id));
+  },
+
+  updateQueue: (newQueue) => {
+    set((s) => ({
+      player: { ...s.player, queue: newQueue, originalQueue: newQueue },
+    }));
+  },
+
+  playNext: (track) => {
+    const { player } = get();
+    const queue = [...player.queue];
+    const idx = queue.findIndex((t) => t.id === player.currentTrack?.id);
+    if (idx >= 0) {
+      queue.splice(idx + 1, 0, track);
+    } else {
+      queue.unshift(track);
+    }
+    if (!player.currentTrack) {
+      get().playTrack(track, queue);
+    } else {
+      set((s) => ({ player: { ...s.player, queue, originalQueue: queue } }));
+    }
+  },
+
+  addToQueue: (track) => {
+    const { player } = get();
+    const queue = [...player.queue, track];
+    if (!player.currentTrack) {
+      get().playTrack(track, queue);
+    } else {
+      set((s) => ({ player: { ...s.player, queue, originalQueue: queue } }));
+    }
   },
 }));

@@ -9,9 +9,11 @@ import {
   Plus,
   Search,
   LayoutList,
+  Heart,
 } from "lucide-react";
 import type { NavState, NavView } from "../types";
 import type { Playlist } from "../types";
+import { usePlayerStore } from "../store/playerStore";
 import { CreatePlaylistModal } from "./CreatePlaylistModal";
 
 type SidebarProps = {
@@ -20,24 +22,29 @@ type SidebarProps = {
   onNavigate: (view: NavView, id?: string) => void;
 };
 
-const NAV_ITEMS: { id: NavView; icon: typeof Library; label: string }[] = [
-  { id: "search", icon: Search, label: "Search" },
-  { id: "library", icon: Library, label: "All Songs" },
-  { id: "artists", icon: Mic2, label: "Artists" },
-  { id: "albums", icon: Disc3, label: "Albums" },
-  { id: "recent", icon: Clock, label: "Recently Played" },
-  { id: "queue", icon: LayoutList, label: "Up Next" },
-];
-
-const MANAGE_ITEMS: { id: NavView; icon: typeof FolderOpen; label: string }[] = [
-  { id: "playlists", icon: ListMusic, label: "All Playlists" },
-  { id: "folders", icon: FolderOpen, label: "Folders" },
-];
-
 export const Sidebar = memo(function Sidebar({ navState, playlists, onNavigate }: SidebarProps) {
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const trackCount = usePlayerStore((s) => s.library.tracks.length);
+  const favCount = usePlayerStore((s) => s.favorites.size);
+  const queueCount = usePlayerStore((s) => s.player.queue.length);
+  const recentCount = usePlayerStore((s) => s.recentlyPlayed.length);
 
-  const NavButton = ({ id, icon: Icon, label }: { id: NavView; icon: typeof Library; label: string }) => {
+  const NAV_ITEMS: { id: NavView; icon: typeof Library; label: string; count?: number }[] = [
+    { id: "search", icon: Search, label: "Search" },
+    { id: "library", icon: Library, label: "All Songs", count: trackCount || undefined },
+    { id: "favorites", icon: Heart, label: "Favorites", count: favCount || undefined },
+    { id: "artists", icon: Mic2, label: "Artists" },
+    { id: "albums", icon: Disc3, label: "Albums" },
+    { id: "recent", icon: Clock, label: "Recently Played", count: recentCount || undefined },
+    { id: "queue", icon: LayoutList, label: "Up Next", count: queueCount || undefined },
+  ];
+
+  const MANAGE_ITEMS: { id: NavView; icon: typeof FolderOpen; label: string }[] = [
+    { id: "playlists", icon: ListMusic, label: "All Playlists" },
+    { id: "folders", icon: FolderOpen, label: "Folders" },
+  ];
+
+  const NavButton = ({ id, icon: Icon, label, count }: { id: NavView; icon: typeof Library; label: string; count?: number }) => {
     const isActive =
       navState.view === id ||
       (id === "artists" && navState.view === "artist_detail") ||
@@ -53,15 +60,18 @@ export const Sidebar = memo(function Sidebar({ navState, playlists, onNavigate }
             : "text-app-text-secondary hover:bg-app-hover hover:text-app-text-primary"
         }`}
       >
-        <Icon size={16} strokeWidth={isActive ? 2 : 1.5} />
-        {label}
+        <Icon size={16} strokeWidth={isActive ? 2 : 1.5} className={id === "favorites" && isActive ? "fill-current" : ""} />
+        <span className="flex-1 text-left">{label}</span>
+        {count !== undefined && count > 0 && (
+          <span className="text-[10px] text-app-text-tertiary tabular-nums">{count}</span>
+        )}
       </button>
     );
   };
 
   return (
     <div className="w-56 border-r border-app-border bg-app-surface-alt flex flex-col shrink-0 select-none">
-      <div className="p-3 pt-2 flex-1 overflow-y-auto">
+      <div className="p-3 pt-2 flex-1 overflow-y-auto no-scrollbar">
         <div className="mb-1">
           <div className="px-3 py-1.5 text-[11px] font-medium text-app-text-tertiary uppercase tracking-wider">
             Library
@@ -101,13 +111,14 @@ export const Sidebar = memo(function Sidebar({ navState, playlists, onNavigate }
                 <button
                   key={pl.id}
                   onClick={() => onNavigate("playlist_detail", pl.id)}
-                  className={`w-full text-left px-3 py-[7px] text-[13px] rounded-lg truncate transition-all ${
+                  className={`w-full flex items-center gap-2 text-left px-3 py-[7px] text-[13px] rounded-lg truncate transition-all ${
                     isActive
                       ? "bg-app-active text-app-text-primary font-medium"
                       : "text-app-text-secondary hover:bg-app-hover hover:text-app-text-primary"
                   }`}
                 >
-                  {pl.name}
+                  <span className="truncate flex-1">{pl.name}</span>
+                  <span className="text-[10px] text-app-text-tertiary tabular-nums shrink-0">{pl.trackIds.length}</span>
                 </button>
               );
             })}
