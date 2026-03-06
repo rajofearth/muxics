@@ -126,6 +126,26 @@ const defaultTheme = { accentColor: "#ff6b6b", palette: ["#ff6b6b", "#e55a5a", "
 
 const MAX_RECENTLY_PLAYED = 50;
 
+function loadFavorites(): Set<string> {
+  try {
+    const stored = localStorage.getItem("muse-favorites");
+    if (stored) return new Set(JSON.parse(stored));
+  } catch {}
+  return new Set();
+}
+
+function saveFavorites(favs: Set<string>) {
+  try { localStorage.setItem("muse-favorites", JSON.stringify([...favs])); } catch {}
+}
+
+function loadVolume(): number {
+  try {
+    const v = localStorage.getItem("muse-volume");
+    if (v !== null) return parseFloat(v);
+  } catch {}
+  return 0.75;
+}
+
 export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => ({
   rpc: null,
 
@@ -137,7 +157,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
     originalQueue: [],
     isPlaying: false,
     currentTime: 0,
-    volume: 0.75,
+    volume: loadVolume(),
     playbackUrl: null,
     shuffle: false,
     repeat: "off",
@@ -146,7 +166,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
   theme: defaultTheme,
   search: { query: "", results: [] },
   recentlyPlayed: [],
-  favorites: new Set<string>(),
+  favorites: loadFavorites(),
 
   setRpc: (rpc) => set({ rpc }),
 
@@ -299,8 +319,11 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
   setCurrentTime: (seconds) =>
     set((s) => ({ player: { ...s.player, currentTime: seconds } })),
 
-  setVolume: (value) =>
-    set((s) => ({ player: { ...s.player, volume: Math.max(0, Math.min(1, value)) } })),
+  setVolume: (value) => {
+    const v = Math.max(0, Math.min(1, value));
+    try { localStorage.setItem("muse-volume", String(v)); } catch {}
+    set((s) => ({ player: { ...s.player, volume: v } }));
+  },
 
   setPlaybackUrl: (url) => set((s) => ({ player: { ...s.player, playbackUrl: url } })),
 
@@ -436,6 +459,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
       const next = new Set(s.favorites);
       if (next.has(trackId)) next.delete(trackId);
       else next.add(trackId);
+      saveFavorites(next);
       return { favorites: next };
     });
   },

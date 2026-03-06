@@ -108,6 +108,20 @@ export function MainWindow({
           else if (navState.view === "playlist_detail") { handleNavigate("playlists"); e.preventDefault(); }
           else if (navState.view === "search") { handleNavigate("library"); e.preventDefault(); }
           break;
+        case "l":
+        case "L":
+          if (e.metaKey || e.ctrlKey) {
+            handleNavigate("library");
+            e.preventDefault();
+          }
+          break;
+        case "n":
+        case "N":
+          if (e.metaKey || e.ctrlKey) {
+            if (currentTrack) handleNavigate("now_playing");
+            e.preventDefault();
+          }
+          break;
       }
     };
     document.addEventListener("keydown", handler);
@@ -155,7 +169,8 @@ export function MainWindow({
     tracks: Track[],
     icon: React.ReactNode,
     extraActions?: React.ReactNode,
-    playlistId?: string
+    playlistId?: string,
+    onBack?: () => void
   ) => (
     <div className="flex-1 flex flex-col overflow-hidden">
       <HeroHeader
@@ -163,6 +178,7 @@ export function MainWindow({
         subtitle={subtitle}
         meta={`${tracks.length} songs · ${formatTotalDuration(tracks)}`}
         icon={icon}
+        onBack={onBack}
         actions={
           <div className="flex items-center gap-2">
             {tracks.length > 0 && (
@@ -317,6 +333,10 @@ export function MainWindow({
             <GridView
               items={artists}
               onItemClick={(item) => handleNavigate("artist_detail", item.name)}
+              onPlayItem={(item) => {
+                const tracks = library.tracks.filter((t) => t.artist === item.name);
+                if (tracks.length > 0) onPlayTrack(tracks[0], tracks);
+              }}
             />
           </div>
         );
@@ -332,7 +352,10 @@ export function MainWindow({
             <img src={artistPic} alt="" className="w-full h-full object-cover" />
           ) : (
             <Mic2 size={40} className="text-app-text-tertiary" />
-          )
+          ),
+          undefined,
+          undefined,
+          () => handleNavigate("artists")
         );
       }
 
@@ -348,6 +371,10 @@ export function MainWindow({
             <GridView
               items={albums}
               onItemClick={(item) => handleNavigate("album_detail", item.name)}
+              onPlayItem={(item) => {
+                const tracks = library.tracks.filter((t) => t.album === item.name);
+                if (tracks.length > 0) onPlayTrack(tracks[0], tracks);
+              }}
             />
           </div>
         );
@@ -363,7 +390,10 @@ export function MainWindow({
             <img src={albumPic} alt="" className="w-full h-full object-cover" />
           ) : (
             <Disc3 size={40} className="text-app-text-tertiary" />
-          )
+          ),
+          undefined,
+          undefined,
+          () => handleNavigate("albums")
         );
       }
 
@@ -398,7 +428,8 @@ export function MainWindow({
           activePlaylist && (
             <PlaylistHeaderActions playlist={activePlaylist} onNavigate={handleNavigate} />
           ),
-          activePlaylist?.id
+          activePlaylist?.id,
+          () => handleNavigate("playlists")
         );
       }
 

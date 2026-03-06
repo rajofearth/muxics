@@ -1,4 +1,5 @@
 import { memo } from "react";
+import { ChevronLeft } from "lucide-react";
 
 type HeroHeaderProps = {
   title: string;
@@ -7,6 +8,7 @@ type HeroHeaderProps = {
   icon?: React.ReactNode;
   actions?: React.ReactNode;
   gradient?: string;
+  onBack?: () => void;
 };
 
 export const HeroHeader = memo(function HeroHeader({
@@ -16,6 +18,7 @@ export const HeroHeader = memo(function HeroHeader({
   icon,
   actions,
   gradient,
+  onBack,
 }: HeroHeaderProps) {
   return (
     <div className="relative shrink-0 overflow-hidden">
@@ -25,10 +28,19 @@ export const HeroHeader = memo(function HeroHeader({
           style={{ background: gradient }}
         />
       )}
-      <div className="relative px-8 pt-8 pb-6">
+      <div className="relative px-8 pt-6 pb-6">
+        {onBack && (
+          <button
+            onClick={onBack}
+            className="flex items-center gap-1 text-[12px] text-app-text-tertiary hover:text-app-text-primary mb-3 -ml-1 group"
+          >
+            <ChevronLeft size={16} className="group-hover:-translate-x-0.5 transition-transform" />
+            Back
+          </button>
+        )}
         <div className="flex items-end gap-5">
           {icon && (
-            <div className="w-32 h-32 rounded-xl bg-app-elevated shadow-lg flex items-center justify-center shrink-0 overflow-hidden">
+            <div className="w-28 h-28 rounded-xl bg-app-elevated shadow-lg flex items-center justify-center shrink-0 overflow-hidden">
               {icon}
             </div>
           )}
@@ -37,7 +49,7 @@ export const HeroHeader = memo(function HeroHeader({
               {subtitle}
             </div>
             <div className="flex items-center gap-3 flex-wrap">
-              <h1 className="text-3xl font-bold text-app-text-primary tracking-tight leading-tight">
+              <h1 className="text-2xl font-bold text-app-text-primary tracking-tight leading-tight">
                 {title}
               </h1>
               {actions}

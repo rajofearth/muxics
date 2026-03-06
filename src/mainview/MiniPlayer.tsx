@@ -9,7 +9,9 @@ import {
   VolumeX,
   ListMusic,
   Maximize2,
+  Heart,
 } from "lucide-react";
+import { usePlayerStore } from "./store/playerStore";
 import { Scrubber } from "./components/Scrubber";
 import type { Track } from "./types";
 
@@ -106,6 +108,8 @@ export function MiniPlayer({
   const send = electrobun.rpc?.send;
   const duration = currentTrack?.duration ?? 0;
   const containerRef = useResizeToContent(electrobun, true, playQueue.length);
+  const toggleFavorite = usePlayerStore((s) => s.toggleFavorite);
+  const isFav = usePlayerStore((s) => currentTrack ? s.favorites.has(currentTrack.id) : false);
 
   return (
     <div
@@ -145,6 +149,14 @@ export function MiniPlayer({
             <div className="text-[14px] font-medium truncate">{currentTrack?.title ?? "No track"}</div>
             <div className="text-[12px] text-app-text-tertiary truncate mt-0.5">{currentTrack?.artist ?? ""}</div>
           </div>
+          {currentTrack && (
+            <button
+              onClick={() => toggleFavorite(currentTrack.id)}
+              className={`shrink-0 ${isFav ? "text-app-accent" : "text-app-text-tertiary hover:text-app-text-primary"}`}
+            >
+              <Heart size={16} className={isFav ? "fill-current" : ""} />
+            </button>
+          )}
         </div>
 
         <div className="mb-4">
