@@ -1,6 +1,6 @@
 import path from "path";
 import fs from "fs";
-import Electrobun, { BrowserWindow, BrowserView, ContextMenu, Tray } from "electrobun/bun";
+import Electrobun, { BrowserWindow, BrowserView, ContextMenu, Tray, ApplicationMenu } from "electrobun/bun";
 import type { WinampRPCSchema } from "../shared/rpc-types";
 import { getDefaultMusicPath } from "./paths";
 import { scanFolders } from "./scanner";
@@ -108,10 +108,7 @@ function setupTray() {
 
 function setupApplicationMenu() {
   try {
-    const { ApplicationMenu } = require("electrobun/bun");
-    if (!ApplicationMenu) return;
-
-    ApplicationMenu.setMenu([
+    ApplicationMenu.setApplicationMenu([
       {
         label: APP_NAME,
         submenu: [
@@ -361,6 +358,13 @@ winampRpc = rpc;
 Electrobun.events.on("context-menu-clicked", (e: { data?: { action?: string } }) => {
   const action = e?.data?.action;
   if (action && action !== "noop") {
+    winampRpc.send.menuAction({ action });
+  }
+});
+
+ApplicationMenu.on("application-menu-clicked", (e: unknown) => {
+  const action = (e as { data?: { action?: string } })?.data?.action;
+  if (action) {
     winampRpc.send.menuAction({ action });
   }
 });

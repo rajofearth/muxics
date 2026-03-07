@@ -1,8 +1,8 @@
 {
   "type": "module",
-  "name": "winamp-player",
+  "name": "muse",
   "version": "1.0.0",
-  "description": "Winamp-style music player built with Electrobun",
+  "description": "A modern music player built with Electrobun",
   "scripts": {
     "start": "vite build && electrobun dev",
     "dev": "electrobun dev --watch",

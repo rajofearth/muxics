@@ -2,7 +2,7 @@ import path from "path";
 import os from "os";
 import fs from "fs";
 
-const APP_ID = "winampplayer.electrobun.dev";
+const APP_ID = "muse.electrobun.dev";
 
 function getAppDataPath(): string {
   const platform = process.platform;
