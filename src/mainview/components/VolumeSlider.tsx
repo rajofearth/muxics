@@ -50,23 +50,33 @@ export function VolumeSlider({ value, onChange }: VolumeSliderProps) {
   const Icon = value === 0 ? VolumeX : value < 0.5 ? Volume1 : Volume2;
 
   return (
-    <div className="flex items-center gap-2 w-32 group/vol">
+    <div className="flex items-center gap-2 w-32 group/vol" role="group" aria-label="Volume">
       <button
         onClick={toggleMute}
         className="text-app-text-tertiary hover:text-app-text-primary shrink-0"
-        type="button"
+        aria-label={value === 0 ? "Unmute" : "Mute"}
       >
         <Icon size={16} />
       </button>
       <div
         ref={trackRef}
+        role="slider"
+        aria-label="Volume"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(percent)}
+        tabIndex={0}
         className={`slider-container flex-1 h-1 bg-app-border-strong relative rounded-full cursor-pointer ${dragging ? "dragging" : ""}`}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowRight" || e.key === "ArrowUp") { onChange(Math.min(1, value + 0.05)); e.preventDefault(); }
+          if (e.key === "ArrowLeft" || e.key === "ArrowDown") { onChange(Math.max(0, value - 0.05)); e.preventDefault(); }
+        }}
       >
         <div
-          className="slider-track absolute top-0 left-0 h-full bg-app-text-secondary rounded-full"
+          className="slider-track absolute top-0 left-0 h-full bg-app-text-secondary group-hover/vol:bg-app-text-primary rounded-full transition-colors"
           style={{ width: `${percent}%` }}
         />
         <div

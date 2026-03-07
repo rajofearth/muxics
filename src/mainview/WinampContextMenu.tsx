@@ -58,6 +58,8 @@ export function WinampContextMenu({ x, y, isPlaying, onAction, onClose }: Winamp
   return (
     <div
       ref={menuRef}
+      role="menu"
+      aria-label="Player actions"
       className="fixed z-[9999] min-w-[200px] py-1.5 rounded-xl border border-app-border shadow-2xl bg-app-surface/95 backdrop-blur-xl text-[13px] animate-fade-in"
       style={{ left: position.x, top: position.y }}
     >
@@ -70,6 +72,7 @@ export function WinampContextMenu({ x, y, isPlaying, onAction, onClose }: Winamp
           <button
             key={mi.action}
             type="button"
+            role="menuitem"
             onClick={() => { onAction(mi.action); onClose(); }}
             className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-app-text-primary hover:bg-app-hover rounded-md mx-0"
           >

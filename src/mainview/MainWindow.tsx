@@ -2,7 +2,8 @@ import { useState, useMemo, useCallback, useEffect } from "react";
 import type { Track, NavState, NavView } from "./types";
 import { usePlayerStore } from "./store/playerStore";
 import { formatTotalDuration } from "./utils";
-import { Library, Mic2, Disc3, ListMusic, Music, Play, Heart } from "lucide-react";
+import { Library, Mic2, Disc3, ListMusic, Music, Play, Heart, Shuffle } from "lucide-react";
+import { shuffleArray } from "./utils";
 import { TitleBar } from "./components/TitleBar";
 import { Sidebar } from "./components/Sidebar";
 import { PlayerBar } from "./components/PlayerBar";
@@ -163,6 +164,16 @@ export function MainWindow({
     [onPlayTrack]
   );
 
+  const handleShufflePlay = useCallback(
+    (tracks: Track[]) => {
+      if (tracks.length > 0) {
+        const shuffled = shuffleArray(tracks);
+        onPlayTrack(shuffled[0], shuffled);
+      }
+    },
+    [onPlayTrack]
+  );
+
   const renderTrackView = (
     title: string,
     subtitle: string,
@@ -182,12 +193,20 @@ export function MainWindow({
         actions={
           <div className="flex items-center gap-2">
             {tracks.length > 0 && (
-              <button
-                onClick={() => handlePlayAll(tracks)}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-app-text-primary text-app-bg rounded-full text-[12px] font-medium hover:opacity-90"
-              >
-                <Play size={12} className="fill-current" /> Play All
-              </button>
+              <>
+                <button
+                  onClick={() => handlePlayAll(tracks)}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-app-text-primary text-app-bg rounded-full text-[12px] font-medium hover:opacity-90"
+                >
+                  <Play size={12} className="fill-current" /> Play
+                </button>
+                <button
+                  onClick={() => handleShufflePlay(tracks)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-app-elevated hover:bg-app-active text-app-text-primary rounded-full text-[12px] font-medium border border-app-border-strong"
+                >
+                  <Shuffle size={12} /> Shuffle
+                </button>
+              </>
             )}
             {extraActions}
           </div>
@@ -473,7 +492,9 @@ export function MainWindow({
 
       <div className="flex flex-1 overflow-hidden">
         <Sidebar navState={navState} playlists={playlists.items} onNavigate={handleNavigate} />
-        {renderMainContent()}
+        <main key={`${navState.view}-${navState.id ?? ""}`} className="flex-1 flex flex-col overflow-hidden animate-fade-in">
+          {renderMainContent()}
+        </main>
       </div>
 
       <PlayerBar

@@ -10,11 +10,13 @@ export const TabNav = memo(function TabNav({ tabs, activeTab, onTabChange }: Tab
   if (tabs.length <= 1) return null;
 
   return (
-    <div className="shrink-0 border-b border-app-border bg-app-bg/90 backdrop-blur-sm px-8 overflow-hidden">
-      <div className="flex items-center gap-1 overflow-x-auto py-1 -mb-px">
+    <div className="shrink-0 border-b border-app-border bg-app-bg/90 backdrop-blur-sm px-8 overflow-hidden" role="tablist" aria-label="Filter by genre">
+      <div className="flex items-center gap-1 overflow-x-auto py-1.5 -mb-px no-scrollbar">
         {tabs.map((tab) => (
           <button
             key={tab}
+            role="tab"
+            aria-selected={activeTab === tab}
             onClick={() => onTabChange(tab)}
             className={`px-3 py-1.5 text-[12px] font-medium rounded-md transition-all shrink-0 ${
               activeTab === tab

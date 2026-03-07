@@ -1,8 +1,10 @@
 import { memo, useState, useCallback } from "react";
-import { Volume2, Play, Heart } from "lucide-react";
+import { Play, Heart } from "lucide-react";
 import type { Track } from "../types";
 import { usePlayerStore } from "../store/playerStore";
 import { TrackContextMenu } from "./TrackContextMenu";
+import { EqBars } from "./EqBars";
+import { showToast } from "./Toast";
 
 type TrackRowProps = {
   track: Track;
@@ -38,27 +40,27 @@ export const TrackRow = memo(function TrackRow({
   const handleFavorite = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     toggleFavorite(track.id);
-  }, [toggleFavorite, track.id]);
+    showToast(isFav ? "Removed from favorites" : "Added to favorites", "success", "favorite");
+  }, [toggleFavorite, track.id, isFav]);
 
   return (
     <>
       <div
         onClick={onClick}
         onContextMenu={onContextMenu}
-        className={`flex items-center ${compact ? "px-4 py-2" : "px-6 py-2.5"} text-[13px] group cursor-pointer rounded-md mx-2 ${
+        role="row"
+        tabIndex={0}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } }}
+        className={`flex items-center ${compact ? "px-4 py-2" : "px-6 py-2.5"} text-[13px] group cursor-pointer rounded-lg mx-2 ${
           isActive ? "bg-app-active" : "hover:bg-app-hover"
         }`}
       >
         <div className="w-8 flex items-center justify-center shrink-0">
           {isActive ? (
-            isPlaying ? (
-              <Volume2 size={14} className="text-app-accent animate-pulse-soft" />
-            ) : (
-              <Volume2 size={14} className="text-app-accent" />
-            )
+            <EqBars playing={isPlaying} size={14} />
           ) : (
             <>
-              <span className="text-app-text-tertiary text-xs group-hover:hidden">
+              <span className="text-app-text-tertiary text-xs group-hover:hidden tabular-nums">
                 {index + 1}
               </span>
               <Play size={12} className="text-app-text-primary fill-current hidden group-hover:block" />
@@ -80,7 +82,7 @@ export const TrackRow = memo(function TrackRow({
               {track.title}
             </div>
             {compact && (
-              <div className="text-[12px] text-app-text-tertiary truncate leading-tight mt-0.5">
+              <div className="text-[11px] text-app-text-tertiary truncate leading-tight mt-0.5">
                 {track.artist}
               </div>
             )}
@@ -89,10 +91,10 @@ export const TrackRow = memo(function TrackRow({
 
         {!compact && (
           <>
-            <div className="w-[22%] truncate text-app-text-secondary px-2 hidden md:block">
+            <div className="w-[22%] truncate text-app-text-secondary px-2 hidden md:block text-[12px]">
               {track.artist}
             </div>
-            <div className="w-[22%] truncate text-app-text-tertiary px-2 hidden lg:block">
+            <div className="w-[22%] truncate text-app-text-tertiary px-2 hidden lg:block text-[12px]">
               {track.album}
             </div>
           </>
@@ -100,16 +102,18 @@ export const TrackRow = memo(function TrackRow({
 
         <button
           onClick={handleFavorite}
+          aria-label={isFav ? "Remove from favorites" : "Add to favorites"}
+          aria-pressed={isFav}
           className={`w-6 flex items-center justify-center shrink-0 mr-1 ${
             isFav
               ? "text-app-accent"
               : "text-transparent group-hover:text-app-text-tertiary hover:!text-app-accent"
           }`}
         >
-          <Heart size={13} className={isFav ? "fill-current" : ""} />
+          <Heart size={12} className={isFav ? "fill-current" : ""} />
         </button>
 
-        <div className="w-12 text-right text-app-text-tertiary text-xs tabular-nums shrink-0">
+        <div className="w-11 text-right text-app-text-tertiary text-[11px] tabular-nums shrink-0">
           {track.time}
         </div>
       </div>

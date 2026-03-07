@@ -10,11 +10,12 @@ import {
   Search,
   LayoutList,
   Heart,
+  Music,
 } from "lucide-react";
-import type { NavState, NavView } from "../types";
-import type { Playlist } from "../types";
+import type { NavState, NavView, Playlist } from "../types";
 import { usePlayerStore } from "../store/playerStore";
 import { CreatePlaylistModal } from "./CreatePlaylistModal";
+import { EqBars } from "./EqBars";
 
 type SidebarProps = {
   navState: NavState;
@@ -28,6 +29,8 @@ export const Sidebar = memo(function Sidebar({ navState, playlists, onNavigate }
   const favCount = usePlayerStore((s) => s.favorites.size);
   const queueCount = usePlayerStore((s) => s.player.queue.length);
   const recentCount = usePlayerStore((s) => s.recentlyPlayed.length);
+  const currentTrack = usePlayerStore((s) => s.player.currentTrack);
+  const isPlaying = usePlayerStore((s) => s.player.isPlaying);
 
   const NAV_ITEMS: { id: NavView; icon: typeof Library; label: string; count?: number }[] = [
     { id: "search", icon: Search, label: "Search" },
@@ -54,6 +57,7 @@ export const Sidebar = memo(function Sidebar({ navState, playlists, onNavigate }
     return (
       <button
         onClick={() => onNavigate(id)}
+        aria-current={isActive ? "page" : undefined}
         className={`w-full flex items-center gap-3 px-3 py-[7px] text-[13px] rounded-lg transition-all ${
           isActive
             ? "bg-app-active text-app-text-primary font-medium"
@@ -70,7 +74,7 @@ export const Sidebar = memo(function Sidebar({ navState, playlists, onNavigate }
   };
 
   return (
-    <div className="w-56 border-r border-app-border bg-app-surface-alt flex flex-col shrink-0 select-none">
+    <nav className="w-56 border-r border-app-border bg-app-surface-alt flex flex-col shrink-0 select-none" aria-label="Navigation">
       <div className="p-3 pt-2 flex-1 overflow-y-auto no-scrollbar">
         <div className="mb-1">
           <div className="px-3 py-1.5 text-[11px] font-medium text-app-text-tertiary uppercase tracking-wider">
@@ -111,6 +115,7 @@ export const Sidebar = memo(function Sidebar({ navState, playlists, onNavigate }
                 <button
                   key={pl.id}
                   onClick={() => onNavigate("playlist_detail", pl.id)}
+                  aria-current={isActive ? "page" : undefined}
                   className={`w-full flex items-center gap-2 text-left px-3 py-[7px] text-[13px] rounded-lg truncate transition-all ${
                     isActive
                       ? "bg-app-active text-app-text-primary font-medium"
@@ -126,7 +131,28 @@ export const Sidebar = memo(function Sidebar({ navState, playlists, onNavigate }
         )}
       </div>
 
+      {currentTrack && (
+        <button
+          onClick={() => onNavigate("now_playing")}
+          className="mx-2 mb-2 p-2.5 rounded-xl bg-app-elevated hover:bg-app-active transition-colors flex items-center gap-3 group"
+          aria-label="Now playing"
+        >
+          {currentTrack.picture ? (
+            <img src={currentTrack.picture} alt="" className="w-10 h-10 rounded-lg object-cover shadow-sm shrink-0" />
+          ) : (
+            <div className="w-10 h-10 rounded-lg bg-app-bg flex items-center justify-center shrink-0">
+              <Music size={16} className="text-app-text-tertiary" />
+            </div>
+          )}
+          <div className="min-w-0 flex-1">
+            <div className="text-[12px] font-medium text-app-text-primary truncate leading-tight">{currentTrack.title}</div>
+            <div className="text-[10px] text-app-text-tertiary truncate leading-tight mt-0.5">{currentTrack.artist}</div>
+          </div>
+          {isPlaying && <EqBars playing size={12} />}
+        </button>
+      )}
+
       {showCreateModal && <CreatePlaylistModal onClose={() => setShowCreateModal(false)} />}
-    </div>
+    </nav>
   );
 });

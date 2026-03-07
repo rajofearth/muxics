@@ -13,7 +13,7 @@ export function Scrubber({ value, max, onChange, showLabels = true, size = "md" 
   const trackRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
   const [hoverPercent, setHoverPercent] = useState<number | null>(null);
-  const percent = max > 0 ? (value / max) * 100 : 0;
+  const percent = max > 0 ? Math.min(100, (value / max) * 100) : 0;
   const h = size === "sm" ? "h-1" : "h-1.5";
   const thumbSize = size === "sm" ? "w-3 h-3" : "w-3.5 h-3.5";
 
@@ -53,27 +53,40 @@ export function Scrubber({ value, max, onChange, showLabels = true, size = "md" 
   const onPointerUp = useCallback(() => setDragging(false), []);
   const onPointerLeave = useCallback(() => {
     setHoverPercent(null);
-    setDragging(false);
-  }, []);
+    if (!dragging) setDragging(false);
+  }, [dragging]);
+
+  const thumbOffset = size === "sm" ? 6 : 7;
 
   return (
-    <div className="w-full flex items-center gap-3">
+    <div className="w-full flex items-center gap-3" role="group" aria-label="Playback position">
       {showLabels && (
-        <span className="w-10 text-right text-[11px] text-app-text-tertiary tabular-nums select-none">
+        <span className="w-10 text-right text-[11px] text-app-text-tertiary tabular-nums select-none" aria-hidden>
           {formatTime(value)}
         </span>
       )}
       <div
         ref={trackRef}
+        role="slider"
+        aria-label="Seek"
+        aria-valuemin={0}
+        aria-valuemax={Math.round(max)}
+        aria-valuenow={Math.round(value)}
+        aria-valuetext={`${formatTime(value)} of ${formatTime(max)}`}
+        tabIndex={0}
         className={`slider-container flex-1 ${h} bg-app-border-strong relative rounded-full cursor-pointer group ${dragging ? "dragging" : ""}`}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerLeave={onPointerLeave}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowRight") { onChange(Math.min(max, value + max * 0.02)); e.preventDefault(); }
+          if (e.key === "ArrowLeft") { onChange(Math.max(0, value - max * 0.02)); e.preventDefault(); }
+        }}
       >
         {hoverPercent !== null && !dragging && (
           <div
-            className="absolute top-0 left-0 h-full bg-app-text-tertiary/20 rounded-full pointer-events-none"
+            className="absolute top-0 left-0 h-full bg-app-text-tertiary/15 rounded-full pointer-events-none"
             style={{ width: `${hoverPercent}%` }}
           />
         )}
@@ -82,12 +95,14 @@ export function Scrubber({ value, max, onChange, showLabels = true, size = "md" 
           style={{ width: `${percent}%` }}
         />
         <div
-          className={`slider-thumb absolute top-1/2 -translate-y-1/2 ${thumbSize} bg-app-text-primary rounded-full shadow-lg pointer-events-none`}
-          style={{ left: `calc(${percent}% - ${size === "sm" ? 6 : 7}px)` }}
+          className={`absolute top-1/2 -translate-y-1/2 ${thumbSize} bg-app-text-primary rounded-full shadow-lg pointer-events-none ${
+            max > 0 ? "opacity-100" : "slider-thumb"
+          }`}
+          style={{ left: `calc(${percent}% - ${thumbOffset}px)` }}
         />
       </div>
       {showLabels && (
-        <span className="w-10 text-[11px] text-app-text-tertiary tabular-nums select-none">
+        <span className="w-10 text-[11px] text-app-text-tertiary tabular-nums select-none" aria-hidden>
           {formatTime(max)}
         </span>
       )}

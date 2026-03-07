@@ -5,6 +5,7 @@ import { usePlayerStore } from "../store/playerStore";
 import { Scrubber } from "./Scrubber";
 import { VolumeSlider } from "./VolumeSlider";
 import { PlayPauseButton } from "./PlayPauseButton";
+import { showToast } from "./Toast";
 
 type PlayerBarProps = {
   currentTrack: Track | null;
@@ -49,11 +50,13 @@ export const PlayerBar = memo(function PlayerBar({
   const isFav = usePlayerStore((s) => currentTrack ? s.favorites.has(currentTrack.id) : false);
 
   const handleFav = useCallback(() => {
-    if (currentTrack) toggleFavorite(currentTrack.id);
-  }, [currentTrack, toggleFavorite]);
+    if (!currentTrack) return;
+    toggleFavorite(currentTrack.id);
+    showToast(isFav ? "Removed from favorites" : "Added to favorites", "success", "favorite");
+  }, [currentTrack, toggleFavorite, isFav]);
 
   return (
-    <div className="h-[90px] bg-app-surface border-t border-app-border flex flex-col shrink-0">
+    <footer className="h-[90px] bg-app-surface border-t border-app-border flex flex-col shrink-0" role="region" aria-label="Player controls">
       <div className="px-4 pt-2">
         <Scrubber
           value={currentTime}
@@ -71,12 +74,12 @@ export const PlayerBar = memo(function PlayerBar({
               <button
                 onClick={onNavigateToNowPlaying}
                 className="shrink-0 group/art"
-                title="Now Playing"
+                aria-label="Now Playing"
               >
                 {currentTrack.picture ? (
                   <img
                     src={currentTrack.picture}
-                    alt=""
+                    alt={`${currentTrack.title} artwork`}
                     className="w-12 h-12 rounded-lg object-cover shadow-md group-hover/art:shadow-lg group-hover/art:scale-105 transition-transform"
                   />
                 ) : (
@@ -95,6 +98,8 @@ export const PlayerBar = memo(function PlayerBar({
               </div>
               <button
                 onClick={handleFav}
+                aria-label={isFav ? "Remove from favorites" : "Add to favorites"}
+                aria-pressed={isFav}
                 className={`shrink-0 ml-1 ${isFav ? "text-app-accent" : "text-app-text-tertiary hover:text-app-text-primary"}`}
               >
                 <Heart size={14} className={isFav ? "fill-current" : ""} />
@@ -109,18 +114,17 @@ export const PlayerBar = memo(function PlayerBar({
           <button
             type="button"
             onClick={onToggleShuffle}
-            className={`transition-colors ${
-              shuffle ? "text-app-accent" : "text-app-text-tertiary hover:text-app-text-primary"
-            }`}
-            title={shuffle ? "Shuffle on" : "Shuffle off"}
+            aria-label={shuffle ? "Shuffle on" : "Shuffle off"}
+            aria-pressed={shuffle}
+            className={shuffle ? "text-app-accent" : "text-app-text-tertiary hover:text-app-text-primary"}
           >
             <Shuffle size={15} />
           </button>
           <button
             type="button"
             onClick={onPrev}
+            aria-label="Previous track"
             className="text-app-text-secondary hover:text-app-text-primary"
-            title="Previous"
           >
             <SkipBack size={18} className="fill-current" />
           </button>
@@ -128,34 +132,32 @@ export const PlayerBar = memo(function PlayerBar({
           <button
             type="button"
             onClick={onNext}
+            aria-label="Next track"
             className="text-app-text-secondary hover:text-app-text-primary"
-            title="Next"
           >
             <SkipForward size={18} className="fill-current" />
           </button>
           <button
             type="button"
             onClick={onCycleRepeat}
-            className={`transition-colors ${
-              repeat !== "off" ? "text-app-accent" : "text-app-text-tertiary hover:text-app-text-primary"
-            }`}
-            title={repeat === "off" ? "Repeat off" : repeat === "all" ? "Repeat all" : "Repeat one"}
+            aria-label={repeat === "off" ? "Repeat off" : repeat === "all" ? "Repeat all" : "Repeat one"}
+            className={repeat !== "off" ? "text-app-accent" : "text-app-text-tertiary hover:text-app-text-primary"}
           >
             <RepeatIcon size={15} />
           </button>
         </div>
 
         <div className="w-[30%] flex items-center justify-end gap-3">
-          <div className="text-[11px] text-app-text-tertiary tabular-nums select-none whitespace-nowrap">
-            {currentTrack ? `${formatCompact(currentTime)} / ${formatCompact(duration)}` : ""}
+          <div className="text-[11px] text-app-text-tertiary tabular-nums select-none whitespace-nowrap" aria-live="off">
+            {currentTrack ? `${fmtTime(currentTime)} / ${fmtTime(duration)}` : ""}
           </div>
           <VolumeSlider value={volume} onChange={onVolumeChange} />
           {onNavigateToQueue && (
             <button
               type="button"
               onClick={onNavigateToQueue}
+              aria-label="Up Next"
               className="text-app-text-tertiary hover:text-app-text-primary"
-              title="Up Next"
             >
               <LayoutList size={16} />
             </button>
@@ -164,22 +166,20 @@ export const PlayerBar = memo(function PlayerBar({
             <button
               type="button"
               onClick={onToggleMini}
+              aria-label="Mini Player"
               className="text-app-text-tertiary hover:text-app-text-primary"
-              title="Mini Player"
             >
               <Minimize2 size={15} />
             </button>
           )}
         </div>
       </div>
-    </div>
+    </footer>
   );
 });
 
-function formatCompact(seconds: number): string {
+function fmtTime(seconds: number): string {
   if (!isFinite(seconds) || seconds < 0) return "0:00";
   const s = Math.floor(seconds);
-  const min = Math.floor(s / 60);
-  const sec = s % 60;
-  return `${min}:${sec.toString().padStart(2, "0")}`;
+  return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
 }

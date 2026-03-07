@@ -8,6 +8,7 @@ import { useAudioEngine } from "./hooks/useAudioEngine";
 import { useThemeFromArt } from "./hooks/useThemeFromArt";
 import { AudioEngineProvider } from "./context/AudioEngineContext";
 import { ThemeProvider } from "./components/ThemeProvider";
+import { ToastContainer } from "./components/Toast";
 
 const MINI_WIDTH = 380;
 const MINI_HEIGHT = 776;
@@ -168,6 +169,7 @@ export default function App({ electrobun }: AppProps) {
           />,
           document.body
         )}
+      <ToastContainer />
     </ThemeProvider>
   );
 }

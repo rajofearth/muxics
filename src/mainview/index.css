@@ -147,12 +147,15 @@ button:focus-visible {
 }
 
 @keyframes eq-bar {
-  0%, 100% { height: 20%; }
-  50% { height: 80%; }
+  0% { height: 15%; }
+  25% { height: 85%; }
+  50% { height: 35%; }
+  75% { height: 70%; }
+  100% { height: 15%; }
 }
 
 .eq-bar {
-  animation: eq-bar 0.8s ease-in-out infinite;
+  animation: eq-bar 1.2s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
