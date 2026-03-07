@@ -79,6 +79,15 @@ export function MainWindow({
   }, []);
 
   useEffect(() => {
+    const navHandler = (e: Event) => {
+      const view = (e as CustomEvent<string>).detail;
+      if (view) handleNavigate(view as NavView);
+    };
+    document.addEventListener("app-navigate", navHandler);
+    return () => document.removeEventListener("app-navigate", navHandler);
+  }, [handleNavigate]);
+
+  useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       switch (e.key) {

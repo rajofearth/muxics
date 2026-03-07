@@ -105,7 +105,6 @@ export function MiniPlayer({
   onVolumeChange,
   onTrackSelect,
 }: MiniPlayerProps) {
-  const send = electrobun.rpc?.send;
   const duration = currentTrack?.duration ?? 0;
   const containerRef = useResizeToContent(electrobun, true, playQueue.length);
   const toggleFavorite = usePlayerStore((s) => s.toggleFavorite);
@@ -116,25 +115,7 @@ export function MiniPlayer({
       ref={containerRef}
       className="min-w-[380px] w-[380px] bg-app-bg overflow-hidden flex flex-col font-sans text-app-text-primary select-none"
     >
-      <div className="flex items-center justify-between px-3 py-2 border-b border-app-border electrobun-webkit-app-region-drag">
-        <div className="electrobun-webkit-app-region-no-drag flex items-center gap-2">
-          <button
-            onClick={() => send?.closeWindow?.()}
-            className="w-3 h-3 rounded-full bg-[#ff5f57] hover:brightness-90"
-            aria-label="Close"
-          />
-          <button
-            onClick={() => send?.minimizeWindow?.()}
-            className="w-3 h-3 rounded-full bg-[#febc2e] hover:brightness-90"
-            aria-label="Minimize"
-          />
-          <button
-            onClick={() => onExpandToMain?.()}
-            className="w-3 h-3 rounded-full bg-[#28c840] hover:brightness-90"
-            aria-label="Expand"
-          />
-        </div>
-      </div>
+      <div className="h-8 shrink-0 electrobun-webkit-app-region-drag" aria-hidden />
 
       <div className="p-5">
         <div className="flex items-center gap-4 mb-5">
