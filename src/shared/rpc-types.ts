@@ -46,6 +46,7 @@ export type WinampRPCSchema = {
       deletePlaylist: { params: { path: string }; response: void };
       importPlaylist: { params: { path: string }; response: boolean };
       exportPlaylist: { params: { name: string; entries: string[] }; response: string };
+      getPlatform: { params: void; response: string };
     };
     messages: {
       resizeWindow: { width: number; height: number };
@@ -54,12 +55,15 @@ export type WinampRPCSchema = {
       minimizeWindow: void;
       maximizeWindow: void;
       showContextMenu: void;
+      updateNowPlaying: { title: string; artist: string; isPlaying: boolean };
+      clearNowPlaying: void;
     };
   };
   webview: {
     requests: Record<string, never>;
     messages: {
       contextMenuAction: { action: string };
+      menuAction: { action: string };
     };
   };
 };

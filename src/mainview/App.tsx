@@ -1,17 +1,17 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { createPortal } from "react-dom";
 import { MainWindow } from "./MainWindow";
 import { MiniPlayer } from "./MiniPlayer";
-import { WinampContextMenu } from "./WinampContextMenu";
 import { usePlayerStore } from "./store/playerStore";
 import { useAudioEngine } from "./hooks/useAudioEngine";
 import { useThemeFromArt } from "./hooks/useThemeFromArt";
 import { AudioEngineProvider } from "./context/AudioEngineContext";
 import { ThemeProvider } from "./components/ThemeProvider";
+import { ToastContainer } from "./components/Toast";
+
 const MINI_WIDTH = 380;
 const MINI_HEIGHT = 776;
 
-type WinampElectrobun = {
+type AppElectrobun = {
   rpc?: {
     send?: {
       resizeWindow: (p: { width: number; height: number }) => void;
@@ -19,13 +19,16 @@ type WinampElectrobun = {
       closeWindow: () => void;
       minimizeWindow: () => void;
       maximizeWindow: () => void;
+      showContextMenu: () => void;
+      updateNowPlaying: (p: { title: string; artist: string; isPlaying: boolean }) => void;
+      clearNowPlaying: () => void;
     };
     request?: unknown;
   };
 };
 
 type AppProps = {
-  electrobun: WinampElectrobun;
+  electrobun: AppElectrobun;
 };
 
 const MAIN_WINDOW_WIDTH = 1200;
@@ -33,7 +36,6 @@ const MAIN_WINDOW_HEIGHT = 800;
 
 export default function App({ electrobun }: AppProps) {
   const [windowMode, setWindowMode] = useState<"main" | "mini">("main");
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const initRef = useRef(false);
 
   const { setRpc, loadLibrary, loadPlaylists, player } = usePlayerStore();
@@ -42,6 +44,8 @@ export default function App({ electrobun }: AppProps) {
   const setVolume = usePlayerStore((s) => s.setVolume);
   const handleNext = usePlayerStore((s) => s.handleNext);
   const handlePrev = usePlayerStore((s) => s.handlePrev);
+  const toggleShuffle = usePlayerStore((s) => s.toggleShuffle);
+  const cycleRepeat = usePlayerStore((s) => s.cycleRepeat);
 
   const { analyserRef, analyserReady, seek } = useAudioEngine();
   useThemeFromArt();
@@ -65,57 +69,75 @@ export default function App({ electrobun }: AppProps) {
   }, [rpcReady, loadLibrary, loadPlaylists]);
 
   useEffect(() => {
-    const handler = (e: CustomEvent<{ x: number; y: number }>) => {
-      setContextMenu({ x: e.detail.x, y: e.detail.y });
-    };
-    const wrapped = (e: Event) => handler(e as CustomEvent<{ x: number; y: number }>);
-    document.addEventListener("winamp-show-context-menu", wrapped);
-    return () => document.removeEventListener("winamp-show-context-menu", wrapped);
-  }, []);
+    const send = electrobun.rpc?.send;
+    if (!send) return;
 
-  const handleContextMenuAction = useCallback((action: string) => {
-    document.dispatchEvent(new CustomEvent("winamp-context-action", { detail: action }));
-  }, []);
+    if (player.currentTrack) {
+      send.updateNowPlaying({
+        title: player.currentTrack.title,
+        artist: player.currentTrack.artist,
+        isPlaying: player.isPlaying,
+      });
+    } else {
+      send.clearNowPlaying();
+    }
+  }, [player.currentTrack?.id, player.isPlaying, electrobun.rpc?.send]);
+
+  const switchToMiniRef = useRef<(() => void) | null>(null);
+  const switchToMainRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
-    const handler = (e: CustomEvent<string>) => {
-      switch (e.detail) {
-        case "playPause":
-          togglePlay();
+    const handleAction = (e: Event) => {
+      const action = (e as CustomEvent<string>).detail;
+      switch (action) {
+        case "playPause": togglePlay(); break;
+        case "prev": handlePrev(); break;
+        case "next": handleNext(); break;
+        case "close": electrobun.rpc?.send?.closeWindow?.(); break;
+        case "miniPlayer": switchToMiniRef.current?.(); break;
+        case "viewLibrary":
+          document.dispatchEvent(new CustomEvent("app-navigate", { detail: "library" }));
           break;
-        case "prev":
-          handlePrev();
+        case "viewNowPlaying":
+          document.dispatchEvent(new CustomEvent("app-navigate", { detail: "now_playing" }));
           break;
-        case "next":
-          handleNext();
+        case "viewSearch":
+          document.dispatchEvent(new CustomEvent("app-navigate", { detail: "search" }));
           break;
-        case "close":
-          electrobun.rpc?.send?.closeWindow?.();
+        case "viewMini":
+          switchToMiniRef.current?.();
+          break;
+        case "volumeUp":
+          setVolume(Math.min(1, usePlayerStore.getState().player.volume + 0.05));
+          break;
+        case "volumeDown":
+          setVolume(Math.max(0, usePlayerStore.getState().player.volume - 0.05));
           break;
       }
     };
-    const wrapped = (e: Event) => handler(e as CustomEvent<string>);
-    document.addEventListener("winamp-context-action", wrapped);
-    return () => document.removeEventListener("winamp-context-action", wrapped);
-  }, [togglePlay, handlePrev, handleNext, electrobun]);
+
+    document.addEventListener("winamp-context-action", handleAction);
+    document.addEventListener("winamp-menu-action", handleAction);
+    return () => {
+      document.removeEventListener("winamp-context-action", handleAction);
+      document.removeEventListener("winamp-menu-action", handleAction);
+    };
+  }, [togglePlay, handlePrev, handleNext, electrobun, setVolume]);
 
   const switchToMini = useCallback(() => {
     electrobun.rpc?.send?.setMinSize?.({ width: MINI_WIDTH, height: 600 });
-    electrobun.rpc?.send?.resizeWindow?.({
-      width: MINI_WIDTH,
-      height: MINI_HEIGHT,
-    });
+    electrobun.rpc?.send?.resizeWindow?.({ width: MINI_WIDTH, height: MINI_HEIGHT });
     setWindowMode("mini");
   }, [electrobun]);
 
   const switchToMain = useCallback(() => {
     electrobun.rpc?.send?.setMinSize?.({ width: 800, height: 600 });
-    electrobun.rpc?.send?.resizeWindow?.({
-      width: MAIN_WINDOW_WIDTH,
-      height: MAIN_WINDOW_HEIGHT,
-    });
+    electrobun.rpc?.send?.resizeWindow?.({ width: MAIN_WINDOW_WIDTH, height: MAIN_WINDOW_HEIGHT });
     setWindowMode("main");
   }, [electrobun]);
+
+  switchToMiniRef.current = switchToMini;
+  switchToMainRef.current = switchToMain;
 
   return (
     <ThemeProvider>
@@ -127,7 +149,7 @@ export default function App({ electrobun }: AppProps) {
             currentTrack={player.currentTrack}
             isPlaying={player.isPlaying}
             playQueue={player.queue}
-            currentTimeMs={player.currentTime}
+            currentTime={player.currentTime}
             volume={player.volume}
             onPlayPause={togglePlay}
             onNext={handleNext}
@@ -145,28 +167,22 @@ export default function App({ electrobun }: AppProps) {
             currentTrack={player.currentTrack}
             isPlaying={player.isPlaying}
             playQueue={player.queue}
-            currentTimeMs={player.currentTime}
+            currentTime={player.currentTime}
             volume={player.volume}
+            shuffle={player.shuffle}
+            repeat={player.repeat}
             onPlayTrack={(track, queue) => playTrack(track, queue)}
             onPlayPause={togglePlay}
             onNext={handleNext}
             onPrev={handlePrev}
             onScrubberChange={seek}
             onVolumeChange={setVolume}
+            onToggleShuffle={toggleShuffle}
+            onCycleRepeat={cycleRepeat}
           />
         </AudioEngineProvider>
       )}
-      {contextMenu &&
-        createPortal(
-          <WinampContextMenu
-            x={contextMenu.x}
-            y={contextMenu.y}
-            isPlaying={player.isPlaying}
-            onAction={handleContextMenuAction}
-            onClose={() => setContextMenu(null)}
-          />,
-          document.body
-        )}
+      <ToastContainer />
     </ThemeProvider>
   );
 }

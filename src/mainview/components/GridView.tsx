@@ -1,29 +1,68 @@
+import { memo } from "react";
+import { Music, Play } from "lucide-react";
+
 type GridItem = {
   id: string;
   name: string;
   desc: string;
+  picture?: string;
 };
 
 type GridViewProps = {
   items: GridItem[];
   onItemClick: (item: GridItem) => void;
+  onPlayItem?: (item: GridItem) => void;
 };
 
-export function GridView({ items, onItemClick }: GridViewProps) {
+export const GridView = memo(function GridView({ items, onItemClick, onPlayItem }: GridViewProps) {
   return (
-    <div className="flex-1 overflow-y-auto p-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-max">
-      {items.map((item) => (
-        <div
-          key={item.id}
-          onClick={() => onItemClick(item)}
-          className="border border-winamp-border bg-winamp-panel-alt p-6 cursor-pointer hover:border-winamp-accent-muted hover:bg-winamp-hover transition-all group"
-        >
-          <div className="text-winamp-accent text-lg font-bold mb-2 group-hover:text-winamp-text-bright">
-            {item.name}
-          </div>
-          <div className="text-winamp-accent-muted text-sm">{item.desc}</div>
+    <div className="flex-1 overflow-y-auto p-6">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+        {items.map((item) => (
+          <button
+            key={item.id}
+            onClick={() => onItemClick(item)}
+            className="text-left group rounded-xl p-3 hover:bg-app-hover transition-all"
+          >
+            <div className="aspect-square rounded-lg bg-app-elevated mb-3 overflow-hidden shadow-sm group-hover:shadow-lg transition-shadow relative">
+              {item.picture ? (
+                <img
+                  src={item.picture}
+                  alt=""
+                  className="w-full h-full object-cover"
+                  loading="lazy"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-app-elevated to-app-surface">
+                  <Music size={32} className="text-app-text-tertiary" />
+                </div>
+              )}
+              {onPlayItem && (
+                <div
+                  className="absolute bottom-2 right-2 w-10 h-10 rounded-full bg-app-text-primary shadow-xl flex items-center justify-center opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onPlayItem(item);
+                  }}
+                >
+                  <Play size={16} className="fill-app-bg text-app-bg ml-0.5" />
+                </div>
+              )}
+            </div>
+            <div className="text-[13px] font-medium text-app-text-primary truncate leading-tight">
+              {item.name}
+            </div>
+            <div className="text-[12px] text-app-text-tertiary truncate mt-0.5">
+              {item.desc}
+            </div>
+          </button>
+        ))}
+      </div>
+      {items.length === 0 && (
+        <div className="flex items-center justify-center h-48 text-app-text-tertiary text-sm">
+          Nothing here yet
         </div>
-      ))}
+      )}
     </div>
   );
-}
+});

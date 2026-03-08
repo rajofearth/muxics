@@ -2,9 +2,9 @@ import type { ElectrobunConfig } from "electrobun";
 
 export default {
 	app: {
-		name: "winamp-player",
-		identifier: "winampplayer.electrobun.dev",
-		version: "0.0.1",
+		name: "muse",
+		identifier: "muse.electrobun.dev",
+		version: "1.0.0",
 	},
 	build: {
 		copy: {
@@ -18,7 +18,7 @@ export default {
 			bundleCEF: false,
 		},
 		win: {
-			bundleCEF: true,
+			bundleCEF: false,
 		},
 	},
 } satisfies ElectrobunConfig;

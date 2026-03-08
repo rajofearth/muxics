@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback } from "react";
 import {
   Music,
   Play,
@@ -6,18 +6,17 @@ import {
   SkipBack,
   SkipForward,
   Volume2,
-  ListMusic,
   VolumeX,
-  FoldVertical,
-  Minus,
-  PanelLeft,
-  X,
+  ListMusic,
+  Maximize2,
+  Heart,
 } from "lucide-react";
-import { formatTime, parseTime } from "./utils";
-import { APP_DISPLAY_NAME } from "./constants";
+import { usePlayerStore } from "./store/playerStore";
+import { Scrubber } from "./components/Scrubber";
+import { TitleBar } from "./components/TitleBar";
 import type { Track } from "./types";
 
-type WinampElectrobun = {
+type MiniElectrobun = {
   rpc?: {
     send?: {
       resizeWindow: (p: { width: number; height: number }) => void;
@@ -29,12 +28,12 @@ type WinampElectrobun = {
 };
 
 type MiniPlayerProps = {
-  electrobun: WinampElectrobun;
+  electrobun: MiniElectrobun;
   onExpandToMain?: () => void;
   currentTrack: Track | null;
   isPlaying: boolean;
   playQueue: Track[];
-  currentTimeMs: number;
+  currentTime: number;
   volume: number;
   onPlayPause: () => void;
   onNext: () => void;
@@ -44,16 +43,11 @@ type MiniPlayerProps = {
   onTrackSelect: (track: Track, queue: Track[] | null) => void;
 };
 
-const BASE_EQ_CURVE = [
-  90, 85, 80, 70, 60, 40, 35, 30, 35, 30, 35, 30, 25, 20, 15, 10, 8, 6, 5, 4, 3,
-  2, 2, 2,
-];
-
 const MIN_WIDTH = 380;
 const MIN_HEIGHT = 400;
 
 function useResizeToContent(
-  electrobun: WinampElectrobun,
+  electrobun: MiniElectrobun,
   enabled: boolean,
   contentKey: number
 ) {
@@ -103,7 +97,7 @@ export function MiniPlayer({
   currentTrack,
   isPlaying,
   playQueue,
-  currentTimeMs,
+  currentTime,
   volume,
   onPlayPause,
   onNext,
@@ -112,223 +106,140 @@ export function MiniPlayer({
   onVolumeChange,
   onTrackSelect,
 }: MiniPlayerProps) {
-  const send = electrobun.rpc?.send;
-  const [eqValues, setEqValues] = useState<number[]>(BASE_EQ_CURVE);
-
-  const totalDurationSecs = Math.max(1, currentTrack ? parseTime(currentTrack.time) : 0);
-
-  useEffect(() => {
-    let interval: ReturnType<typeof setInterval>;
-    if (isPlaying) {
-      interval = setInterval(() => {
-        setEqValues((prev) =>
-          prev.map((_, i) => {
-            const max = BASE_EQ_CURVE[i];
-            const min = max * 0.4;
-            return Math.random() * (max - min) + min;
-          })
-        );
-      }, 150);
-    } else {
-      setEqValues(BASE_EQ_CURVE);
-    }
-    return () => clearInterval(interval);
-  }, [isPlaying]);
-
-  const contentKey = playQueue.length;
-  const containerRef = useResizeToContent(electrobun, true, contentKey);
+  const duration = currentTrack?.duration ?? 0;
+  const containerRef = useResizeToContent(electrobun, true, playQueue.length);
+  const toggleFavorite = usePlayerStore((s) => s.toggleFavorite);
+  const isFav = usePlayerStore((s) => currentTrack ? s.favorites.has(currentTrack.id) : false);
 
   return (
     <div
       ref={containerRef}
-      className="min-w-[380px] w-[380px] bg-winamp-panel border-0 overflow-hidden flex flex-col font-mono text-winamp-bar select-none"
+      className="min-w-[380px] w-[380px] bg-app-bg overflow-hidden flex flex-col font-sans text-app-text-primary select-none"
     >
-      <div className="flex items-center justify-between px-2 py-2 border-b border-winamp-border electrobun-webkit-app-region-drag">
-        <div className="electrobun-webkit-app-region-no-drag flex items-center gap-1">
-          <button
-            onClick={() => send?.minimizeWindow?.()}
-            className="p-1 rounded text-winamp-accent-muted hover:text-winamp-accent hover:bg-winamp-border/50 transition-colors"
-            aria-label="Minimize"
-          >
-            <Minus size={12} />
-          </button>
-          <button
-            onClick={() => onExpandToMain?.() ?? send?.maximizeWindow?.()}
-            className="p-1 rounded text-winamp-accent-muted hover:text-winamp-accent hover:bg-winamp-border/50 transition-colors"
-            aria-label="Back to main window"
-          >
-            <PanelLeft size={12} />
-          </button>
-          <button
-            onClick={() => send?.closeWindow?.()}
-            className="p-1 rounded text-winamp-accent-muted hover:text-winamp-accent hover:bg-winamp-border/50 transition-colors"
-            aria-label="Close"
-          >
-            <X size={12} />
-          </button>
-        </div>
-        <div className="flex items-center gap-2 flex-1 justify-center">
-          <Music size={14} className="text-winamp-bar" />
-          <span className="text-xs tracking-widest font-bold">{APP_DISPLAY_NAME.toUpperCase().replace(/\s/g, " ")}</span>
-        </div>
-        <button
-          onClick={() => onExpandToMain?.()}
-          className="electrobun-webkit-app-region-no-drag text-winamp-accent-muted hover:text-winamp-bar transition-colors p-1"
-          aria-label="Back to main window"
-        >
-          <PanelLeft size={14} />
-        </button>
-      </div>
+      <TitleBar
+        electrobun={electrobun}
+        title={currentTrack ? currentTrack.title : "Muse"}
+        subtitle={currentTrack ? currentTrack.artist : "Mini Player"}
+        compact
+      />
 
-      <div className="p-4 border-b border-winamp-border">
-        <div className="flex items-end gap-[2px] h-16 mb-5">
-          {eqValues.map((val, i) => (
-            <div
-              key={i}
-              className="flex-1 bg-winamp-bar transition-all duration-150 ease-in-out"
-              style={{ height: `${val}%`, minHeight: "2px" }}
-            />
-          ))}
-        </div>
-
-        <div className="mb-5">
-          <h2 className="text-lg font-bold text-winamp-accent mb-1">{currentTrack?.title ?? "No track"}</h2>
-          <p className="text-sm text-winamp-accent-muted">{currentTrack?.artist ?? ""}</p>
-        </div>
-
-        <div className="flex items-center gap-3 mb-5 text-xs text-winamp-accent-muted">
-          <span className="w-10 text-right">{formatTime(currentTimeMs)}</span>
-          <div
-            className="flex-1 relative h-1 bg-winamp-border rounded-full cursor-pointer group"
-            onClick={(e) => {
-              const rect = e.currentTarget.getBoundingClientRect();
-              const x = e.clientX - rect.left;
-              onScrubberChange((x / rect.width) * totalDurationSecs);
-            }}
-          >
-            <div
-              className="absolute top-0 left-0 h-full bg-winamp-accent-muted rounded-full"
-              style={{ width: `${(currentTimeMs / totalDurationSecs) * 100}%` }}
-            />
-            <div
-              className="absolute top-1/2 -translate-y-1/2 w-2.5 h-2.5 bg-winamp-accent-muted rounded-full shadow transition-transform group-hover:scale-125"
-              style={{
-                left: `calc(${(currentTimeMs / totalDurationSecs) * 100}% - 5px)`,
-              }}
-            />
+      <div className="p-5">
+        <div className="flex items-center gap-4 mb-5">
+          {currentTrack?.picture ? (
+            <img src={currentTrack.picture} alt="" className="w-14 h-14 rounded-lg object-cover shadow-md" />
+          ) : (
+            <div className="w-14 h-14 rounded-lg bg-app-elevated flex items-center justify-center">
+              <Music size={24} className="text-app-text-tertiary" />
+            </div>
+          )}
+          <div className="min-w-0 flex-1">
+            <div className="text-[14px] font-medium truncate">{currentTrack?.title ?? "No track"}</div>
+            <div className="text-[12px] text-app-text-tertiary truncate mt-0.5">{currentTrack?.artist ?? ""}</div>
           </div>
-          <span className="w-10">{formatTime(totalDurationSecs)}</span>
+          {currentTrack && (
+            <button
+              onClick={() => toggleFavorite(currentTrack.id)}
+              className={`shrink-0 ${isFav ? "text-app-accent" : "text-app-text-tertiary hover:text-app-text-primary"}`}
+            >
+              <Heart size={16} className={isFav ? "fill-current" : ""} />
+            </button>
+          )}
+        </div>
+
+        <div className="mb-4">
+          <Scrubber value={currentTime} max={duration} onChange={onScrubberChange} size="sm" />
         </div>
 
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={onPrev}
-              className="text-winamp-accent-muted hover:text-winamp-bar transition-colors"
-            >
-              <SkipBack size={18} fill="currentColor" />
+          <div className="flex items-center gap-5">
+            <button onClick={onPrev} className="text-app-text-secondary hover:text-app-text-primary">
+              <SkipBack size={18} className="fill-current" />
             </button>
             <button
               onClick={onPlayPause}
-              className="text-winamp-bar hover:text-winamp-accent transition-colors"
+              className="w-10 h-10 rounded-full bg-app-text-primary text-app-bg flex items-center justify-center hover:scale-105 active:scale-95 transition-transform"
             >
-              {isPlaying ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" />}
+              {isPlaying ? <Pause size={18} className="fill-current" /> : <Play size={18} className="fill-current ml-0.5" />}
             </button>
-            <button
-              onClick={onNext}
-              className="text-winamp-accent-muted hover:text-winamp-bar transition-colors"
-            >
-              <SkipForward size={18} fill="currentColor" />
+            <button onClick={onNext} className="text-app-text-secondary hover:text-app-text-primary">
+              <SkipForward size={18} className="fill-current" />
             </button>
           </div>
 
           <div className="flex items-center gap-2 w-24">
             <button
               onClick={() => onVolumeChange(volume === 0 ? 0.7 : 0)}
-              className="text-winamp-accent-muted hover:text-winamp-bar transition-colors"
+              className="text-app-text-tertiary hover:text-app-text-primary"
             >
-              {volume === 0 ? <VolumeX size={16} /> : <Volume2 size={16} />}
+              {volume === 0 ? <VolumeX size={14} /> : <Volume2 size={14} />}
             </button>
             <div
-              className="flex-1 relative h-1 bg-winamp-border rounded-full cursor-pointer group"
+              className="flex-1 relative h-1 bg-app-border-strong rounded-full cursor-pointer"
               onClick={(e) => {
                 const rect = e.currentTarget.getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                onVolumeChange(Math.max(0, Math.min(1, x / rect.width)));
+                onVolumeChange(Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)));
               }}
             >
               <div
-                className="absolute top-0 left-0 h-full bg-winamp-accent-muted rounded-full"
+                className="absolute top-0 left-0 h-full bg-app-text-secondary rounded-full"
                 style={{ width: `${volume * 100}%` }}
-              />
-              <div
-                className="absolute top-1/2 -translate-y-1/2 w-2.5 h-2.5 bg-winamp-accent-muted rounded-full shadow transition-transform group-hover:scale-125"
-                style={{ left: `calc(${volume * 100}% - 5px)` }}
               />
             </div>
           </div>
         </div>
       </div>
 
-      <div className="flex flex-col shrink-0">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-winamp-border">
+      <div className="flex flex-col shrink-0 border-t border-app-border">
+        <div className="flex items-center justify-between px-5 py-2.5">
           <div className="flex items-center gap-2">
-            <ListMusic size={14} className="text-winamp-accent-muted" />
-            <span className="text-xs tracking-widest text-winamp-accent-muted font-bold">PLAYLIST</span>
+            <ListMusic size={14} className="text-app-text-tertiary" />
+            <span className="text-[11px] font-medium text-app-text-tertiary uppercase tracking-wider">Queue</span>
           </div>
           <button
             onClick={() => onExpandToMain?.()}
-            className="text-winamp-accent-muted hover:text-winamp-bar transition-colors"
-            aria-label="Expand to main window"
+            className="text-app-text-tertiary hover:text-app-text-primary text-[11px]"
           >
-            <FoldVertical size={14} />
+            <Maximize2 size={12} />
           </button>
         </div>
 
-        <div className="h-[440px] overflow-y-auto p-2 space-y-1">
-          {playQueue.map((track, index) => {
-            const isActive = track.id === currentTrack?.id;
-            return (
-              <div
-                key={`${track.id}-${index}`}
-                onClick={() => {
-                  if (isActive) {
-                    onPlayPause();
-                  } else {
-                    onTrackSelect(track, playQueue);
-                  }
-                }}
-                className={`flex items-center justify-between p-2 rounded cursor-pointer group transition-colors ${
-                  isActive ? "bg-winamp-hover" : "hover:bg-winamp-panel-alt"
-                }`}
-              >
-                <div className="flex items-center gap-4">
-                  <span
-                    className={`w-4 text-xs text-right flex items-center justify-end ${
-                      isActive ? "text-winamp-bar" : "text-winamp-accent-muted"
-                    }`}
-                  >
-                    {isActive ? (
-                      <Volume2 size={14} className={isPlaying ? "animate-pulse" : ""} />
-                    ) : (
-                      index + 1
-                    )}
-                  </span>
-                  <span
-                    className={`text-sm ${
-                      isActive ? "text-winamp-accent" : "text-winamp-bar group-hover:text-winamp-bar"
-                    }`}
-                  >
-                    {track.title}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 text-xs text-winamp-accent-muted">
-                  <span className="truncate max-w-[120px]">{track.artist}</span>
-                  <span>{track.time}</span>
-                </div>
-              </div>
-            );
-          })}
+        <div className="h-[380px] overflow-y-auto px-2 pb-2 space-y-0.5">
+          {playQueue.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-app-text-tertiary gap-2">
+              <ListMusic size={32} strokeWidth={1} className="opacity-30" />
+              <div className="text-[12px]">Queue is empty</div>
+            </div>
+          ) : (
+            playQueue.map((track, index) => {
+              const isActive = track.id === currentTrack?.id;
+              return (
+                <button
+                  key={`${track.id}-mini-${index}`}
+                  onClick={() => isActive ? onPlayPause() : onTrackSelect(track, playQueue)}
+                  className={`w-full flex items-center justify-between p-2.5 rounded-lg text-left transition-all ${
+                    isActive ? "bg-app-active" : "hover:bg-app-hover"
+                  }`}
+                >
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <span className={`w-5 text-[11px] text-right shrink-0 tabular-nums ${isActive ? "text-app-accent" : "text-app-text-tertiary"}`}>
+                      {isActive ? (
+                        <Volume2 size={12} className={isPlaying ? "animate-pulse-soft" : ""} />
+                      ) : (
+                        index + 1
+                      )}
+                    </span>
+                    <span className={`text-[13px] truncate ${isActive ? "text-app-accent font-medium" : "text-app-text-primary"}`}>
+                      {track.title}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 text-[11px] text-app-text-tertiary shrink-0 ml-2">
+                    <span className="truncate max-w-[100px]">{track.artist}</span>
+                    <span className="tabular-nums">{track.time}</span>
+                  </div>
+                </button>
+              );
+            })
+          )}
         </div>
       </div>
     </div>

@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import ColorThief from "colorthief";
 import { usePlayerStore } from "../store/playerStore";
 
-const MIN_ACCENT_LUMINANCE = 0.25; // Minimum luminance for contrast on dark UI
+const MIN_ACCENT_LUMINANCE = 0.25;
 
 function rgbToHex(r: number, g: number, b: number): string {
   return "#" + [r, g, b].map((x) => Math.round(x).toString(16).padStart(2, "0")).join("");
@@ -19,7 +19,6 @@ function adjustColor(hex: string, factor: number): string {
   );
 }
 
-/** sRGB relative luminance; 0 = black, 1 = white */
 function getLuminance(r: number, g: number, b: number): number {
   const [lr, lg, lb] = [r, g, b].map((c) => {
     const s = c / 255;
@@ -28,10 +27,8 @@ function getLuminance(r: number, g: number, b: number): number {
   return 0.2126 * lr + 0.7152 * lg + 0.0722 * lb;
 }
 
-/** Lighten color toward white until it meets minimum luminance */
 function lightenToMinLuminance(r: number, g: number, b: number): [number, number, number] {
-  let low = 0,
-    high = 1;
+  let low = 0, high = 1;
   for (let i = 0; i < 12; i++) {
     const t = (low + high) / 2;
     const nr = r + (255 - r) * t;
@@ -42,31 +39,25 @@ function lightenToMinLuminance(r: number, g: number, b: number): [number, number
   }
   const t = (low + high) / 2;
   const clamp = (v: number) => Math.min(255, Math.round(v));
-  return [
-    clamp(r + (255 - r) * t),
-    clamp(g + (255 - g) * t),
-    clamp(b + (255 - b) * t),
-  ];
+  return [clamp(r + (255 - r) * t), clamp(g + (255 - g) * t), clamp(b + (255 - b) * t)];
 }
 
-/** Pick an accent color with sufficient contrast for dark theme */
-function pickBestAccentColor(thief: InstanceType<typeof ColorThief>, img: HTMLImageElement): string | null {
-  const dominant = thief.getColor(img);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function pickBestAccentColor(thief: any, img: HTMLImageElement): string | null {
+  const dominant = thief.getColor(img) as [number, number, number] | null;
   if (!dominant) return null;
 
   const [r, g, b] = dominant;
   const lum = getLuminance(r, g, b);
 
-  if (lum >= MIN_ACCENT_LUMINANCE) {
-    return rgbToHex(r, g, b);
-  }
+  if (lum >= MIN_ACCENT_LUMINANCE) return rgbToHex(r, g, b);
 
-  const palette = thief.getPalette(img, 5);
+  const palette = thief.getPalette(img, 5) as [number, number, number][] | null;
   if (palette?.length) {
     const candidates = palette
-      .map((c) => ({ rgb: c, lum: getLuminance(c[0], c[1], c[2]) }))
-      .filter((c) => c.lum >= MIN_ACCENT_LUMINANCE)
-      .sort((a, b) => b.lum - a.lum);
+      .map((c: [number, number, number]) => ({ rgb: c, lum: getLuminance(c[0], c[1], c[2]) }))
+      .filter((c: { lum: number }) => c.lum >= MIN_ACCENT_LUMINANCE)
+      .sort((a: { lum: number }, b: { lum: number }) => b.lum - a.lum);
     if (candidates.length) {
       const [dr, dg, db] = candidates[0].rgb;
       return rgbToHex(dr, dg, db);
@@ -95,14 +86,12 @@ export function useThemeFromArt() {
 
     const onLoad = () => {
       try {
-        const thief = new ColorThief();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const CT = (ColorThief as any).default ?? ColorThief;
+        const thief = new CT();
         const accent = pickBestAccentColor(thief, img);
         if (accent) {
-          const palette = [
-            accent,
-            adjustColor(accent, 0.85),
-            adjustColor(accent, 0.6),
-          ];
+          const palette = [accent, adjustColor(accent, 0.85), adjustColor(accent, 0.6)];
           updateTheme(accent, palette);
         } else {
           resetTheme();

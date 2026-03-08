@@ -48,15 +48,26 @@ export function useAudioEngine() {
 
     // ── Event handlers (stable — read state at call-time) ──
     const onEnded = () => {
-      const { queue, currentTrack } = usePlayerStore.getState().player;
+      const { queue, currentTrack, repeat } = usePlayerStore.getState().player;
+
+      if (repeat === "one") {
+        el.currentTime = 0;
+        el.play().catch(() => {});
+        return;
+      }
+
       if (queue.length === 0) return;
       const idx = queue.findIndex((t) => t.id === currentTrack?.id);
-      const next = idx >= 0 && idx < queue.length - 1 ? queue[idx + 1] : queue[0];
-      if (next) {
-        // Pause element before switching track to prevent Effect 3
-        // from trying to .play() the old src in between.
+
+      if (idx >= 0 && idx < queue.length - 1) {
         el.pause();
-        usePlayerStore.getState().playTrack(next, queue);
+        usePlayerStore.getState().playTrack(queue[idx + 1], queue);
+      } else if (repeat === "all" && queue.length > 0) {
+        el.pause();
+        usePlayerStore.getState().playTrack(queue[0], queue);
+      } else {
+        usePlayerStore.getState().setCurrentTime(0);
+        usePlayerStore.setState((s) => ({ player: { ...s.player, isPlaying: false } }));
       }
     };
 
@@ -70,14 +81,24 @@ export function useAudioEngine() {
       console.warn("Audio element error", el.error);
     };
 
+    const onSeekRequest = (e: Event) => {
+      const seconds = (e as CustomEvent<number>).detail;
+      el.currentTime = seconds;
+      if (usePlayerStore.getState().player.isPlaying) {
+        el.play().catch(() => {});
+      }
+    };
+
     el.addEventListener("ended", onEnded);
     el.addEventListener("timeupdate", onTimeUpdate);
     el.addEventListener("error", onError);
+    document.addEventListener("player-seek", onSeekRequest);
 
     return () => {
       el.removeEventListener("ended", onEnded);
       el.removeEventListener("timeupdate", onTimeUpdate);
       el.removeEventListener("error", onError);
+      document.removeEventListener("player-seek", onSeekRequest);
       el.pause();
       el.src = "";
       audioRef.current = null;

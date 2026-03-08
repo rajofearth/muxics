@@ -1,39 +1,111 @@
+import { useCallback, useRef, useState } from "react";
 import { formatTime } from "../utils";
 
 type ScrubberProps = {
   value: number;
   max: number;
-  currentLabel?: string;
-  maxLabel?: string;
   onChange: (value: number) => void;
+  showLabels?: boolean;
+  size?: "sm" | "md";
 };
 
-export function Scrubber({ value, max, currentLabel, maxLabel, onChange }: ScrubberProps) {
-  const percent = max > 0 ? (value / max) * 100 : 0;
+export function Scrubber({ value, max, onChange, showLabels = true, size = "md" }: ScrubberProps) {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const [dragging, setDragging] = useState(false);
+  const [hoverPercent, setHoverPercent] = useState<number | null>(null);
+  const percent = max > 0 ? Math.min(100, (value / max) * 100) : 0;
+  const h = size === "sm" ? "h-1" : "h-1.5";
+  const thumbSize = size === "sm" ? "w-3 h-3" : "w-3.5 h-3.5";
 
-  const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const pct = (e.clientX - rect.left) / rect.width;
-    onChange(Math.max(0, Math.min(max, pct * max)));
-  };
+  const calcValue = useCallback(
+    (clientX: number) => {
+      const el = trackRef.current;
+      if (!el) return 0;
+      const rect = el.getBoundingClientRect();
+      const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+      return pct * max;
+    },
+    [max]
+  );
+
+  const onPointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      e.preventDefault();
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      setDragging(true);
+      onChange(calcValue(e.clientX));
+    },
+    [calcValue, onChange]
+  );
+
+  const onPointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      const el = trackRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      setHoverPercent(pct * 100);
+      if (dragging) onChange(pct * max);
+    },
+    [dragging, max, onChange]
+  );
+
+  const onPointerUp = useCallback(() => setDragging(false), []);
+  const onPointerLeave = useCallback(() => {
+    setHoverPercent(null);
+    if (!dragging) setDragging(false);
+  }, [dragging]);
+
+  const thumbOffset = size === "sm" ? 6 : 7;
 
   return (
-    <div className="w-full flex items-center gap-4 text-xs text-winamp-text">
-      <span className="w-10 text-right">{currentLabel ?? formatTime(value)}</span>
+    <div className="w-full flex items-center gap-3" role="group" aria-label="Playback position">
+      {showLabels && (
+        <span className="w-10 text-right text-[11px] text-app-text-tertiary tabular-nums select-none" aria-hidden>
+          {formatTime(value)}
+        </span>
+      )}
       <div
-        className="flex-1 h-1.5 bg-winamp-border relative rounded-full cursor-pointer group"
-        onClick={handleClick}
+        ref={trackRef}
+        role="slider"
+        aria-label="Seek"
+        aria-valuemin={0}
+        aria-valuemax={Math.round(max)}
+        aria-valuenow={Math.round(value)}
+        aria-valuetext={`${formatTime(value)} of ${formatTime(max)}`}
+        tabIndex={0}
+        className={`slider-container flex-1 ${h} bg-app-border-strong relative rounded-full cursor-pointer group ${dragging ? "dragging" : ""}`}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerLeave={onPointerLeave}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowRight") { onChange(Math.min(max, value + max * 0.02)); e.preventDefault(); }
+          if (e.key === "ArrowLeft") { onChange(Math.max(0, value - max * 0.02)); e.preventDefault(); }
+        }}
       >
+        {hoverPercent !== null && !dragging && (
+          <div
+            className="absolute top-0 left-0 h-full bg-app-text-tertiary/15 rounded-full pointer-events-none"
+            style={{ width: `${hoverPercent}%` }}
+          />
+        )}
         <div
-          className="absolute top-0 left-0 h-full bg-winamp-accent-muted group-hover:bg-winamp-bar rounded-full transition-colors"
+          className="slider-track absolute top-0 left-0 h-full bg-app-text-primary rounded-full"
           style={{ width: `${percent}%` }}
         />
         <div
-          className="absolute top-1/2 -translate-y-1/2 -ml-2 w-4 h-4 bg-winamp-bar group-hover:bg-winamp-accent rounded-full shadow-[0_0_8px_rgba(113,166,125,0.4)] transition-colors pointer-events-none"
-          style={{ left: `${percent}%` }}
+          className={`absolute top-1/2 -translate-y-1/2 ${thumbSize} bg-app-text-primary rounded-full shadow-lg pointer-events-none ${
+            max > 0 ? "opacity-100" : "slider-thumb"
+          }`}
+          style={{ left: `calc(${percent}% - ${thumbOffset}px)` }}
         />
       </div>
-      <span className="w-10">{maxLabel ?? formatTime(max)}</span>
+      {showLabels && (
+        <span className="w-10 text-[11px] text-app-text-tertiary tabular-nums select-none" aria-hidden>
+          {formatTime(max)}
+        </span>
+      )}
     </div>
   );
 }
