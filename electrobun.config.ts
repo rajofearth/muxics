@@ -18,7 +18,7 @@ export default {
 			bundleCEF: false,
 		},
 		win: {
-			bundleCEF: true,
+			bundleCEF: false,
 		},
 	},
 } satisfies ElectrobunConfig;

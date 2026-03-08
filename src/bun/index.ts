@@ -396,6 +396,15 @@ mainWindow.on("resize", (event: any) => {
 });
 
 setupTray();
-setupApplicationMenu();
+// On macOS: full menu in system menu bar. On Windows/Linux: empty menu to hide in-window menubar.
+if (process.platform === "darwin") {
+  setupApplicationMenu();
+} else {
+  try {
+    ApplicationMenu.setApplicationMenu([]);
+  } catch (err) {
+    console.warn("ApplicationMenu not available:", err);
+  }
+}
 
 console.log(`${APP_NAME} started!`);

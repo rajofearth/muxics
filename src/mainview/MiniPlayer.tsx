@@ -118,7 +118,7 @@ export function MiniPlayer({
     >
       <TitleBar
         electrobun={electrobun}
-        title={currentTrack ? currentTrack.title : "Muse Mini"}
+        title={currentTrack ? currentTrack.title : "Muse"}
         subtitle={currentTrack ? currentTrack.artist : "Mini Player"}
         compact
       />
