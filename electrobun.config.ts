@@ -4,7 +4,7 @@ export default {
 	app: {
 		name: "muse",
 		identifier: "muse.electrobun.dev",
-		version: "1.0.0",
+		version: "1.0.1",
 	},
 	build: {
 		copy: {
@@ -20,5 +20,8 @@ export default {
 		win: {
 			bundleCEF: false,
 		},
+	},
+	scripts: {
+		postPackage: "./scripts/create-appimage.ts",
 	},
 } satisfies ElectrobunConfig;

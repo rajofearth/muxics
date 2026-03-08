@@ -1,7 +1,7 @@
 {
   "type": "module",
   "name": "muse",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A modern music player built with Electrobun",
   "scripts": {
     "start": "vite build && electrobun dev",
