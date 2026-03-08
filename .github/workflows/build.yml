@@ -68,51 +68,6 @@ jobs:
             build/**/muse*.zip
           if-no-files-found: warn
 
-  build-macos-x64:
-    name: macOS (Intel)
-    runs-on: macos-13
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - name: Install dependencies
-        run: bun install
-
-      - name: Determine build environment
-        id: env
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "env=${{ inputs.environment }}" >> $GITHUB_OUTPUT
-          elif [[ "${{ github.ref_name }}" == *"-canary"* ]]; then
-            echo "env=canary" >> $GITHUB_OUTPUT
-          else
-            echo "env=stable" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Build frontend
-        run: bunx vite build
-
-      - name: Build app
-        run: bunx electrobun build --env=${{ steps.env.outputs.env }}
-        env:
-          ELECTROBUN_DEVELOPER_ID: ${{ secrets.ELECTROBUN_DEVELOPER_ID }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-x64
-          path: |
-            artifacts/*
-            build/**/muse*.dmg
-            build/**/muse*.zip
-          if-no-files-found: warn
-
   build-linux-x64:
     name: Linux (x64)
     runs-on: ubuntu-latest
@@ -248,8 +203,8 @@ jobs:
     name: Create Release
     needs:
       - build-macos-arm64
-      - build-macos-x64
       - build-linux-x64
+      - build-linux-arm64
       - build-windows-x64
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
