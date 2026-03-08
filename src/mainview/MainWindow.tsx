@@ -497,7 +497,11 @@ export function MainWindow({
 
   return (
     <div className="h-screen w-full bg-app-bg text-app-text-primary font-sans flex flex-col overflow-hidden">
-      <TitleBar electrobun={electrobun} />
+      <TitleBar
+        electrobun={electrobun}
+        title={currentTrack ? currentTrack.title : "Muse"}
+        subtitle={currentTrack ? currentTrack.artist : "Library"}
+      />
 
       <div className="flex flex-1 overflow-hidden">
         <Sidebar navState={navState} playlists={playlists.items} onNavigate={handleNavigate} />

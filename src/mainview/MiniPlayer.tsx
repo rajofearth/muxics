@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { usePlayerStore } from "./store/playerStore";
 import { Scrubber } from "./components/Scrubber";
+import { TitleBar } from "./components/TitleBar";
 import type { Track } from "./types";
 
 type MiniElectrobun = {
@@ -115,7 +116,12 @@ export function MiniPlayer({
       ref={containerRef}
       className="min-w-[380px] w-[380px] bg-app-bg overflow-hidden flex flex-col font-sans text-app-text-primary select-none"
     >
-      <div className="h-8 shrink-0 electrobun-webkit-app-region-drag" aria-hidden />
+      <TitleBar
+        electrobun={electrobun}
+        title={currentTrack ? currentTrack.title : "Muse Mini"}
+        subtitle={currentTrack ? currentTrack.artist : "Mini Player"}
+        compact
+      />
 
       <div className="p-5">
         <div className="flex items-center gap-4 mb-5">

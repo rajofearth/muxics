@@ -380,7 +380,7 @@ mainWindow = new BrowserWindow({
     x: 100,
     y: 100,
   },
-  titleBarStyle: "hiddenInset",
+  titleBarStyle: "hidden",
   rpc,
 });
 
