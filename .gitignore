@@ -3,3 +3,6 @@
 .env
 /build
 /artifacts
+/linux-x64-extracted
+/linux-arm64-extracted
+/app.tar

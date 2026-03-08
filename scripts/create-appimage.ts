@@ -8,7 +8,7 @@
  */
 
 import { existsSync, mkdirSync, readdirSync, statSync, cpSync, writeFileSync, chmodSync } from "fs";
-import { join, dirname } from "path";
+import { join, dirname, relative } from "path";
 
 const BUILD_DIR = process.env.ELECTROBUN_BUILD_DIR;
 const OS = process.env.ELECTROBUN_OS;
@@ -31,33 +31,39 @@ if (!BUILD_DIR || !existsSync(BUILD_DIR)) {
   process.exit(1);
 }
 
-// Find the main executable (no extension, executable bit set)
-function findExecutable(dir: string): string | null {
+// Find all executables (no extension, executable bit set)
+function findExecutables(dir: string, acc: string[] = []): string[] {
   const entries = readdirSync(dir, { withFileTypes: true });
   for (const entry of entries) {
     const fullPath = join(dir, entry.name);
     if (entry.isDirectory()) {
-      const found = findExecutable(fullPath);
-      if (found) return found;
+      findExecutables(fullPath, acc);
     } else if (entry.isFile() && !entry.name.includes(".")) {
       try {
         const stat = statSync(fullPath);
-        if (stat.mode & 0o111) return fullPath;
+        if (stat.mode & 0o111) acc.push(fullPath);
       } catch {
         // ignore
       }
     }
   }
-  return null;
+  return acc;
 }
 
-const executablePath = findExecutable(BUILD_DIR);
+// Prefer launcher (Electrobun main entry) over bun, bspatch, etc.
+const allExecutables = findExecutables(BUILD_DIR);
+const executablePath =
+  allExecutables.find((p) => p.endsWith("/launcher") || p.endsWith("\\launcher")) ??
+  allExecutables.find((p) => p.includes(APP_NAME)) ??
+  allExecutables[0];
+
 if (!executablePath) {
   console.error("Could not find executable in build directory:", BUILD_DIR);
   process.exit(1);
 }
 
-const executableName = executablePath.split(/[/\\]/).pop() ?? APP_NAME;
+// Use relative path from BUILD_DIR so exec works when executable is in bin/ etc.
+const relativeExecPath = relative(BUILD_DIR, executablePath).replace(/\\/g, "/");
 const appDirName = `${APP_NAME}.AppDir`;
 const buildParent = dirname(BUILD_DIR);
 const appDirPath = join(buildParent, appDirName);
@@ -75,17 +81,20 @@ mkdirSync(appDirPath, { recursive: true });
 // Copy entire build output into AppDir
 cpSync(BUILD_DIR, join(appDirPath, "usr"), { recursive: true });
 
-// Create AppRun script
+// Create AppRun script (launcher is typically in bin/, needs LD_LIBRARY_PATH for .so files)
+const libArch = ARCH === "arm64" ? "aarch64" : "x86_64";
 const appRun = `#!/bin/bash
 APPDIR="$(dirname "$(readlink -f "$0")")"
-export PATH="$APPDIR/usr:$PATH"
+export PATH="$APPDIR/usr/bin:$APPDIR/usr:$PATH"
+export LD_LIBRARY_PATH="$APPDIR/usr/bin:$APPDIR/usr/lib:$APPDIR/usr/lib/${libArch}-linux-gnu:$LD_LIBRARY_PATH"
 cd "$APPDIR/usr"
-exec "./${executableName}" "$@"
+exec "./${relativeExecPath}" "$@"
 `;
 writeFileSync(join(appDirPath, "AppRun"), appRun);
 chmodSync(join(appDirPath, "AppRun"), 0o755);
 
 // Create .desktop file (Exec=AppRun is standard for AppImage)
+const appVersion = process.env.ELECTROBUN_APP_VERSION ?? "1.0.0";
 const desktop = `[Desktop Entry]
 Name=Muse
 Exec=AppRun
@@ -93,6 +102,9 @@ Icon=muse
 Type=Application
 Categories=Audio;Music;Player;
 Comment=A modern music player
+X-AppImage-Name=Muse
+X-AppImage-Version=${appVersion}
+X-AppImage-Arch=${ARCH === "arm64" ? "aarch64" : "x86_64"}
 `;
 writeFileSync(join(appDirPath, "muse.desktop"), desktop);
 
