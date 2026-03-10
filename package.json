@@ -30,6 +30,7 @@
     "autoprefixer": "latest",
     "concurrently": "latest",
     "postcss": "latest",
+    "sharp": "^0.34.5",
     "tailwindcss": "latest",
     "typescript": "latest",
     "vite": "latest"
