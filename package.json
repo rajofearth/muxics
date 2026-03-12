@@ -2,19 +2,23 @@
   "type": "module",
   "name": "muse",
   "version": "1.0.1",
-  "description": "A modern music player built with Electrobun",
+  "description": "A modern music player built with Electron",
+  "packageManager": "pnpm@10.31.0",
+  "main": "dist-electron/main.cjs",
   "scripts": {
-    "start": "vite build && electrobun dev",
-    "dev": "electrobun dev --watch",
-    "dev:hmr": "concurrently \"bun run hmr\" \"bun run start\"",
-    "hmr": "vite --port 5173",
-    "build:dev": "bun install && electrobun build",
-    "build:canary": "electrobun build --env=canary",
-    "build:stable": "electrobun build --env=stable"
+    "electron:install": "node scripts/ensure-electron-binary.mjs",
+    "dev": "pnpm run electron:install && concurrently -k \"pnpm run dev:renderer\" \"pnpm run dev:electron:build\" \"pnpm run dev:electron\"",
+    "dev:renderer": "vite --port 5173",
+    "dev:electron:build": "tsup --config tsup.electron.config.ts --watch",
+    "dev:electron": "wait-on http-get://127.0.0.1:5173 dist-electron/main.cjs dist-electron/preload.cjs && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 pnpm exec electronmon .",
+    "prepare:assets": "node scripts/prepare-electron-assets.mjs",
+    "build:renderer": "vite build",
+    "build:electron": "tsup --config tsup.electron.config.ts",
+    "build": "pnpm run prepare:assets && pnpm run build:renderer && pnpm run build:electron",
+    "package": "pnpm run electron:install && pnpm run build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --config electron-builder.yml"
   },
   "dependencies": {
     "colorthief": "^2.7.0",
-    "electrobun": "1.15.1",
     "lucide-react": "latest",
     "music-metadata": "^11.12.1",
     "react": "latest",
@@ -23,17 +27,21 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.1",
-    "@types/bun": "latest",
+    "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "@vitejs/plugin-react": "latest",
     "autoprefixer": "latest",
     "concurrently": "latest",
+    "cross-env": "latest",
+    "electron": "latest",
+    "electron-builder": "latest",
+    "electronmon": "latest",
     "postcss": "latest",
-    "rcedit": "^5.0.2",
-    "sharp": "^0.34.5",
     "tailwindcss": "latest",
+    "tsup": "latest",
     "typescript": "latest",
-    "vite": "latest"
+    "vite": "latest",
+    "wait-on": "latest"
   }
 }

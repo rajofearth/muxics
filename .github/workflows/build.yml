@@ -6,15 +6,6 @@ on:
       - "v*"
   workflow_dispatch:
     inputs:
-      environment:
-        description: "Build environment"
-        required: true
-        default: "stable"
-        type: choice
-        options:
-          - stable
-          - canary
-          - dev
       tag:
         description: "Release tag (e.g. v1.0.0). Required to create release on manual run."
         required: false
@@ -25,6 +16,8 @@ permissions:
 
 env:
   APP_NAME: muse
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  CSC_IDENTITY_AUTO_DISCOVERY: "false"
 
 jobs:
   build-macos-arm64:
@@ -37,44 +30,23 @@ jobs:
         with:
           version: latest
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
         with:
-          bun-version: latest
+          node-version: lts/*
+          cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Determine build environment
-        id: env
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "env=${{ inputs.environment }}" >> $GITHUB_OUTPUT
-          elif [[ "${{ github.ref_name }}" == *"-canary"* ]]; then
-            echo "env=canary" >> $GITHUB_OUTPUT
-          else
-            echo "env=stable" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Build frontend
-        run: bunx vite build
-
       - name: Build app
-        run: bunx electrobun build --env=${{ steps.env.outputs.env }}
-        env:
-          ELECTROBUN_DEVELOPER_ID: ${{ secrets.ELECTROBUN_DEVELOPER_ID }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: pnpm run package
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: macos-arm64
-          path: |
-            artifacts/*
-            build/**/muse*.dmg
-            build/**/muse*.zip
-          if-no-files-found: warn
+          path: artifacts/*
+          if-no-files-found: error
 
   build-linux-x64:
     name: Linux (x64)
@@ -86,44 +58,23 @@ jobs:
         with:
           version: latest
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
         with:
-          bun-version: latest
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev squashfs-tools
+          node-version: lts/*
+          cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Determine build environment
-        id: env
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "env=${{ inputs.environment }}" >> $GITHUB_OUTPUT
-          elif [[ "${{ github.ref_name }}" == *"-canary"* ]]; then
-            echo "env=canary" >> $GITHUB_OUTPUT
-          else
-            echo "env=stable" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Build frontend
-        run: bunx vite build
-
       - name: Build app
-        run: bunx electrobun build --env=${{ steps.env.outputs.env }}
+        run: pnpm run package
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: linux-x64
-          path: |
-            artifacts/*
-            build/**/*.AppImage
-            build/**/*.tar.gz
-          if-no-files-found: warn
+          path: artifacts/*
+          if-no-files-found: error
 
   build-linux-arm64:
     name: Linux (ARM64)
@@ -135,44 +86,23 @@ jobs:
         with:
           version: latest
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
         with:
-          bun-version: latest
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev squashfs-tools
+          node-version: lts/*
+          cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Determine build environment
-        id: env
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "env=${{ inputs.environment }}" >> $GITHUB_OUTPUT
-          elif [[ "${{ github.ref_name }}" == *"-canary"* ]]; then
-            echo "env=canary" >> $GITHUB_OUTPUT
-          else
-            echo "env=stable" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Build frontend
-        run: bunx vite build
-
       - name: Build app
-        run: bunx electrobun build --env=${{ steps.env.outputs.env }}
+        run: pnpm run package
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: linux-arm64
-          path: |
-            artifacts/*
-            build/**/*.AppImage
-            build/**/*.tar.gz
-          if-no-files-found: warn
+          path: artifacts/*
+          if-no-files-found: error
 
   build-windows-x64:
     name: Windows (x64)
@@ -184,43 +114,23 @@ jobs:
         with:
           version: latest
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
         with:
-          bun-version: latest
+          node-version: lts/*
+          cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Determine build environment
-        id: env
-        shell: bash
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "env=${{ inputs.environment }}" >> $GITHUB_OUTPUT
-          elif [[ "${{ github.ref_name }}" == *"-canary"* ]]; then
-            echo "env=canary" >> $GITHUB_OUTPUT
-          else
-            echo "env=stable" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Build frontend
-        run: bunx vite build
-
       - name: Build app
-        run: bunx electrobun build --env=${{ steps.env.outputs.env }}
-
-      - name: Patch packaged Windows icons
-        run: bun scripts/patch-windows-icons.ts
+        run: pnpm run package
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: windows-x64
-          path: |
-            artifacts/*
-            build/**/*.exe
-            build/**/*.zip
-          if-no-files-found: warn
+          path: artifacts/*
+          if-no-files-found: error
 
   release:
     name: Create Release
@@ -234,50 +144,69 @@ jobs:
     steps:
       - name: Determine release tag
         id: tag
+        shell: bash
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "tag=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+            echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
           else
-            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: release-artifacts
+          merge-multiple: true
 
       - name: List artifacts
+        shell: bash
         run: find release-artifacts -type f | head -50
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.tag.outputs.tag }}
-          name: Muse ${{ steps.tag.outputs.tag }}
-          body: |
-            ## Muse – A modern music player
-
-            Cross-platform desktop music player built with Electrobun, React, and Bun.
-
-            ### Downloads
-
-            | Platform | Architecture | File |
-            |----------|--------------|------|
-            | macOS | Apple Silicon | `muse-*-arm64.dmg` or `.zip` |
-            | Linux | x64 | `.AppImage` or `.tar.gz` |
-            | Linux | ARM64 | `.AppImage` or `.tar.gz` |
-            | Windows | x64 | `.exe` or `.zip` |
-
-            ### Requirements
-
-            - **macOS**: macOS 10.15+ (Apple Silicon)
-            - **Linux**: WebKitGTK 4.1, GTK 3
-            - **Windows**: Windows 10+
-
-            ### Changes
-
-            See the commit history for details.
-          draft: true
-          files: release-artifacts/**/*
+      - name: Create or update GitHub Release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          cat > release-notes.md <<'EOF'
+          ## Muse
+
+          Cross-platform desktop music player built with Electron, React, and Vite.
+
+          ### Downloads
+
+          | Platform | Architecture | Files |
+          |----------|--------------|-------|
+          | macOS | Apple Silicon | `.dmg`, `.zip` |
+          | Linux | x64 | `.AppImage`, `.tar.gz` |
+          | Linux | ARM64 | `.AppImage`, `.tar.gz` |
+          | Windows | x64 | `.exe`, `.zip` |
+
+          ### Notes
+
+          - macOS builds are unsigned by default in CI.
+          - Linux builds use Electron's bundled Chromium runtime.
+          - Windows builds ship as NSIS installers plus zip archives.
+          EOF
+
+          if gh release view "${{ steps.tag.outputs.tag }}" >/dev/null 2>&1; then
+            gh release edit "${{ steps.tag.outputs.tag }}" \
+              --title "Muse ${{ steps.tag.outputs.tag }}" \
+              --notes-file release-notes.md
+          else
+            gh release create "${{ steps.tag.outputs.tag }}" \
+              --title "Muse ${{ steps.tag.outputs.tag }}" \
+              --notes-file release-notes.md \
+              --draft
+          fi
+
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          mapfile -t files < <(find release-artifacts -type f)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No release artifacts found"
+            exit 1
+          fi
+          gh release upload "${{ steps.tag.outputs.tag }}" "${files[@]}" --clobber
