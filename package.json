@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "colorthief": "^2.7.0",
-    "electrobun": "1.14.4",
+    "electrobun": "1.15.1",
     "lucide-react": "latest",
     "music-metadata": "^11.12.1",
     "react": "latest",
@@ -30,6 +30,7 @@
     "autoprefixer": "latest",
     "concurrently": "latest",
     "postcss": "latest",
+    "rcedit": "^5.0.2",
     "sharp": "^0.34.5",
     "tailwindcss": "latest",
     "typescript": "latest",

@@ -21,10 +21,10 @@ export default {
     },
     win: {
       bundleCEF: true,
-      icon: "./icon.iconset/icon_512x512.png",
+      icon: "./assets/icon.ico",
     },
   },
   scripts: {
-    postPackage: "./scripts/create-appimage.ts",
+    postPackage: "./scripts/run-post-package.ts",
   },
 } satisfies ElectrobunConfig;

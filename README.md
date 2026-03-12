@@ -32,6 +32,14 @@ A Winamp-inspired music player app built with [Electrobun](https://github.com/bl
 
 > Build output lands in `dist/`, and static assets are copied to the main view for Electron-style delivery.
 
+### Windows app icon
+
+Electrobun’s built-in icon embedding fails on Windows due to a path bug. A post-package script patches the icon when possible. If the taskbar still shows the default icon:
+
+1. Close the app completely.
+2. Run `pnpm patch:icons`.
+3. Start the app again with `pnpm start`.
+
 ## Customization & Ideas
 
 Ready to keep going? Try these:

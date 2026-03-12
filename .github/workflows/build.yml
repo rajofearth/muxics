@@ -33,12 +33,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
 
       - name: Install dependencies
-        run: bun install
+        run: pnpm install --frozen-lockfile
 
       - name: Determine build environment
         id: env
@@ -78,6 +82,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
@@ -88,7 +96,7 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev squashfs-tools
 
       - name: Install dependencies
-        run: bun install
+        run: pnpm install --frozen-lockfile
 
       - name: Determine build environment
         id: env
@@ -123,6 +131,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
@@ -133,7 +145,7 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev squashfs-tools
 
       - name: Install dependencies
-        run: bun install
+        run: pnpm install --frozen-lockfile
 
       - name: Determine build environment
         id: env
@@ -168,12 +180,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
 
       - name: Install dependencies
-        run: bun install
+        run: pnpm install --frozen-lockfile
 
       - name: Determine build environment
         id: env
@@ -192,6 +208,9 @@ jobs:
 
       - name: Build app
         run: bunx electrobun build --env=${{ steps.env.outputs.env }}
+
+      - name: Patch packaged Windows icons
+        run: bun scripts/patch-windows-icons.ts
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
