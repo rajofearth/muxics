@@ -1,0 +1,48 @@
+appId: dev.muse.player
+productName: Muse
+directories:
+  output: artifacts
+  buildResources: build
+files:
+  - dist/**
+  - dist-electron/**
+  - assets/**
+  - icon.iconset/**
+  - package.json
+asar: true
+artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+mac:
+  category: public.app-category.music
+  target:
+    - target: dmg
+      arch:
+        - arm64
+    - target: zip
+      arch:
+        - arm64
+  icon: build/icon.icns
+linux:
+  category: AudioVideo
+  icon: build/icons
+  target:
+    - target: AppImage
+      arch:
+        - x64
+        - arm64
+    - target: tar.gz
+      arch:
+        - x64
+        - arm64
+win:
+  icon: assets/icon.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: zip
+      arch:
+        - x64
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true

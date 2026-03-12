@@ -3,6 +3,7 @@
 		"lib": ["ESNext", "DOM"],
 		"target": "ESNext",
 		"module": "ESNext",
+		"types": ["node", "electron"],
 		"moduleDetection": "force",
 		"jsx": "react-jsx",
 		"allowJs": true,
@@ -18,5 +19,5 @@
 		"noPropertyAccessFromIndexSignature": true
 	},
 	"include": ["src/**/*"],
-	"exclude": ["node_modules", "dist", "build", "../../package/dist"]
+	"exclude": ["node_modules", "dist", "dist-electron", "build", "../../package/dist"]
 }

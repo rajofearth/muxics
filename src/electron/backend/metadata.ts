@@ -1,6 +1,6 @@
-import path from "path";
+import path from "node:path";
 import { parseFile } from "music-metadata";
-import { AUDIO_EXTENSIONS } from "../shared/constants";
+import { AUDIO_EXTENSIONS } from "../../shared/constants";
 
 const metadataCache = new Map<string, TrackMetadata>();
 
@@ -14,31 +14,32 @@ export interface TrackMetadata {
 }
 
 function formatDuration(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, "0")}`;
+  const minutes = Math.floor(seconds / 60);
+  const remainder = Math.floor(seconds % 60);
+  return `${minutes}:${remainder.toString().padStart(2, "0")}`;
 }
 
 export async function getTrackMetadata(filePath: string): Promise<TrackMetadata | null> {
   const cached = metadataCache.get(filePath);
-  if (cached) return cached;
+  if (cached) {
+    return cached;
+  }
 
   const ext = path.extname(filePath).toLowerCase();
-  if (!AUDIO_EXTENSIONS.has(ext)) return null;
+  if (!AUDIO_EXTENSIONS.has(ext)) {
+    return null;
+  }
 
   try {
     const metadata = await parseFile(filePath, { duration: true });
-
-    const duration = metadata.format.duration ?? 0;
-    const common = metadata.common;
-    const picture = common.picture?.[0];
+    const picture = metadata.common.picture?.[0];
 
     const result: TrackMetadata = {
-      title: common.title ?? path.basename(filePath, ext),
-      artist: common.artist ?? "Unknown Artist",
-      album: common.album ?? "Unknown Album",
-      duration,
-      genre: common.genre?.[0] ?? "Unknown",
+      title: metadata.common.title ?? path.basename(filePath, ext),
+      artist: metadata.common.artist ?? "Unknown Artist",
+      album: metadata.common.album ?? "Unknown Album",
+      duration: metadata.format.duration ?? 0,
+      genre: metadata.common.genre?.[0] ?? "Unknown",
       picture: picture
         ? `data:${picture.format};base64,${Buffer.from(picture.data).toString("base64")}`
         : undefined,

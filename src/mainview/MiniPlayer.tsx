@@ -15,20 +15,10 @@ import { usePlayerStore } from "./store/playerStore";
 import { Scrubber } from "./components/Scrubber";
 import { TitleBar } from "./components/TitleBar";
 import type { Track } from "./types";
-
-type MiniElectrobun = {
-  rpc?: {
-    send?: {
-      resizeWindow: (p: { width: number; height: number }) => void;
-      closeWindow: () => void;
-      minimizeWindow: () => void;
-      maximizeWindow: () => void;
-    };
-  };
-};
+import type { DesktopBridge } from "../shared/desktop-contract";
 
 type MiniPlayerProps = {
-  electrobun: MiniElectrobun;
+  desktop: DesktopBridge;
   onExpandToMain?: () => void;
   currentTrack: Track | null;
   isPlaying: boolean;
@@ -47,7 +37,7 @@ const MIN_WIDTH = 380;
 const MIN_HEIGHT = 400;
 
 function useResizeToContent(
-  electrobun: MiniElectrobun,
+  desktop: DesktopBridge,
   enabled: boolean,
   contentKey: number
 ) {
@@ -55,12 +45,12 @@ function useResizeToContent(
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const reportSize = useCallback(
     (w: number, h: number) => {
-      electrobun.rpc?.send?.resizeWindow?.({
+      desktop.send.resizeWindow({
         width: Math.max(MIN_WIDTH, Math.round(w)),
         height: Math.max(MIN_HEIGHT, Math.round(h)),
       });
     },
-    [electrobun]
+    [desktop]
   );
 
   const measure = useCallback(() => {
@@ -92,7 +82,7 @@ function useResizeToContent(
 }
 
 export function MiniPlayer({
-  electrobun,
+  desktop,
   onExpandToMain,
   currentTrack,
   isPlaying,
@@ -107,7 +97,7 @@ export function MiniPlayer({
   onTrackSelect,
 }: MiniPlayerProps) {
   const duration = currentTrack?.duration ?? 0;
-  const containerRef = useResizeToContent(electrobun, true, playQueue.length);
+  const containerRef = useResizeToContent(desktop, true, playQueue.length);
   const toggleFavorite = usePlayerStore((s) => s.toggleFavorite);
   const isFav = usePlayerStore((s) => currentTrack ? s.favorites.has(currentTrack.id) : false);
 
@@ -117,7 +107,7 @@ export function MiniPlayer({
       className="min-w-[380px] w-[380px] bg-app-bg overflow-hidden flex flex-col font-sans text-app-text-primary select-none"
     >
       <TitleBar
-        electrobun={electrobun}
+        desktop={desktop}
         title={currentTrack ? currentTrack.title : "Muse"}
         subtitle={currentTrack ? currentTrack.artist : "Mini Player"}
         compact

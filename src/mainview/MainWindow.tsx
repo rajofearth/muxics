@@ -17,20 +17,10 @@ import { PlaylistHeaderActions } from "./components/PlaylistHeaderActions";
 import { SearchView } from "./components/SearchView";
 import { QueueView } from "./components/QueueView";
 import { NowPlayingView } from "./components/NowPlayingView";
-
-type WinampElectrobun = {
-  rpc?: {
-    send?: {
-      resizeWindow: (p: { width: number; height: number }) => void;
-      closeWindow: () => void;
-      minimizeWindow: () => void;
-      maximizeWindow: () => void;
-    };
-  };
-};
+import type { DesktopBridge } from "../shared/desktop-contract";
 
 type MainWindowProps = {
-  electrobun?: WinampElectrobun;
+  desktop?: DesktopBridge;
   onToggleMini?: () => void;
   currentTrack: Track | null;
   isPlaying: boolean;
@@ -50,7 +40,7 @@ type MainWindowProps = {
 };
 
 export function MainWindow({
-  electrobun,
+  desktop,
   onToggleMini,
   currentTrack,
   isPlaying,
@@ -498,7 +488,7 @@ export function MainWindow({
   return (
     <div className="h-screen w-full bg-app-bg text-app-text-primary font-sans flex flex-col overflow-hidden">
       <TitleBar
-        electrobun={electrobun}
+        desktop={desktop}
         title={currentTrack ? currentTrack.title : "Muse"}
         subtitle={currentTrack ? currentTrack.artist : "Library"}
       />

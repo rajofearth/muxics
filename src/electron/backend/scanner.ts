@@ -1,6 +1,6 @@
-import path from "path";
-import fs from "fs";
-import { AUDIO_EXTENSIONS } from "../shared/constants";
+import fs from "node:fs";
+import path from "node:path";
+import { AUDIO_EXTENSIONS } from "../../shared/constants";
 
 export interface ScannedFile {
   path: string;
@@ -9,7 +9,7 @@ export interface ScannedFile {
 
 export function scanFolders(folders: string[]): ScannedFile[] {
   const seen = new Set<string>();
-  const result: ScannedFile[] = [];
+  const results: ScannedFile[] = [];
 
   for (const folder of folders) {
     const resolved = path.resolve(folder);
@@ -17,18 +17,19 @@ export function scanFolders(folders: string[]): ScannedFile[] {
       continue;
     }
 
-    walk(resolved, result, seen);
+    walk(resolved, results, seen);
   }
 
-  return result;
+  return results;
 }
 
-function walk(dir: string, result: ScannedFile[], seen: Set<string>): void {
+function walk(dir: string, results: ScannedFile[], seen: Set<string>): void {
   let entries: fs.Dirent[];
+
   try {
     entries = fs.readdirSync(dir, { withFileTypes: true });
-  } catch (err) {
-    console.warn("Scanner could not read:", dir, err);
+  } catch (error) {
+    console.warn("Scanner could not read directory:", dir, error);
     return;
   }
 
@@ -36,17 +37,21 @@ function walk(dir: string, result: ScannedFile[], seen: Set<string>): void {
     const fullPath = path.join(dir, entry.name);
 
     if (entry.isDirectory()) {
-      walk(fullPath, result, seen);
+      walk(fullPath, results, seen);
       continue;
     }
 
     const ext = path.extname(entry.name).toLowerCase();
-    if (!AUDIO_EXTENSIONS.has(ext)) continue;
+    if (!AUDIO_EXTENSIONS.has(ext)) {
+      continue;
+    }
 
     const normalized = path.normalize(fullPath);
-    if (seen.has(normalized)) continue;
-    seen.add(normalized);
+    if (seen.has(normalized)) {
+      continue;
+    }
 
-    result.push({ path: normalized, ext });
+    seen.add(normalized);
+    results.push({ path: normalized, ext });
   }
 }

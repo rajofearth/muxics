@@ -1,24 +1,28 @@
-import fs from "fs";
+import fs from "node:fs";
 import { SETTINGS_PATH, ensureAppDataDirs } from "./paths";
 
 export interface Settings {
   watchFolders: string[];
 }
 
-const DEFAULT: Settings = {
+const DEFAULT_SETTINGS: Settings = {
   watchFolders: [],
 };
 
 export function loadSettings(): Settings {
   ensureAppDataDirs();
+
   try {
     const raw = fs.readFileSync(SETTINGS_PATH, "utf-8");
     const parsed = JSON.parse(raw) as Partial<Settings>;
+
     return {
-      watchFolders: Array.isArray(parsed.watchFolders) ? parsed.watchFolders : DEFAULT.watchFolders,
+      watchFolders: Array.isArray(parsed.watchFolders)
+        ? parsed.watchFolders
+        : DEFAULT_SETTINGS.watchFolders,
     };
   } catch {
-    return { ...DEFAULT };
+    return { ...DEFAULT_SETTINGS };
   }
 }
 

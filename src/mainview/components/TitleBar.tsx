@@ -1,13 +1,13 @@
 import { Minus, Square, X } from "lucide-react";
+import type { DesktopBridge } from "../../shared/desktop-contract";
 
-type TitleBarSend = {
-  minimizeWindow?: () => void;
-  maximizeWindow?: () => void;
-  closeWindow?: () => void;
-};
+type TitleBarSend = Pick<
+  DesktopBridge["send"],
+  "minimizeWindow" | "maximizeWindow" | "closeWindow"
+>;
 
 type TitleBarProps = {
-  electrobun?: { rpc?: { send?: TitleBarSend } };
+  desktop?: Pick<DesktopBridge, "send">;
   title?: string;
   subtitle?: string;
   compact?: boolean;
@@ -45,20 +45,20 @@ function WindowControls({ send }: { send?: TitleBarSend }) {
 }
 
 export function TitleBar({
-  electrobun,
+  desktop,
   title = "Muse",
   subtitle,
   compact = false,
 }: TitleBarProps) {
   const hClass = compact ? "h-8" : "h-10";
-  const send = electrobun?.rpc?.send;
+  const send = desktop?.send;
 
   return (
     <header
       className={`${hClass} shrink-0 border-b border-app-border bg-app-surface-alt/85 backdrop-blur-sm flex items-stretch select-none`}
     >
       <div
-        className="flex-1 min-w-0 px-3 flex items-center electrobun-webkit-app-region-drag"
+        className="app-region-drag flex-1 min-w-0 px-3 flex items-center"
         onDoubleClick={() => send?.maximizeWindow?.()}
       >
         <div className="min-w-0">
@@ -73,7 +73,9 @@ export function TitleBar({
         </div>
       </div>
 
-      <WindowControls send={send} />
+      <div className="app-region-no-drag">
+        <WindowControls send={send} />
+      </div>
     </header>
   );
 }

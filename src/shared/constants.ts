@@ -22,4 +22,10 @@ export const MIME_TYPES: Record<string, string> = {
   ".webm": "audio/webm",
 };
 
-export const APP_ID = "winampplayer.electrobun.dev";
+export const APP_NAME = "Muse";
+export const APP_ID = "dev.muse.player";
+export const APP_DATA_ID = "muse.player";
+export const LEGACY_APP_DATA_IDS = [
+  "muse.electrobun.dev",
+  "winampplayer.electrobun.dev",
+] as const;

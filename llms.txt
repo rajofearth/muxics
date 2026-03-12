@@ -1,24 +1,24 @@
-# Electrobun Project
+# Electron Project
 
-This is an Electrobun desktop application.
+This is an Electron desktop application.
 
-IMPORTANT: Electrobun is NOT Electron. Do not use Electron APIs or patterns.
+IMPORTANT: Use Electron main/preload patterns with `contextBridge`, `ipcMain`, and `ipcRenderer`. Do not reintroduce Electrobun or Bun runtime APIs.
 
 ## Documentation
 
-Full API reference: https://blackboard.sh/electrobun/llms.txt
-Getting started: https://blackboard.sh/electrobun/docs/
+Electron docs: https://www.electronjs.org/docs/latest
+electron-builder docs: https://www.electron.build/
 
 ## Quick Reference
 
 Import patterns:
-- Main process (Bun): `import { BrowserWindow } from "electrobun/bun"`
-- Browser context: `import { Electroview } from "electrobun/view"`
+- Main process: `import { BrowserWindow } from "electron"`
+- Preload: `import { contextBridge, ipcRenderer } from "electron"`
+- Renderer bridge: import the typed desktop bridge from `src/mainview/desktop.ts`
 
-Use `views://` URLs to load bundled assets (e.g., `url: "views://mainview/index.html"`).
-Views must be configured in `electrobun.config.ts` to be built and copied into the bundle.
+Use `BrowserWindow.loadURL()` in dev and bundled `dist/index.html` in production.
+Renderer assets are built by Vite to `dist/`, and Electron entrypoints are built by tsup to `dist-electron/`.
 
 ## About
 
-Electrobun is built by Blackboard (https://blackboard.sh), an innovation lab building
-tools and funding teams that define the next generation of technology.
+Packaging is handled by `electron-builder`, with artifacts written to `artifacts/`.

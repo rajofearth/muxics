@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { Track, Playlist, RepeatMode } from "../types";
 import { shuffleArray, parseTime } from "../utils";
+import type { DesktopBridge } from "../../shared/desktop-contract";
 
 const CONCURRENCY = 10;
 
@@ -30,43 +31,8 @@ async function pLimit<T, R>(items: T[], fn: (x: T) => Promise<R>): Promise<R[]> 
   return results;
 }
 
-export type WinampRPC = {
-  request: {
-    getDefaultMusicPath: () => Promise<string>;
-    scanFolders: (p: { paths: string[] }) => Promise<{ files: { path: string; ext: string }[] }>;
-    getTrackMetadata: (p: { path: string }) => Promise<{
-      title: string;
-      artist: string;
-      album: string;
-      duration: number;
-      time: string;
-      genre: string;
-      picture?: string;
-    } | null>;
-    getPlaybackUrl: (p: { path: string }) => Promise<string>;
-    getWatchFolders: () => Promise<string[]>;
-    addFolder: (p: { path: string }) => Promise<{ success: boolean; error?: string }>;
-    validateFolder: (p: { path: string }) => Promise<{ valid: boolean; resolvedPath?: string; error?: string }>;
-    removeFolder: (p: { path: string }) => Promise<void>;
-    loadPlaylist: (p: { path: string }) => Promise<{
-      name: string;
-      path: string;
-      entries: { path: string; title?: string }[];
-    } | null>;
-    savePlaylist: (p: { path: string; name: string; entries: string[] }) => Promise<void>;
-    listPlaylists: () => Promise<{
-      name: string;
-      path: string;
-      entries: { path: string; title?: string }[];
-    }[]>;
-    getPlaylistsDir: () => Promise<string>;
-    renamePlaylist: (p: { oldPath: string; newName: string }) => Promise<void>;
-    deletePlaylist: (p: { path: string }) => Promise<void>;
-  };
-};
-
 interface PlayerState {
-  rpc: WinampRPC | null;
+  rpc: DesktopBridge | null;
   library: { tracks: Track[]; loading: boolean; error: string | null; scanProgress: number };
   playlists: { items: Playlist[]; activeId: string | null };
   player: {
@@ -88,7 +54,7 @@ interface PlayerState {
 }
 
 interface PlayerActions {
-  setRpc: (rpc: WinampRPC | null) => void;
+  setRpc: (rpc: DesktopBridge | null) => void;
   loadLibrary: () => Promise<void>;
   addFolder: (path: string) => Promise<void>;
   removeFolder: (path: string) => Promise<void>;

@@ -7,34 +7,19 @@ import { useThemeFromArt } from "./hooks/useThemeFromArt";
 import { AudioEngineProvider } from "./context/AudioEngineContext";
 import { ThemeProvider } from "./components/ThemeProvider";
 import { ToastContainer } from "./components/Toast";
+import type { DesktopBridge } from "../shared/desktop-contract";
 
 const MINI_WIDTH = 380;
 const MINI_HEIGHT = 776;
 
-type AppElectrobun = {
-  rpc?: {
-    send?: {
-      resizeWindow: (p: { width: number; height: number }) => void;
-      setMinSize: (p: { width: number; height: number }) => void;
-      closeWindow: () => void;
-      minimizeWindow: () => void;
-      maximizeWindow: () => void;
-      showContextMenu: () => void;
-      updateNowPlaying: (p: { title: string; artist: string; isPlaying: boolean }) => void;
-      clearNowPlaying: () => void;
-    };
-    request?: unknown;
-  };
-};
-
 type AppProps = {
-  electrobun: AppElectrobun;
+  desktop: DesktopBridge;
 };
 
 const MAIN_WINDOW_WIDTH = 1200;
 const MAIN_WINDOW_HEIGHT = 800;
 
-export default function App({ electrobun }: AppProps) {
+export default function App({ desktop }: AppProps) {
   const [windowMode, setWindowMode] = useState<"main" | "mini">("main");
   const initRef = useRef(false);
 
@@ -53,12 +38,9 @@ export default function App({ electrobun }: AppProps) {
   const rpcReady = usePlayerStore((s) => s.rpc !== null);
 
   useEffect(() => {
-    const rpc = electrobun.rpc;
-    if (rpc && rpc.request) {
-      setRpc(rpc as Parameters<typeof setRpc>[0]);
-    }
+    setRpc(desktop);
     return () => setRpc(null);
-  }, [electrobun, setRpc]);
+  }, [desktop, setRpc]);
 
   useEffect(() => {
     if (!initRef.current && rpcReady) {
@@ -69,19 +51,16 @@ export default function App({ electrobun }: AppProps) {
   }, [rpcReady, loadLibrary, loadPlaylists]);
 
   useEffect(() => {
-    const send = electrobun.rpc?.send;
-    if (!send) return;
-
     if (player.currentTrack) {
-      send.updateNowPlaying({
+      desktop.send.updateNowPlaying({
         title: player.currentTrack.title,
         artist: player.currentTrack.artist,
         isPlaying: player.isPlaying,
       });
     } else {
-      send.clearNowPlaying();
+      desktop.send.clearNowPlaying();
     }
-  }, [player.currentTrack?.id, player.isPlaying, electrobun.rpc?.send]);
+  }, [desktop, player.currentTrack?.id, player.isPlaying]);
 
   const switchToMiniRef = useRef<(() => void) | null>(null);
   const switchToMainRef = useRef<(() => void) | null>(null);
@@ -93,7 +72,7 @@ export default function App({ electrobun }: AppProps) {
         case "playPause": togglePlay(); break;
         case "prev": handlePrev(); break;
         case "next": handleNext(); break;
-        case "close": electrobun.rpc?.send?.closeWindow?.(); break;
+        case "close": desktop.send.closeWindow(); break;
         case "miniPlayer": switchToMiniRef.current?.(); break;
         case "viewLibrary":
           document.dispatchEvent(new CustomEvent("app-navigate", { detail: "library" }));
@@ -122,19 +101,19 @@ export default function App({ electrobun }: AppProps) {
       document.removeEventListener("winamp-context-action", handleAction);
       document.removeEventListener("winamp-menu-action", handleAction);
     };
-  }, [togglePlay, handlePrev, handleNext, electrobun, setVolume]);
+  }, [desktop, togglePlay, handlePrev, handleNext, setVolume]);
 
   const switchToMini = useCallback(() => {
-    electrobun.rpc?.send?.setMinSize?.({ width: MINI_WIDTH, height: 600 });
-    electrobun.rpc?.send?.resizeWindow?.({ width: MINI_WIDTH, height: MINI_HEIGHT });
+    desktop.send.setMinSize({ width: MINI_WIDTH, height: 600 });
+    desktop.send.resizeWindow({ width: MINI_WIDTH, height: MINI_HEIGHT });
     setWindowMode("mini");
-  }, [electrobun]);
+  }, [desktop]);
 
   const switchToMain = useCallback(() => {
-    electrobun.rpc?.send?.setMinSize?.({ width: 800, height: 600 });
-    electrobun.rpc?.send?.resizeWindow?.({ width: MAIN_WINDOW_WIDTH, height: MAIN_WINDOW_HEIGHT });
+    desktop.send.setMinSize({ width: 800, height: 600 });
+    desktop.send.resizeWindow({ width: MAIN_WINDOW_WIDTH, height: MAIN_WINDOW_HEIGHT });
     setWindowMode("main");
-  }, [electrobun]);
+  }, [desktop]);
 
   switchToMiniRef.current = switchToMini;
   switchToMainRef.current = switchToMain;
@@ -144,7 +123,7 @@ export default function App({ electrobun }: AppProps) {
       {windowMode === "mini" ? (
         <div className="h-full w-full">
           <MiniPlayer
-            electrobun={electrobun}
+            desktop={desktop}
             onExpandToMain={switchToMain}
             currentTrack={player.currentTrack}
             isPlaying={player.isPlaying}
@@ -162,7 +141,7 @@ export default function App({ electrobun }: AppProps) {
       ) : (
         <AudioEngineProvider analyserRef={analyserRef} analyserReady={analyserReady}>
           <MainWindow
-            electrobun={electrobun}
+            desktop={desktop}
             onToggleMini={switchToMini}
             currentTrack={player.currentTrack}
             isPlaying={player.isPlaying}
