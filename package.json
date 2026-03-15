@@ -6,16 +6,9 @@
   "packageManager": "pnpm@10.31.0",
   "main": "dist-electron/main.cjs",
   "scripts": {
-    "electron:install": "node scripts/ensure-electron-binary.mjs",
-    "dev": "pnpm run electron:install && concurrently -k \"pnpm run dev:renderer\" \"pnpm run dev:electron:build\" \"pnpm run dev:electron\"",
-    "dev:renderer": "vite --port 5173",
-    "dev:electron:build": "tsup --config tsup.electron.config.ts --watch",
-    "dev:electron": "wait-on http-get://127.0.0.1:5173 dist-electron/main.cjs dist-electron/preload.cjs && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 pnpm exec electronmon .",
-    "prepare:assets": "node scripts/prepare-electron-assets.mjs",
-    "build:renderer": "vite build",
-    "build:electron": "tsup --config tsup.electron.config.ts",
-    "build": "pnpm run prepare:assets && pnpm run build:renderer && pnpm run build:electron",
-    "package": "pnpm run electron:install && pnpm run build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --config electron-builder.yml"
+    "dev": "concurrently -k \"vite --port 5173\" \"tsup --config tsup.electron.config.ts --watch\" \"cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .\"",
+    "build": "vite build && tsup --config tsup.electron.config.ts",
+    "package": "electron-builder --config electron-builder.yml"
   },
   "dependencies": {
     "colorthief": "^2.7.0",
