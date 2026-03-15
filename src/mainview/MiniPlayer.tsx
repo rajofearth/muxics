@@ -39,10 +39,12 @@ const MIN_HEIGHT = 400;
 function useResizeToContent(
   desktop: DesktopBridge,
   enabled: boolean,
-  contentKey: number
+  contentKey: number,
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
   const reportSize = useCallback(
     (w: number, h: number) => {
       desktop.send.resizeWindow({
@@ -50,7 +52,7 @@ function useResizeToContent(
         height: Math.max(MIN_HEIGHT, Math.round(h)),
       });
     },
-    [desktop]
+    [desktop],
   );
 
   const measure = useCallback(() => {
@@ -99,7 +101,9 @@ export function MiniPlayer({
   const duration = currentTrack?.duration ?? 0;
   const containerRef = useResizeToContent(desktop, true, playQueue.length);
   const toggleFavorite = usePlayerStore((s) => s.toggleFavorite);
-  const isFav = usePlayerStore((s) => currentTrack ? s.favorites.has(currentTrack.id) : false);
+  const isFav = usePlayerStore((s) =>
+    currentTrack ? s.favorites.has(currentTrack.id) : false,
+  );
 
   return (
     <div
@@ -108,7 +112,7 @@ export function MiniPlayer({
     >
       <TitleBar
         desktop={desktop}
-        title={currentTrack ? currentTrack.title : "Muse"}
+        title={currentTrack ? currentTrack.title : "Muxics"}
         subtitle={currentTrack ? currentTrack.artist : "Mini Player"}
         compact
       />
@@ -116,15 +120,23 @@ export function MiniPlayer({
       <div className="p-5">
         <div className="flex items-center gap-4 mb-5">
           {currentTrack?.picture ? (
-            <img src={currentTrack.picture} alt="" className="w-14 h-14 rounded-lg object-cover shadow-md" />
+            <img
+              src={currentTrack.picture}
+              alt=""
+              className="w-14 h-14 rounded-lg object-cover shadow-md"
+            />
           ) : (
             <div className="w-14 h-14 rounded-lg bg-app-elevated flex items-center justify-center">
               <Music size={24} className="text-app-text-tertiary" />
             </div>
           )}
           <div className="min-w-0 flex-1">
-            <div className="text-[14px] font-medium truncate">{currentTrack?.title ?? "No track"}</div>
-            <div className="text-[12px] text-app-text-tertiary truncate mt-0.5">{currentTrack?.artist ?? ""}</div>
+            <div className="text-[14px] font-medium truncate">
+              {currentTrack?.title ?? "No track"}
+            </div>
+            <div className="text-[12px] text-app-text-tertiary truncate mt-0.5">
+              {currentTrack?.artist ?? ""}
+            </div>
           </div>
           {currentTrack && (
             <button
@@ -137,21 +149,36 @@ export function MiniPlayer({
         </div>
 
         <div className="mb-4">
-          <Scrubber value={currentTime} max={duration} onChange={onScrubberChange} size="sm" />
+          <Scrubber
+            value={currentTime}
+            max={duration}
+            onChange={onScrubberChange}
+            size="sm"
+          />
         </div>
 
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-5">
-            <button onClick={onPrev} className="text-app-text-secondary hover:text-app-text-primary">
+            <button
+              onClick={onPrev}
+              className="text-app-text-secondary hover:text-app-text-primary"
+            >
               <SkipBack size={18} className="fill-current" />
             </button>
             <button
               onClick={onPlayPause}
               className="w-10 h-10 rounded-full bg-app-text-primary text-app-bg flex items-center justify-center hover:scale-105 active:scale-95 transition-transform"
             >
-              {isPlaying ? <Pause size={18} className="fill-current" /> : <Play size={18} className="fill-current ml-0.5" />}
+              {isPlaying ? (
+                <Pause size={18} className="fill-current" />
+              ) : (
+                <Play size={18} className="fill-current ml-0.5" />
+              )}
             </button>
-            <button onClick={onNext} className="text-app-text-secondary hover:text-app-text-primary">
+            <button
+              onClick={onNext}
+              className="text-app-text-secondary hover:text-app-text-primary"
+            >
               <SkipForward size={18} className="fill-current" />
             </button>
           </div>
@@ -167,7 +194,12 @@ export function MiniPlayer({
               className="flex-1 relative h-1 bg-app-border-strong rounded-full cursor-pointer"
               onClick={(e) => {
                 const rect = e.currentTarget.getBoundingClientRect();
-                onVolumeChange(Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)));
+                onVolumeChange(
+                  Math.max(
+                    0,
+                    Math.min(1, (e.clientX - rect.left) / rect.width),
+                  ),
+                );
               }}
             >
               <div
@@ -183,7 +215,9 @@ export function MiniPlayer({
         <div className="flex items-center justify-between px-5 py-2.5">
           <div className="flex items-center gap-2">
             <ListMusic size={14} className="text-app-text-tertiary" />
-            <span className="text-[11px] font-medium text-app-text-tertiary uppercase tracking-wider">Queue</span>
+            <span className="text-[11px] font-medium text-app-text-tertiary uppercase tracking-wider">
+              Queue
+            </span>
           </div>
           <button
             onClick={() => onExpandToMain?.()}
@@ -205,25 +239,36 @@ export function MiniPlayer({
               return (
                 <button
                   key={`${track.id}-mini-${index}`}
-                  onClick={() => isActive ? onPlayPause() : onTrackSelect(track, playQueue)}
+                  onClick={() =>
+                    isActive ? onPlayPause() : onTrackSelect(track, playQueue)
+                  }
                   className={`w-full flex items-center justify-between p-2.5 rounded-lg text-left transition-all ${
                     isActive ? "bg-app-active" : "hover:bg-app-hover"
                   }`}
                 >
                   <div className="flex items-center gap-3 min-w-0 flex-1">
-                    <span className={`w-5 text-[11px] text-right shrink-0 tabular-nums ${isActive ? "text-app-accent" : "text-app-text-tertiary"}`}>
+                    <span
+                      className={`w-5 text-[11px] text-right shrink-0 tabular-nums ${isActive ? "text-app-accent" : "text-app-text-tertiary"}`}
+                    >
                       {isActive ? (
-                        <Volume2 size={12} className={isPlaying ? "animate-pulse-soft" : ""} />
+                        <Volume2
+                          size={12}
+                          className={isPlaying ? "animate-pulse-soft" : ""}
+                        />
                       ) : (
                         index + 1
                       )}
                     </span>
-                    <span className={`text-[13px] truncate ${isActive ? "text-app-accent font-medium" : "text-app-text-primary"}`}>
+                    <span
+                      className={`text-[13px] truncate ${isActive ? "text-app-accent font-medium" : "text-app-text-primary"}`}
+                    >
                       {track.title}
                     </span>
                   </div>
                   <div className="flex items-center gap-2 text-[11px] text-app-text-tertiary shrink-0 ml-2">
-                    <span className="truncate max-w-[100px]">{track.artist}</span>
+                    <span className="truncate max-w-[100px]">
+                      {track.artist}
+                    </span>
                     <span className="tabular-nums">{track.time}</span>
                   </div>
                 </button>

@@ -1,5 +1,5 @@
-appId: dev.muse.player
-productName: Muse
+appId: dev.muxics.player
+productName: Muxics
 directories:
   output: artifacts
   buildResources: build

@@ -1,8 +1,9 @@
 import type { DesktopBridge } from "../shared/desktop-contract";
 
-type WindowWithDesktop = Window & typeof globalThis & {
-  museDesktop?: DesktopBridge;
-};
+type WindowWithDesktop = Window &
+  typeof globalThis & {
+    muxicsDesktop?: DesktopBridge;
+  };
 
 function createUnavailableProxy<T extends object>(kind: "request" | "send"): T {
   return new Proxy(
@@ -11,15 +12,19 @@ function createUnavailableProxy<T extends object>(kind: "request" | "send"): T {
       get: (_target, property) => {
         if (kind === "request") {
           return async () => {
-            throw new Error(`Desktop bridge request "${String(property)}" is not available.`);
+            throw new Error(
+              `Desktop bridge request "${String(property)}" is not available.`,
+            );
           };
         }
 
         return () => {
-          console.warn(`Desktop bridge message "${String(property)}" was called before preload initialization.`);
+          console.warn(
+            `Desktop bridge message "${String(property)}" was called before preload initialization.`,
+          );
         };
       },
-    }
+    },
   ) as T;
 }
 
@@ -29,5 +34,5 @@ const fallbackBridge: DesktopBridge = {
 };
 
 export function getDesktopBridge(): DesktopBridge {
-  return (window as WindowWithDesktop).museDesktop ?? fallbackBridge;
+  return (window as WindowWithDesktop).muxicsDesktop ?? fallbackBridge;
 }

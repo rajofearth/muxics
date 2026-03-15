@@ -2,7 +2,16 @@ import { useState, useMemo, useCallback, useEffect } from "react";
 import type { Track, NavState, NavView } from "./types";
 import { usePlayerStore } from "./store/playerStore";
 import { formatTotalDuration } from "./utils";
-import { Library, Mic2, Disc3, ListMusic, Music, Play, Heart, Shuffle } from "lucide-react";
+import {
+  Library,
+  Mic2,
+  Disc3,
+  ListMusic,
+  Music,
+  Play,
+  Heart,
+  Shuffle,
+} from "lucide-react";
 import { shuffleArray } from "./utils";
 import { TitleBar } from "./components/TitleBar";
 import { Sidebar } from "./components/Sidebar";
@@ -58,10 +67,20 @@ export function MainWindow({
   onToggleShuffle,
   onCycleRepeat,
 }: MainWindowProps) {
-  const [navState, setNavState] = useState<NavState>({ view: "library", id: undefined });
+  const [navState, setNavState] = useState<NavState>({
+    view: "library",
+    id: undefined,
+  });
   const [activeTab, setActiveTab] = useState<string>("All");
 
-  const { library, playlists, loadPlaylistTracks, settings, recentlyPlayed, getFavoriteTracks } = usePlayerStore();
+  const {
+    library,
+    playlists,
+    loadPlaylistTracks,
+    settings,
+    recentlyPlayed,
+    getFavoriteTracks,
+  } = usePlayerStore();
 
   const handleNavigate = useCallback((view: NavView, id?: string) => {
     setNavState({ view, id });
@@ -79,34 +98,64 @@ export function MainWindow({
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      )
+        return;
       switch (e.key) {
         case " ":
           e.preventDefault();
           onPlayPause();
           break;
         case "ArrowRight":
-          if (e.metaKey || e.ctrlKey) { onNext(); e.preventDefault(); }
+          if (e.metaKey || e.ctrlKey) {
+            onNext();
+            e.preventDefault();
+          }
           break;
         case "ArrowLeft":
-          if (e.metaKey || e.ctrlKey) { onPrev(); e.preventDefault(); }
+          if (e.metaKey || e.ctrlKey) {
+            onPrev();
+            e.preventDefault();
+          }
           break;
         case "ArrowUp":
-          if (e.metaKey || e.ctrlKey) { onVolumeChange(Math.min(1, volume + 0.05)); e.preventDefault(); }
+          if (e.metaKey || e.ctrlKey) {
+            onVolumeChange(Math.min(1, volume + 0.05));
+            e.preventDefault();
+          }
           break;
         case "ArrowDown":
-          if (e.metaKey || e.ctrlKey) { onVolumeChange(Math.max(0, volume - 0.05)); e.preventDefault(); }
+          if (e.metaKey || e.ctrlKey) {
+            onVolumeChange(Math.max(0, volume - 0.05));
+            e.preventDefault();
+          }
           break;
         case "f":
         case "F":
-          if (e.metaKey || e.ctrlKey) { handleNavigate("search"); e.preventDefault(); }
+          if (e.metaKey || e.ctrlKey) {
+            handleNavigate("search");
+            e.preventDefault();
+          }
           break;
         case "Escape":
-          if (navState.view === "now_playing") { handleNavigate("library"); e.preventDefault(); }
-          else if (navState.view === "artist_detail") { handleNavigate("artists"); e.preventDefault(); }
-          else if (navState.view === "album_detail") { handleNavigate("albums"); e.preventDefault(); }
-          else if (navState.view === "playlist_detail") { handleNavigate("playlists"); e.preventDefault(); }
-          else if (navState.view === "search") { handleNavigate("library"); e.preventDefault(); }
+          if (navState.view === "now_playing") {
+            handleNavigate("library");
+            e.preventDefault();
+          } else if (navState.view === "artist_detail") {
+            handleNavigate("artists");
+            e.preventDefault();
+          } else if (navState.view === "album_detail") {
+            handleNavigate("albums");
+            e.preventDefault();
+          } else if (navState.view === "playlist_detail") {
+            handleNavigate("playlists");
+            e.preventDefault();
+          } else if (navState.view === "search") {
+            handleNavigate("library");
+            e.preventDefault();
+          }
           break;
         case "l":
         case "L":
@@ -139,28 +188,30 @@ export function MainWindow({
           picture: tracks.find((t) => t.picture)?.picture,
         };
       }),
-    [library.tracks]
+    [library.tracks],
   );
 
   const albums = useMemo(
     () =>
-      [...new Set(library.tracks.map((t) => t.album))].filter(Boolean).map((name) => {
-        const tracks = library.tracks.filter((t) => t.album === name);
-        return {
-          id: name,
-          name,
-          desc: tracks[0]?.artist ?? "",
-          picture: tracks.find((t) => t.picture)?.picture,
-        };
-      }),
-    [library.tracks]
+      [...new Set(library.tracks.map((t) => t.album))]
+        .filter(Boolean)
+        .map((name) => {
+          const tracks = library.tracks.filter((t) => t.album === name);
+          return {
+            id: name,
+            name,
+            desc: tracks[0]?.artist ?? "",
+            picture: tracks.find((t) => t.picture)?.picture,
+          };
+        }),
+    [library.tracks],
   );
 
   const handlePlayAll = useCallback(
     (tracks: Track[]) => {
       if (tracks.length > 0) onPlayTrack(tracks[0], tracks);
     },
-    [onPlayTrack]
+    [onPlayTrack],
   );
 
   const handleShufflePlay = useCallback(
@@ -170,7 +221,7 @@ export function MainWindow({
         onPlayTrack(shuffled[0], shuffled);
       }
     },
-    [onPlayTrack]
+    [onPlayTrack],
   );
 
   const renderTrackView = (
@@ -180,7 +231,7 @@ export function MainWindow({
     icon: React.ReactNode,
     extraActions?: React.ReactNode,
     playlistId?: string,
-    onBack?: () => void
+    onBack?: () => void,
   ) => (
     <div className="flex-1 flex flex-col overflow-hidden">
       <HeroHeader
@@ -212,12 +263,19 @@ export function MainWindow({
         }
       />
       <TabNav
-        tabs={["All", ...Array.from(new Set(tracks.map((t) => t.genre).filter(Boolean)))]}
+        tabs={[
+          "All",
+          ...Array.from(new Set(tracks.map((t) => t.genre).filter(Boolean))),
+        ]}
         activeTab={activeTab}
         onTabChange={setActiveTab}
       />
       <TrackTable
-        tracks={activeTab === "All" ? tracks : tracks.filter((t) => t.genre === activeTab)}
+        tracks={
+          activeTab === "All"
+            ? tracks
+            : tracks.filter((t) => t.genre === activeTab)
+        }
         currentTrack={currentTrack}
         isPlaying={isPlaying}
         onTrackClick={(track, queue) => onPlayTrack(track, queue)}
@@ -232,7 +290,9 @@ export function MainWindow({
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center w-64">
             <div className="w-10 h-10 border-2 border-app-text-tertiary border-t-app-text-primary rounded-full animate-spin mx-auto mb-4" />
-            <div className="text-[14px] text-app-text-primary mb-3">Scanning library...</div>
+            <div className="text-[14px] text-app-text-primary mb-3">
+              Scanning library...
+            </div>
             {library.scanProgress > 0 && (
               <div>
                 <div className="h-1 bg-app-border-strong rounded-full overflow-hidden mb-2">
@@ -241,7 +301,9 @@ export function MainWindow({
                     style={{ width: `${library.scanProgress}%` }}
                   />
                 </div>
-                <div className="text-[11px] text-app-text-tertiary">{library.scanProgress}% complete</div>
+                <div className="text-[11px] text-app-text-tertiary">
+                  {library.scanProgress}% complete
+                </div>
               </div>
             )}
           </div>
@@ -249,7 +311,11 @@ export function MainWindow({
       );
     }
 
-    if (library.tracks.length === 0 && !library.error && settings.watchFolders.length === 0) {
+    if (
+      library.tracks.length === 0 &&
+      !library.error &&
+      settings.watchFolders.length === 0
+    ) {
       return <EmptyLibrary />;
     }
 
@@ -257,8 +323,12 @@ export function MainWindow({
       return (
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center max-w-md">
-            <div className="text-[14px] text-red-400 mb-2">Something went wrong</div>
-            <div className="text-[13px] text-app-text-tertiary mb-4">{library.error}</div>
+            <div className="text-[14px] text-red-400 mb-2">
+              Something went wrong
+            </div>
+            <div className="text-[13px] text-app-text-tertiary mb-4">
+              {library.error}
+            </div>
             <button
               onClick={() => usePlayerStore.getState().loadLibrary()}
               className="px-4 py-2 bg-app-elevated hover:bg-app-active rounded-lg text-[13px] text-app-text-primary"
@@ -274,8 +344,12 @@ export function MainWindow({
       return (
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
-            <div className="text-[14px] text-app-text-primary mb-2">No tracks found</div>
-            <div className="text-[13px] text-app-text-tertiary mb-4">Try adding more folders</div>
+            <div className="text-[14px] text-app-text-primary mb-2">
+              No tracks found
+            </div>
+            <div className="text-[13px] text-app-text-tertiary mb-4">
+              Try adding more folders
+            </div>
             <button
               onClick={() => handleNavigate("folders")}
               className="px-4 py-2 bg-app-elevated hover:bg-app-active rounded-lg text-[13px] text-app-text-primary"
@@ -309,7 +383,12 @@ export function MainWindow({
             />
           );
         }
-        return renderTrackView("All Songs", "Library", library.tracks, <Library size={40} className="text-app-text-tertiary" />);
+        return renderTrackView(
+          "All Songs",
+          "Library",
+          library.tracks,
+          <Library size={40} className="text-app-text-tertiary" />,
+        );
 
       case "search":
         return (
@@ -327,7 +406,7 @@ export function MainWindow({
           "Favorites",
           "Your Collection",
           favTracks,
-          <Heart size={40} className="text-app-accent fill-current" />
+          <Heart size={40} className="text-app-accent fill-current" />,
         );
       }
 
@@ -336,7 +415,7 @@ export function MainWindow({
           "All Songs",
           "Library",
           library.tracks,
-          <Library size={40} className="text-app-text-tertiary" />
+          <Library size={40} className="text-app-text-tertiary" />,
         );
 
       case "artists":
@@ -352,7 +431,9 @@ export function MainWindow({
               items={artists}
               onItemClick={(item) => handleNavigate("artist_detail", item.name)}
               onPlayItem={(item) => {
-                const tracks = library.tracks.filter((t) => t.artist === item.name);
+                const tracks = library.tracks.filter(
+                  (t) => t.artist === item.name,
+                );
                 if (tracks.length > 0) onPlayTrack(tracks[0], tracks);
               }}
             />
@@ -360,20 +441,26 @@ export function MainWindow({
         );
 
       case "artist_detail": {
-        const artistTracks = library.tracks.filter((t) => t.artist === navState.id);
+        const artistTracks = library.tracks.filter(
+          (t) => t.artist === navState.id,
+        );
         const artistPic = artistTracks.find((t) => t.picture)?.picture;
         return renderTrackView(
           navState.id ?? "Artist",
           "Artist",
           artistTracks,
           artistPic ? (
-            <img src={artistPic} alt="" className="w-full h-full object-cover" />
+            <img
+              src={artistPic}
+              alt=""
+              className="w-full h-full object-cover"
+            />
           ) : (
             <Mic2 size={40} className="text-app-text-tertiary" />
           ),
           undefined,
           undefined,
-          () => handleNavigate("artists")
+          () => handleNavigate("artists"),
         );
       }
 
@@ -390,7 +477,9 @@ export function MainWindow({
               items={albums}
               onItemClick={(item) => handleNavigate("album_detail", item.name)}
               onPlayItem={(item) => {
-                const tracks = library.tracks.filter((t) => t.album === item.name);
+                const tracks = library.tracks.filter(
+                  (t) => t.album === item.name,
+                );
                 if (tracks.length > 0) onPlayTrack(tracks[0], tracks);
               }}
             />
@@ -398,7 +487,9 @@ export function MainWindow({
         );
 
       case "album_detail": {
-        const albumTracks = library.tracks.filter((t) => t.album === navState.id);
+        const albumTracks = library.tracks.filter(
+          (t) => t.album === navState.id,
+        );
         const albumPic = albumTracks.find((t) => t.picture)?.picture;
         return renderTrackView(
           navState.id ?? "Album",
@@ -411,7 +502,7 @@ export function MainWindow({
           ),
           undefined,
           undefined,
-          () => handleNavigate("albums")
+          () => handleNavigate("albums"),
         );
       }
 
@@ -437,17 +528,22 @@ export function MainWindow({
 
       case "playlist_detail": {
         const plTracks = loadPlaylistTracks(navState.id ?? "");
-        const activePlaylist = playlists.items.find((p) => p.id === navState.id);
+        const activePlaylist = playlists.items.find(
+          (p) => p.id === navState.id,
+        );
         return renderTrackView(
           activePlaylist?.name ?? "Playlist",
           "Playlist",
           plTracks,
           <ListMusic size={40} className="text-app-text-tertiary" />,
           activePlaylist && (
-            <PlaylistHeaderActions playlist={activePlaylist} onNavigate={handleNavigate} />
+            <PlaylistHeaderActions
+              playlist={activePlaylist}
+              onNavigate={handleNavigate}
+            />
           ),
           activePlaylist?.id,
-          () => handleNavigate("playlists")
+          () => handleNavigate("playlists"),
         );
       }
 
@@ -464,22 +560,26 @@ export function MainWindow({
         );
 
       case "recent": {
-        const recent = recentlyPlayed.length > 0 ? recentlyPlayed : library.tracks.slice(0, 20);
+        const recent =
+          recentlyPlayed.length > 0
+            ? recentlyPlayed
+            : library.tracks.slice(0, 20);
         return renderTrackView(
           "Recently Played",
           "History",
           recent,
-          <Music size={40} className="text-app-text-tertiary" />
+          <Music size={40} className="text-app-text-tertiary" />,
         );
       }
 
       default: {
-        const defaultTracks = playQueue.length > 0 ? playQueue : library.tracks.slice(0, 10);
+        const defaultTracks =
+          playQueue.length > 0 ? playQueue : library.tracks.slice(0, 10);
         return renderTrackView(
           "Now Playing",
           "Queue",
           defaultTracks,
-          <Music size={40} className="text-app-text-tertiary" />
+          <Music size={40} className="text-app-text-tertiary" />,
         );
       }
     }
@@ -489,13 +589,20 @@ export function MainWindow({
     <div className="h-screen w-full bg-app-bg text-app-text-primary font-sans flex flex-col overflow-hidden">
       <TitleBar
         desktop={desktop}
-        title={currentTrack ? currentTrack.title : "Muse"}
+        title={currentTrack ? currentTrack.title : "Muxics"}
         subtitle={currentTrack ? currentTrack.artist : "Library"}
       />
 
       <div className="flex flex-1 overflow-hidden">
-        <Sidebar navState={navState} playlists={playlists.items} onNavigate={handleNavigate} />
-        <main key={`${navState.view}-${navState.id ?? ""}`} className="flex-1 flex flex-col overflow-hidden animate-fade-in">
+        <Sidebar
+          navState={navState}
+          playlists={playlists.items}
+          onNavigate={handleNavigate}
+        />
+        <main
+          key={`${navState.view}-${navState.id ?? ""}`}
+          className="flex-1 flex flex-col overflow-hidden animate-fade-in"
+        >
           {renderMainContent()}
         </main>
       </div>

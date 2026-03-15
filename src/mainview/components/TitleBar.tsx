@@ -46,7 +46,7 @@ function WindowControls({ send }: { send?: TitleBarSend }) {
 
 export function TitleBar({
   desktop,
-  title = "Muse",
+  title = "Muxics",
   subtitle,
   compact = false,
 }: TitleBarProps) {
@@ -62,11 +62,15 @@ export function TitleBar({
         onDoubleClick={() => send?.maximizeWindow?.()}
       >
         <div className="min-w-0">
-          <div className={`${compact ? "text-[11px]" : "text-[12px]"} font-medium leading-tight truncate`}>
+          <div
+            className={`${compact ? "text-[11px]" : "text-[12px]"} font-medium leading-tight truncate`}
+          >
             {title}
           </div>
           {subtitle ? (
-            <div className={`${compact ? "text-[10px]" : "text-[11px]"} text-app-text-tertiary leading-tight truncate`}>
+            <div
+              className={`${compact ? "text-[10px]" : "text-[11px]"} text-app-text-tertiary leading-tight truncate`}
+            >
               {subtitle}
             </div>
           ) : null}
