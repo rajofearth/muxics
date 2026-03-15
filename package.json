@@ -2,6 +2,7 @@
   "type": "module",
   "name": "muxics",
   "version": "1.0.1",
+  "author": "Rajofearth <rajofearth@proton.me>",
   "description": "A modern music player built with Electron",
   "packageManager": "pnpm@10.31.0",
   "main": "dist-electron/main.cjs",
