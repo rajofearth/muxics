@@ -173,6 +173,9 @@ jobs:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.tag != '')
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
       - name: Determine release tag
         id: tag
         shell: bash
@@ -220,22 +223,24 @@ jobs:
       - name: Create or update draft release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         shell: bash
         run: |
           TAG=${{ steps.tag.outputs.tag }}
           NOTES_FILE=release-notes.md
 
-          if gh release view "$TAG" >/dev/null 2>&1; then
+          if gh release view "$TAG" -R "$GH_REPO" >/dev/null 2>&1; then
             echo "Release $TAG exists, editing (ensuring draft and updating notes)"
-            gh release edit "$TAG" --title "Muxics $TAG" --notes-file "$NOTES_FILE" --draft
+            gh release edit "$TAG" --title "Muxics $TAG" --notes-file "$NOTES_FILE" --draft -R "$GH_REPO"
           else
             echo "Creating draft release $TAG"
-            gh release create "$TAG" --title "Muxics $TAG" --notes-file "$NOTES_FILE" --draft
+            gh release create "$TAG" --title "Muxics $TAG" --notes-file "$NOTES_FILE" --draft -R "$GH_REPO"
           fi
 
       - name: Upload assets to release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         shell: bash
         run: |
           TAG=${{ steps.tag.outputs.tag }}
@@ -247,7 +252,7 @@ jobs:
 
           for f in "${files[@]}"; do
             echo "Uploading: $f"
-            gh release upload "$TAG" "$f" --clobber || true
+            gh release upload "$TAG" "$f" --clobber -R "$GH_REPO" || true
           done
 
       - name: Done
