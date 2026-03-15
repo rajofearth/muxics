@@ -49,8 +49,8 @@ jobs:
         with:
           name: macos-arm64
           path: |
-            artifacts/*.dmg
-            artifacts/*.zip
+            artifacts/Muxics-*.dmg
+            artifacts/Muxics-*.zip
           if-no-files-found: error
 
   build-linux-x64:
@@ -80,8 +80,8 @@ jobs:
         with:
           name: linux-x64
           path: |
-            artifacts/*.AppImage
-            artifacts/*.tar.gz
+            artifacts/Muxics-*.AppImage
+            artifacts/Muxics-*.tar.gz
           if-no-files-found: error
 
   build-linux-arm64:
@@ -111,8 +111,8 @@ jobs:
         with:
           name: linux-arm64
           path: |
-            artifacts/*.AppImage
-            artifacts/*.tar.gz
+            artifacts/Muxics-*.AppImage
+            artifacts/Muxics-*.tar.gz
           if-no-files-found: error
 
   build-windows-x64:
@@ -142,8 +142,8 @@ jobs:
         with:
           name: windows-x64
           path: |
-            artifacts/*.exe
-            artifacts/*.zip
+            artifacts/Muxics-*.exe
+            artifacts/Muxics-*.zip
           if-no-files-found: error
 
   build-windows-arm64:
@@ -173,8 +173,8 @@ jobs:
         with:
           name: windows-arm64
           path: |
-            artifacts/*.exe
-            artifacts/*.zip
+            artifacts/Muxics-*.exe
+            artifacts/Muxics-*.zip
           if-no-files-found: error
 
   release:
@@ -255,7 +255,7 @@ jobs:
         run: |
           TAG=${{ steps.tag.outputs.tag }}
           # Collect only final installer/archive assets
-          mapfile -t files < <(find release-artifacts -type f \( -name '*.dmg' -o -name '*.zip' -o -name '*.AppImage' -o -name '*.tar.gz' -o -name '*.exe' \) | sed -e 's/ /\\ /g')
+          mapfile -t files < <(find release-artifacts -type f \( -name 'Muxics-*.dmg' -o -name 'Muxics-*.zip' -o -name 'Muxics-*.AppImage' -o -name 'Muxics-*.tar.gz' -o -name 'Muxics-*.exe' \) | sed -e 's/ /\\ /g')
           if [ "${#files[@]}" -eq 0 ]; then
             echo "No artifacts found to upload"
             exit 1
