@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "concurrently -k \"vite --port 5173\" \"tsup --config tsup.electron.config.ts --watch\" \"cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .\"",
     "build": "vite build && tsup --config tsup.electron.config.ts",
-    "package": "electron-builder --config electron-builder.yml --publish never"
+    "package": "electron-builder --config electron-builder.yml"
   },
   "dependencies": {
     "colorthief": "^2.7.0",

@@ -11,7 +11,6 @@ files:
   - package.json
 asar: true
 artifactName: ${productName}-${version}-${os}-${arch}.${ext}
-publish: never
 mac:
   category: public.app-category.music
   target:
