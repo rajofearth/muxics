@@ -48,7 +48,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: macos-arm64
-          path: artifacts/*
+          path: |
+            artifacts/*.dmg
+            artifacts/*.zip
           if-no-files-found: error
 
   build-linux-x64:
@@ -77,7 +79,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: linux-x64
-          path: artifacts/*
+          path: |
+            artifacts/*.AppImage
+            artifacts/*.tar.gz
           if-no-files-found: error
 
   build-linux-arm64:
@@ -106,7 +110,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: linux-arm64
-          path: artifacts/*
+          path: |
+            artifacts/*.AppImage
+            artifacts/*.tar.gz
           if-no-files-found: error
 
   build-windows-x64:
@@ -135,7 +141,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: windows-x64
-          path: artifacts/*
+          path: |
+            artifacts/*.exe
+            artifacts/*.zip
           if-no-files-found: error
 
   build-windows-arm64:
@@ -164,7 +172,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: windows-arm64
-          path: artifacts/*
+          path: |
+            artifacts/*.exe
+            artifacts/*.zip
           if-no-files-found: error
 
   release:
@@ -244,7 +254,8 @@ jobs:
         shell: bash
         run: |
           TAG=${{ steps.tag.outputs.tag }}
-          mapfile -t files < <(find release-artifacts -type f | sed -e 's/ /\\ /g')
+          # Collect only final installer/archive assets
+          mapfile -t files < <(find release-artifacts -type f \( -name '*.dmg' -o -name '*.zip' -o -name '*.AppImage' -o -name '*.tar.gz' -o -name '*.exe' \) | sed -e 's/ /\\ /g')
           if [ "${#files[@]}" -eq 0 ]; then
             echo "No artifacts found to upload"
             exit 1
