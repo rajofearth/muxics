@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "colorthief": "^2.7.0",
+    "ieee754": "latest",
     "lucide-react": "latest",
     "music-metadata": "^11.12.1",
     "react": "latest",

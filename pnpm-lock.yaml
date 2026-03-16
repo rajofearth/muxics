@@ -11,6 +11,9 @@ importers:
       colorthief:
         specifier: ^2.7.0
         version: 2.7.0
+      ieee754:
+        specifier: latest
+        version: 1.2.1
       lucide-react:
         specifier: latest
         version: 0.575.0(react@19.2.4)

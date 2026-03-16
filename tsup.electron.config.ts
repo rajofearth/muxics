@@ -17,4 +17,5 @@ export default defineConfig({
     js: ".cjs",
   }),
   external: ["electron"],
+  noExternal: ["music-metadata", "token-types", "ieee754"],
 });
