@@ -2,12 +2,18 @@ import { create } from "zustand";
 import type {
   AuthStatus,
   LibrarySource,
+  PendingAuthLogin,
   Playlist,
   RepeatMode,
   Track,
 } from "../types";
 import { shuffleArray, parseTime } from "../utils";
-import type { DesktopBridge, PlaylistResult, TrackResult } from "../../shared/desktop-contract";
+import type {
+  AuthLoginStartResult,
+  DesktopBridge,
+  PlaylistResult,
+  TrackResult,
+} from "../../shared/desktop-contract";
 
 const CONCURRENCY = 10;
 const MAX_RECENTLY_PLAYED = 50;
@@ -122,6 +128,11 @@ function loadVolume(): number {
 interface PlayerState {
   rpc: DesktopBridge | null;
   auth: AuthStatus;
+  authLogin: {
+    pending: PendingAuthLogin | null;
+    loading: boolean;
+    error: string | null;
+  };
   library: {
     tracks: Track[];
     localTracks: Track[];
@@ -161,6 +172,10 @@ interface PlayerActions {
   setRpc: (rpc: DesktopBridge | null) => void;
   loadAuthStatus: () => Promise<void>;
   loginToYtMusic: () => Promise<void>;
+  importYtMusicSession: (cookie: string) => Promise<boolean>;
+  completeYtMusicLogin: () => Promise<void>;
+  cancelYtMusicLogin: () => Promise<void>;
+  clearAuthLoginError: () => void;
   logoutFromYtMusic: () => Promise<void>;
   setLibrarySource: (source: LibrarySource) => void;
   loadLibrary: () => Promise<void>;
@@ -204,6 +219,11 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
     provider: "ytmusic",
     persistent: false,
   },
+  authLogin: {
+    pending: null,
+    loading: false,
+    error: null,
+  },
   library: {
     tracks: [],
     localTracks: [],
@@ -246,6 +266,9 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
     const auth = await rpc.request.authGetStatus();
     set((s) => ({
       auth,
+      authLogin: auth.loggedIn
+        ? { pending: null, loading: false, error: null }
+        : s.authLogin,
       library: {
         ...s.library,
         source: auth.loggedIn ? "ytmusic" : s.library.source,
@@ -258,15 +281,113 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
     const { rpc } = get();
     if (!rpc) return;
 
-    const auth = await rpc.request.authLogin();
     set((s) => ({
-      auth,
-      library: { ...s.library, source: auth.loggedIn ? "ytmusic" : s.library.source },
+      authLogin: { ...s.authLogin, loading: true, error: null },
     }));
 
-    if (auth.loggedIn) {
-      await get().syncYtMusicLibrary();
+    const result: AuthLoginStartResult = await rpc.request.authLogin();
+
+    if (result.kind === "pending_verification") {
+      set(() => ({
+        authLogin: {
+          pending: {
+            verificationUrl: result.verificationUrl,
+            userCode: result.userCode,
+            expiresAt: result.expiresAt,
+            pollIntervalMs: result.pollIntervalMs,
+          },
+          loading: false,
+          error: null,
+        },
+      }));
+      return;
     }
+
+    if (result.kind === "completed" || result.kind === "already_logged_in") {
+      const auth = result.auth;
+      set({
+        auth,
+        authLogin: { pending: null, loading: false, error: null },
+      });
+
+      if (auth.loggedIn) {
+        set((s) => ({
+          library: { ...s.library, source: "ytmusic" },
+        }));
+        await get().syncYtMusicLibrary();
+      }
+      return;
+    }
+
+    set((s) => ({
+      authLogin: { pending: null, loading: false, error: result.message },
+    }));
+  },
+
+  importYtMusicSession: async (cookie) => {
+    const { rpc } = get();
+    if (!rpc) return false;
+
+    set((s) => ({
+      authLogin: { ...s.authLogin, loading: true, error: null },
+    }));
+
+    const result = await rpc.request.authImportSession({ cookie });
+    if (!result.success || !result.auth) {
+      set((s) => ({
+        authLogin: { ...s.authLogin, loading: false, error: result.error ?? "Failed to import YouTube Music session." },
+      }));
+      return false;
+    }
+
+    set((s) => ({
+      auth: result.auth!,
+      authLogin: { pending: null, loading: false, error: null },
+      library: { ...s.library, source: "ytmusic" },
+    }));
+
+    await get().syncYtMusicLibrary();
+    return true;
+  },
+
+  completeYtMusicLogin: async () => {
+    const { rpc, authLogin } = get();
+    if (!rpc || !authLogin.pending) return;
+
+    set((s) => ({
+      authLogin: { ...s.authLogin, loading: true, error: null },
+    }));
+
+    const result = await rpc.request.authCompleteLogin();
+    if (result.kind === "completed") {
+      set((s) => ({
+        auth: result.auth,
+        authLogin: { pending: null, loading: false, error: null },
+        library: { ...s.library, source: "ytmusic" },
+      }));
+      await get().syncYtMusicLibrary();
+      return;
+    }
+
+    set((s) => ({
+      authLogin: { pending: s.authLogin.pending, loading: false, error: result.message },
+    }));
+  },
+
+  cancelYtMusicLogin: async () => {
+    const { rpc } = get();
+    if (!rpc) return;
+
+    await rpc.request.authCancelLogin();
+    set(() => ({
+      authLogin: { pending: null, loading: false, error: null },
+    }));
+  },
+
+  clearAuthLoginError: () => {
+    set((s) => ({
+      authLogin: { ...s.authLogin, error: null },
+    }));
   },
 
   logoutFromYtMusic: async () => {
@@ -276,6 +397,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
     const auth = await rpc.request.authLogout();
     set((s) => ({
       auth,
+      authLogin: { pending: null, loading: false, error: null },
       library: {
         ...s.library,
         remoteTracks: [],

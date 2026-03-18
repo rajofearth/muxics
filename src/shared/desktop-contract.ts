@@ -70,6 +70,66 @@ export interface AuthStatusResult {
   error?: string;
 }
 
+export interface PendingYtMusicLoginResult {
+  kind: "pending_verification";
+  verificationUrl: string;
+  userCode: string;
+  expiresAt: number;
+  pollIntervalMs: number;
+}
+
+export interface CompletedYtMusicLoginResult {
+  kind: "completed";
+  auth: AuthStatusResult;
+}
+
+export interface AlreadyLoggedInYtMusicLoginResult {
+  kind: "already_logged_in";
+  auth: AuthStatusResult;
+}
+
+export interface ErrorYtMusicLoginResult {
+  kind: "error";
+  message: string;
+}
+
+export interface ImportYtMusicSessionResult {
+  success: boolean;
+  auth?: AuthStatusResult;
+  error?: string;
+}
+
+export interface ImportYtMusicSessionParams {
+  cookie: string;
+  cookieNames?: string[];
+  sourceUrl?: string;
+}
+
+export interface BrowserBridgeBundleResult {
+  success: boolean;
+  extensionId: string;
+  folderPath?: string;
+  zipPath?: string;
+  error?: string;
+}
+
+export interface BrowserBridgeHostInstallResult {
+  success: boolean;
+  extensionId: string;
+  hostName: string;
+  error?: string;
+}
+
+export type AuthLoginStartResult =
+  | PendingYtMusicLoginResult
+  | CompletedYtMusicLoginResult
+  | AlreadyLoggedInYtMusicLoginResult
+  | ErrorYtMusicLoginResult;
+
+export type AuthLoginCompleteResult =
+  | CompletedYtMusicLoginResult
+  | ErrorYtMusicLoginResult;
+
 export interface YTMusicLibrarySyncResult {
   tracks: TrackResult[];
   playlists: PlaylistResult[];
@@ -105,8 +165,15 @@ export interface DesktopRequestMap {
   exportPlaylist: { params: { name: string; entries: string[] }; response: string };
   getPlatform: { params: void; response: string };
   authGetStatus: { params: void; response: AuthStatusResult };
-  authLogin: { params: void; response: AuthStatusResult };
+  authLogin: { params: void; response: AuthLoginStartResult };
+  authCompleteLogin: { params: void; response: AuthLoginCompleteResult };
+  authCancelLogin: { params: void; response: { success: boolean } };
+  authImportSession: { params: ImportYtMusicSessionParams; response: ImportYtMusicSessionResult };
   authLogout: { params: void; response: AuthStatusResult };
+  openExternalUrl: { params: { url: string }; response: { success: boolean } };
+  prepareBrowserBridge: { params: void; response: BrowserBridgeBundleResult };
+  installBrowserBridgeHost: { params: void; response: BrowserBridgeHostInstallResult };
+  openPath: { params: { path: string }; response: { success: boolean } };
   ytmusicSyncLibrary: { params: void; response: YTMusicLibrarySyncResult };
   ytmusicGetHome: { params: void; response: YTMusicHomeResult };
   ytmusicSearch: { params: { query: string }; response: TrackResult[] };

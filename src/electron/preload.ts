@@ -44,7 +44,21 @@ const desktopBridge: DesktopBridge = {
     getPlatform: () => ipcRenderer.invoke("desktop:request:getPlatform"),
     authGetStatus: () => ipcRenderer.invoke("desktop:request:authGetStatus"),
     authLogin: () => ipcRenderer.invoke("desktop:request:authLogin"),
+    authCompleteLogin: () =>
+      ipcRenderer.invoke("desktop:request:authCompleteLogin"),
+    authCancelLogin: () =>
+      ipcRenderer.invoke("desktop:request:authCancelLogin"),
+    authImportSession: (params) =>
+      ipcRenderer.invoke("desktop:request:authImportSession", params),
     authLogout: () => ipcRenderer.invoke("desktop:request:authLogout"),
+    openExternalUrl: (params) =>
+      ipcRenderer.invoke("desktop:request:openExternalUrl", params),
+    prepareBrowserBridge: () =>
+      ipcRenderer.invoke("desktop:request:prepareBrowserBridge"),
+    installBrowserBridgeHost: () =>
+      ipcRenderer.invoke("desktop:request:installBrowserBridgeHost"),
+    openPath: (params) =>
+      ipcRenderer.invoke("desktop:request:openPath", params),
     ytmusicSyncLibrary: () =>
       ipcRenderer.invoke("desktop:request:ytmusicSyncLibrary"),
     ytmusicGetHome: () => ipcRenderer.invoke("desktop:request:ytmusicGetHome"),

@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Muxics Bridge</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: "Segoe UI", system-ui, sans-serif;
+      }
+      body {
+        width: 320px;
+        margin: 0;
+        padding: 16px;
+        background: #121212;
+        color: #f4f4f5;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 18px;
+      }
+      p {
+        margin: 0 0 12px;
+        font-size: 13px;
+        line-height: 1.5;
+        color: #c5c7ce;
+      }
+      button {
+        width: 100%;
+        padding: 10px 12px;
+        border: 0;
+        border-radius: 10px;
+        background: #f4f4f5;
+        color: #111214;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.65;
+        cursor: default;
+      }
+      .secondary {
+        margin-top: 8px;
+        background: #27272a;
+        color: #f4f4f5;
+      }
+      .status {
+        margin-top: 12px;
+        min-height: 18px;
+        font-size: 12px;
+        color: #a1a1aa;
+      }
+      .error {
+        color: #fda4af;
+      }
+      .success {
+        color: #86efac;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Muxics Browser Bridge</h1>
+    <p>Make sure you are logged into YouTube Music in this browser, then send the current session to the desktop app.</p>
+    <button id="connect">Send Session To Muxics</button>
+    <button id="open-music" class="secondary">Open YouTube Music</button>
+    <div id="status" class="status"></div>
+    <script src="popup.js"></script>
+  </body>
+  </html>

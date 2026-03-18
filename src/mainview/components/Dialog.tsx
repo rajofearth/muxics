@@ -17,14 +17,14 @@ const maxWidthClass = {
 export function Dialog({ title, onClose, children, maxWidth = "md" }: DialogProps) {
   return createPortal(
     <div
-      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[9999] animate-fade-in"
+      className="fixed inset-x-0 top-10 bottom-0 bg-black/38 flex items-start justify-center z-[9999] animate-fade-in pt-6"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-labelledby="dialog-title"
     >
       <div
-        className={`bg-app-surface border border-app-border p-6 w-full mx-4 max-h-[90vh] overflow-y-auto ${maxWidthClass[maxWidth]} rounded-2xl shadow-2xl animate-slide-up`}
+        className={`bg-app-surface border border-app-border p-6 w-full mx-4 max-h-[calc(100vh-5rem)] overflow-y-auto ${maxWidthClass[maxWidth]} rounded-2xl shadow-2xl animate-slide-up`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-center mb-4">

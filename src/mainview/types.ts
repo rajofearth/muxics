@@ -69,3 +69,10 @@ export interface AuthStatus {
   persistent: boolean;
   error?: string;
 }
+
+export interface PendingAuthLogin {
+  verificationUrl: string;
+  userCode: string;
+  expiresAt: number;
+  pollIntervalMs: number;
+}

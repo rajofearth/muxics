@@ -2,9 +2,11 @@ import fs from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import path from "node:path";
 import { MIME_TYPES } from "../../shared/constants";
+import { getYtMusicAuthStatus, importYtMusicSession } from "./ytmusic";
 
 let allowedPaths = new Set<string>();
 let serverPort = 0;
+const FIXED_SERVER_PORT = 46021;
 
 function toComparablePath(filePath: string): string {
   const resolved = path.resolve(filePath);
@@ -24,8 +26,23 @@ function isPathAllowed(filePath: string): boolean {
 }
 
 function sendText(res: ServerResponse, status: number, body: string): void {
-  res.writeHead(status, { "Content-Type": "text/plain; charset=utf-8" });
+  res.writeHead(status, {
+    "Content-Type": "text/plain; charset=utf-8",
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+  });
   res.end(body);
+}
+
+function sendJson(res: ServerResponse, status: number, body: unknown): void {
+  res.writeHead(status, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+  });
+  res.end(JSON.stringify(body));
 }
 
 function handlePlayback(req: IncomingMessage, res: ServerResponse): void {
@@ -108,6 +125,57 @@ function handlePlayback(req: IncomingMessage, res: ServerResponse): void {
   fs.createReadStream(filePath).pipe(res);
 }
 
+async function readJsonBody(req: IncomingMessage): Promise<any> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+
+  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+}
+
+async function handleBridge(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
+  if (!req.url) {
+    return false;
+  }
+
+  const url = new URL(req.url, "http://127.0.0.1");
+  if (!url.pathname.startsWith("/bridge/")) {
+    return false;
+  }
+
+  if (req.method === "OPTIONS") {
+    sendJson(res, 204, {});
+    return true;
+  }
+
+  if (url.pathname === "/bridge/ping" && req.method === "GET") {
+    sendJson(res, 200, { success: true, app: "Muxics" });
+    return true;
+  }
+
+  if (url.pathname === "/bridge/status" && req.method === "GET") {
+    const auth = await getYtMusicAuthStatus();
+    sendJson(res, 200, { success: true, auth });
+    return true;
+  }
+
+  if (url.pathname === "/bridge/import-session" && req.method === "POST") {
+    const body = await readJsonBody(req);
+    const result = await importYtMusicSession(body?.cookie ?? "", {
+      cookieNames: Array.isArray(body?.cookieNames)
+        ? body.cookieNames.filter((entry: unknown): entry is string => typeof entry === "string")
+        : undefined,
+      sourceUrl: typeof body?.sourceUrl === "string" ? body.sourceUrl : undefined,
+    });
+    sendJson(res, result.success ? 200 : 400, result);
+    return true;
+  }
+
+  sendJson(res, 404, { success: false, error: "Bridge route not found." });
+  return true;
+}
+
 export function setAllowedPaths(paths: string[]): void {
   allowedPaths = new Set(paths.map(toComparablePath));
 }
@@ -118,16 +186,21 @@ export async function startAudioServer(): Promise<number> {
   }
 
   const server = createServer((req, res) => {
-    try {
-      handlePlayback(req, res);
-    } catch {
-      sendText(res, 500, "Internal Server Error");
-    }
+    void (async () => {
+      try {
+        if (await handleBridge(req, res)) {
+          return;
+        }
+        handlePlayback(req, res);
+      } catch {
+        sendText(res, 500, "Internal Server Error");
+      }
+    })();
   });
 
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => resolve());
+    server.listen(FIXED_SERVER_PORT, "127.0.0.1", () => resolve());
   });
 
   const address = server.address();

@@ -1,23 +1,56 @@
 import fs from "node:fs";
-import { safeStorage, session as electronSession, type CookiesGetFilter } from "electron";
+import type { OAuth2Tokens } from "youtubei.js/dist/src/core/OAuth2.js";
+import { safeStorage } from "electron";
 import { YTMUSIC_SESSION_PATH, ensureAppDataDirs } from "./paths";
 import { loadSettings } from "./settings";
 
-export const YTMUSIC_PARTITION = "persist:muxics-ytmusic";
+export type StoredYtMusicAuth =
+  | { kind: "cookie"; cookie: string }
+  | { kind: "oauth"; oauth: OAuth2Tokens };
 
 export interface StoredYtMusicSession {
-  cookie: string;
+  auth: StoredYtMusicAuth;
   createdAt: number;
+  updatedAt: number;
 }
 
 type PersistedPayload = {
   encrypted: boolean;
   value: string;
   createdAt: number;
+  updatedAt: number;
 };
 
-export function getYtMusicSession() {
-  return electronSession.fromPartition(YTMUSIC_PARTITION, { cache: true });
+function isOAuthTokens(value: unknown): value is OAuth2Tokens {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const tokens = value as Partial<OAuth2Tokens>;
+  return (
+    typeof tokens.access_token === "string" &&
+    typeof tokens.refresh_token === "string" &&
+    typeof tokens.expiry_date === "string"
+  );
+}
+
+function isStoredSession(value: unknown): value is StoredYtMusicSession {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const session = value as Partial<StoredYtMusicSession>;
+  return (
+    !!session.auth &&
+    (
+      ((session.auth as { kind?: string; cookie?: string }).kind === "cookie" &&
+        typeof (session.auth as { cookie?: string }).cookie === "string") ||
+      ((session.auth as { kind?: string; oauth?: OAuth2Tokens }).kind === "oauth" &&
+        isOAuthTokens((session.auth as { oauth?: OAuth2Tokens }).oauth))
+    ) &&
+    typeof session.createdAt === "number" &&
+    typeof session.updatedAt === "number"
+  );
 }
 
 function encodeSession(payload: StoredYtMusicSession): PersistedPayload | null {
@@ -28,6 +61,7 @@ function encodeSession(payload: StoredYtMusicSession): PersistedPayload | null {
       encrypted: true,
       value: safeStorage.encryptString(serialized).toString("base64"),
       createdAt: payload.createdAt,
+      updatedAt: payload.updatedAt,
     };
   }
 
@@ -39,21 +73,24 @@ function encodeSession(payload: StoredYtMusicSession): PersistedPayload | null {
     encrypted: false,
     value: serialized,
     createdAt: payload.createdAt,
+    updatedAt: payload.updatedAt,
   };
 }
 
 function decodeSession(payload: PersistedPayload): StoredYtMusicSession | null {
   try {
-    if (payload.encrypted) {
-      if (!safeStorage.isEncryptionAvailable()) {
-        return null;
-      }
+    const raw = payload.encrypted
+      ? safeStorage.isEncryptionAvailable()
+        ? safeStorage.decryptString(Buffer.from(payload.value, "base64"))
+        : null
+      : payload.value;
 
-      const decrypted = safeStorage.decryptString(Buffer.from(payload.value, "base64"));
-      return JSON.parse(decrypted) as StoredYtMusicSession;
+    if (!raw) {
+      return null;
     }
 
-    return JSON.parse(payload.value) as StoredYtMusicSession;
+    const parsed = JSON.parse(raw) as unknown;
+    return isStoredSession(parsed) ? parsed : null;
   } catch {
     return null;
   }
@@ -73,6 +110,7 @@ export function loadStoredYtMusicSession(): StoredYtMusicSession | null {
 
 export function saveStoredYtMusicSession(session: StoredYtMusicSession): boolean {
   ensureAppDataDirs();
+
   const payload = encodeSession(session);
   if (!payload) {
     return false;
@@ -82,86 +120,28 @@ export function saveStoredYtMusicSession(session: StoredYtMusicSession): boolean
   return true;
 }
 
+export function persistOAuthTokens(tokens: OAuth2Tokens, createdAt?: number): boolean {
+  const timestamp = Date.now();
+  return saveStoredYtMusicSession({
+    auth: { kind: "oauth", oauth: tokens },
+    createdAt: createdAt ?? timestamp,
+    updatedAt: timestamp,
+  });
+}
+
+export function persistCookieString(cookie: string, createdAt?: number): boolean {
+  const timestamp = Date.now();
+  return saveStoredYtMusicSession({
+    auth: { kind: "cookie", cookie },
+    createdAt: createdAt ?? timestamp,
+    updatedAt: timestamp,
+  });
+}
+
 export function clearStoredYtMusicSession(): void {
   try {
     if (fs.existsSync(YTMUSIC_SESSION_PATH)) {
       fs.unlinkSync(YTMUSIC_SESSION_PATH);
     }
   } catch {}
-}
-
-async function getCookies(filter?: CookiesGetFilter) {
-  return getYtMusicSession().cookies.get(filter);
-}
-
-export async function readYtMusicCookieString(): Promise<string> {
-  const cookies = await getCookies({}) ;
-  return cookies
-    .filter((cookie) => cookie.domain.includes("youtube.com") || cookie.domain.includes("google.com"))
-    .map((cookie) => `${cookie.name}=${cookie.value}`)
-    .join("; ");
-}
-
-export async function restoreYtMusicSessionFromDisk(): Promise<boolean> {
-  const stored = loadStoredYtMusicSession();
-  if (!stored?.cookie) {
-    return false;
-  }
-
-  const sess = getYtMusicSession();
-  const pairs = stored.cookie
-    .split(";")
-    .map((entry) => entry.trim())
-    .filter(Boolean)
-    .map((entry) => {
-      const separator = entry.indexOf("=");
-      return {
-        name: entry.slice(0, separator),
-        value: entry.slice(separator + 1),
-      };
-    });
-
-  for (const pair of pairs) {
-    try {
-      await sess.cookies.set({
-        url: "https://music.youtube.com",
-        name: pair.name,
-        value: pair.value,
-      });
-    } catch {}
-  }
-
-  return true;
-}
-
-export async function persistCurrentYtMusicSession(): Promise<boolean> {
-  const cookie = await readYtMusicCookieString();
-  if (!cookie) {
-    return false;
-  }
-
-  return saveStoredYtMusicSession({
-    cookie,
-    createdAt: Date.now(),
-  });
-}
-
-export async function clearYtMusicCookies(): Promise<void> {
-  const sess = getYtMusicSession();
-  const cookies = await getCookies({});
-
-  for (const cookie of cookies) {
-    try {
-      const protocol = cookie.secure ? "https" : "http";
-      const host = cookie.domain.startsWith(".") ? cookie.domain.slice(1) : cookie.domain;
-      await sess.cookies.remove(`${protocol}://${host}${cookie.path}`, cookie.name);
-    } catch {}
-  }
-}
-
-export async function hasYtMusicAuthCookies(): Promise<boolean> {
-  const cookies = await getCookies({});
-  return cookies.some((cookie) =>
-    ["SAPISID", "__Secure-3PAPISID", "__Secure-1PAPISID", "SID"].includes(cookie.name),
-  );
 }

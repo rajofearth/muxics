@@ -7,6 +7,7 @@ import {
   Menu,
   Tray,
   nativeImage,
+  shell,
   type MenuItemConstructorOptions,
 } from "electron";
 import type { DesktopEventMap, DesktopMessageMap, DesktopRequestMap } from "../shared/desktop-contract";
@@ -17,6 +18,8 @@ import { formatMetadataTime, getTrackMetadata } from "./backend/metadata";
 import { getAudioServerPort, setAllowedPaths, startAudioServer } from "./backend/audioServer";
 import { listPlaylists, loadPlaylist, savePlaylist } from "./backend/playlists";
 import { loadSettings, saveSettings } from "./backend/settings";
+import { installBrowserBridgeHost, prepareBrowserBridgeBundle } from "./backend/browserBridge";
+import { runNativeMessagingHost } from "./backend/nativeHost";
 import {
   addTrackToYtMusicPlaylist,
   createYtMusicPlaylist,
@@ -26,8 +29,11 @@ import {
   getYtMusicHome,
   getYtMusicPlayback,
   getYtMusicPlaylist,
+  importYtMusicSession,
   likeYtMusicTrack,
   loginToYtMusic,
+  completeYtMusicLogin,
+  cancelYtMusicLogin,
   logoutFromYtMusic,
   removeTrackFromYtMusicPlaylist,
   renameYtMusicPlaylist,
@@ -43,6 +49,10 @@ let currentMinHeight = 600;
 let currentTrackTitle = "";
 let currentTrackArtist = "";
 let isPlaying = false;
+
+if (process.argv.includes("--muxics-native-host")) {
+  runNativeMessagingHost();
+} else {
 
 type RequestHandlerMap = {
   [K in keyof DesktopRequestMap]: (
@@ -480,8 +490,21 @@ const requestHandlers: RequestHandlerMap = {
   },
   getPlatform: () => process.platform,
   authGetStatus: () => getYtMusicAuthStatus(),
-  authLogin: () => loginToYtMusic(mainWindow),
+  authLogin: () => loginToYtMusic(),
+  authCompleteLogin: () => completeYtMusicLogin(),
+  authCancelLogin: () => cancelYtMusicLogin(),
+  authImportSession: ({ cookie, cookieNames, sourceUrl }) => importYtMusicSession(cookie, { cookieNames, sourceUrl }),
   authLogout: () => logoutFromYtMusic(),
+  openExternalUrl: async ({ url }) => {
+    await shell.openExternal(url);
+    return { success: true };
+  },
+  prepareBrowserBridge: () => prepareBrowserBridgeBundle(),
+  installBrowserBridgeHost: () => installBrowserBridgeHost(),
+  openPath: async ({ path: targetPath }) => {
+    await shell.openPath(targetPath);
+    return { success: true };
+  },
   ytmusicSyncLibrary: () => syncYtMusicLibrary(),
   ytmusicGetHome: async () => {
     try {
@@ -642,3 +665,4 @@ app.on("window-all-closed", () => {
     app.quit();
   }
 });
+}

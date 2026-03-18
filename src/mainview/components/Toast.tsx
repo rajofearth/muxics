@@ -85,7 +85,7 @@ export function ToastContainer() {
   if (toasts.length === 0) return null;
 
   return createPortal(
-    <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[9998] flex flex-col gap-2 items-center pointer-events-none">
+    <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[10001] flex flex-col gap-2 items-center pointer-events-none">
       {toasts.map((t) => (
         <SingleToast key={t.id} item={t} onDone={handleDone} />
       ))}

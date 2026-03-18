@@ -29,6 +29,8 @@ import { PlaylistHeaderActions } from "./components/PlaylistHeaderActions";
 import { SearchView } from "./components/SearchView";
 import { QueueView } from "./components/QueueView";
 import { NowPlayingView } from "./components/NowPlayingView";
+import { BrowserBridgeDialog } from "./components/BrowserBridgeDialog";
+import { showToast } from "./components/Toast";
 import type { DesktopBridge } from "../shared/desktop-contract";
 
 type MainWindowProps = {
@@ -75,6 +77,11 @@ export function MainWindow({
     id: undefined,
   });
   const [activeTab, setActiveTab] = useState<string>("All");
+  const [showBridgeDialog, setShowBridgeDialog] = useState(false);
+  const [bridgeBusy, setBridgeBusy] = useState(false);
+  const [bridgeFolderPath, setBridgeFolderPath] = useState<string | null>(null);
+  const [bridgeZipPath, setBridgeZipPath] = useState<string | null>(null);
+  const [bridgeExtensionId, setBridgeExtensionId] = useState<string | null>(null);
 
   const {
     library,
@@ -84,11 +91,57 @@ export function MainWindow({
     recentlyPlayed,
     getFavoriteTracks,
     auth,
+    authLogin,
+    loadAuthStatus,
     setLibrarySource,
-    loginToYtMusic,
+    clearAuthLoginError,
     logoutFromYtMusic,
     syncYtMusicLibrary,
   } = usePlayerStore();
+
+  const handleOpenExternal = useCallback((url: string) => {
+    void desktop?.request.openExternalUrl({ url });
+  }, [desktop]);
+
+  const handleOpenLogin = useCallback(() => {
+    clearAuthLoginError();
+    setShowBridgeDialog(true);
+  }, [clearAuthLoginError]);
+
+  const handlePrepareBridge = useCallback(() => {
+    void (async () => {
+      setBridgeBusy(true);
+      clearAuthLoginError();
+      const result = await desktop?.request.prepareBrowserBridge();
+      setBridgeBusy(false);
+
+      if (!result?.success) {
+        showToast(result?.error ?? "Could not prepare the browser bridge.", "error");
+        return;
+      }
+
+      setBridgeExtensionId(result.extensionId);
+      setBridgeFolderPath(result.folderPath ?? null);
+      setBridgeZipPath(result.zipPath ?? null);
+      showToast("Browser bridge files are ready.");
+    })();
+  }, [clearAuthLoginError, desktop]);
+
+  const handleRefreshBridge = useCallback(() => {
+    void (async () => {
+      setBridgeBusy(true);
+      await loadAuthStatus();
+      setBridgeBusy(false);
+
+      if (usePlayerStore.getState().auth.loggedIn) {
+        showToast("YouTube Music is connected.");
+        setShowBridgeDialog(false);
+        await syncYtMusicLibrary();
+      } else {
+        showToast("No browser session received yet.", "info");
+      }
+    })();
+  }, [loadAuthStatus, syncYtMusicLibrary]);
 
   const sourceTabs: { id: "all" | "local" | "ytmusic"; label: string }[] = [
     { id: "ytmusic", label: "YouTube Music" },
@@ -340,12 +393,17 @@ export function MainWindow({
             <p className="text-[13px] text-app-text-tertiary mb-5">
               Connect your account to sync playlists, search your library, and stream directly inside the app.
             </p>
+            {authLogin.error ? (
+              <div className="mb-4 rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-[12px] text-red-200">
+                {authLogin.error}
+              </div>
+            ) : null}
             <div className="flex items-center justify-center gap-2">
-              <button
-                type="button"
-                onClick={() => loginToYtMusic()}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-app-text-primary text-app-bg text-[13px] font-medium hover:opacity-90"
-              >
+                <button
+                  type="button"
+                  onClick={handleOpenLogin}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-app-text-primary text-app-bg text-[13px] font-medium hover:opacity-90"
+                >
                 <LogIn size={14} />
                 Sign In
               </button>
@@ -669,7 +727,7 @@ export function MainWindow({
         title={currentTrack ? currentTrack.title : "Muxics"}
         subtitle={currentTrack ? currentTrack.artist : "Library"}
         auth={auth}
-        onLogin={loginToYtMusic}
+        onLogin={handleOpenLogin}
         onLogout={logoutFromYtMusic}
         onSync={syncYtMusicLibrary}
       />
@@ -706,6 +764,23 @@ export function MainWindow({
         onNavigateToQueue={() => handleNavigate("queue")}
         onNavigateToNowPlaying={() => handleNavigate("now_playing")}
       />
+
+      {showBridgeDialog ? (
+        <BrowserBridgeDialog
+          loading={bridgeBusy || authLogin.loading}
+          error={authLogin.error}
+          extensionId={bridgeExtensionId}
+          folderPath={bridgeFolderPath}
+          zipPath={bridgeZipPath}
+          onClose={() => {
+            clearAuthLoginError();
+            setShowBridgeDialog(false);
+          }}
+          onPrepareBundle={handlePrepareBridge}
+          onOpenPath={(path) => void desktop?.request.openPath({ path })}
+          onRefresh={handleRefreshBridge}
+        />
+      ) : null}
     </div>
   );
 }
