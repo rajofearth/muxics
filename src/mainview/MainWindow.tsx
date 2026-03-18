@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, startTransition } from "react";
 import type { Track, NavState, NavView } from "./types";
 import { usePlayerStore } from "./store/playerStore";
 import { formatTotalDuration } from "./utils";
@@ -31,6 +31,7 @@ import { QueueView } from "./components/QueueView";
 import { NowPlayingView } from "./components/NowPlayingView";
 import { BrowserBridgeDialog } from "./components/BrowserBridgeDialog";
 import { showToast } from "./components/Toast";
+import { YtMusicHomeView } from "./components/YtMusicHomeView";
 import type { DesktopBridge } from "../shared/desktop-contract";
 
 type MainWindowProps = {
@@ -82,6 +83,9 @@ export function MainWindow({
   const [bridgeFolderPath, setBridgeFolderPath] = useState<string | null>(null);
   const [bridgeZipPath, setBridgeZipPath] = useState<string | null>(null);
   const [bridgeExtensionId, setBridgeExtensionId] = useState<string | null>(null);
+  const [ytHomeTracks, setYtHomeTracks] = useState<Track[]>([]);
+  const [ytHomeLoading, setYtHomeLoading] = useState(false);
+  const [ytHomeError, setYtHomeError] = useState<string | null>(null);
 
   const {
     library,
@@ -107,6 +111,12 @@ export function MainWindow({
     clearAuthLoginError();
     setShowBridgeDialog(true);
   }, [clearAuthLoginError]);
+
+  const handleSourceChange = useCallback((source: "all" | "local" | "ytmusic") => {
+    startTransition(() => {
+      setLibrarySource(source);
+    });
+  }, [setLibrarySource]);
 
   const handlePrepareBridge = useCallback(() => {
     void (async () => {
@@ -143,11 +153,40 @@ export function MainWindow({
     })();
   }, [loadAuthStatus, syncYtMusicLibrary]);
 
-  const sourceTabs: { id: "all" | "local" | "ytmusic"; label: string }[] = [
-    { id: "ytmusic", label: "YouTube Music" },
-    { id: "local", label: "Local Files" },
-    { id: "all", label: "All Sources" },
-  ];
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!desktop?.request.ytmusicGetHome || library.source !== "ytmusic" || !auth.loggedIn) {
+      setYtHomeTracks([]);
+      setYtHomeLoading(false);
+      setYtHomeError(null);
+      return undefined;
+    }
+
+    setYtHomeLoading(true);
+    setYtHomeError(null);
+
+    void (async () => {
+      try {
+        const result = await desktop.request.ytmusicGetHome();
+        if (!cancelled) {
+          setYtHomeTracks(result.tracks ?? []);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setYtHomeError(error instanceof Error ? error.message : "Failed to load YouTube Music home.");
+        }
+      } finally {
+        if (!cancelled) {
+          setYtHomeLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [auth.loggedIn, auth.lastSyncedAt, desktop, library.source]);
 
   const handleNavigate = useCallback((view: NavView, id?: string) => {
     setNavState({ view, id });
@@ -331,20 +370,6 @@ export function MainWindow({
       />
       <div className="px-8 pt-3 pb-2 flex items-center justify-between gap-3 shrink-0">
         <div className="flex items-center gap-2 flex-wrap">
-          {sourceTabs.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setLibrarySource(tab.id)}
-              className={`px-3 py-1.5 rounded-full text-[12px] border transition-colors ${
-                library.source === tab.id
-                  ? "bg-app-text-primary text-app-bg border-app-text-primary"
-                  : "bg-app-elevated text-app-text-secondary border-app-border hover:text-app-text-primary"
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
         </div>
         <div className="flex items-center gap-2 text-[11px] text-app-text-tertiary">
           {library.syncingRemote ? (
@@ -546,6 +571,23 @@ export function MainWindow({
       }
 
       case "library":
+        if (library.source === "ytmusic") {
+          const homeTracks = ytHomeTracks.length > 0 ? ytHomeTracks : library.remoteTracks;
+          return (
+            <YtMusicHomeView
+              tracks={homeTracks}
+              playlists={playlists.remoteItems}
+              recentlyPlayed={recentlyPlayed}
+              currentTrack={currentTrack}
+              isPlaying={isPlaying}
+              loading={ytHomeLoading && homeTracks.length === 0}
+              error={ytHomeError}
+              profileName={auth.profileName}
+              onNavigate={handleNavigate}
+              onPlayTrack={onPlayTrack}
+            />
+          );
+        }
         return renderTrackView(
           "All Songs",
           "Library",
@@ -727,6 +769,8 @@ export function MainWindow({
         title={currentTrack ? currentTrack.title : "Muxics"}
         subtitle={currentTrack ? currentTrack.artist : "Library"}
         auth={auth}
+        source={library.source}
+        onSourceChange={handleSourceChange}
         onLogin={handleOpenLogin}
         onLogout={logoutFromYtMusic}
         onSync={syncYtMusicLibrary}

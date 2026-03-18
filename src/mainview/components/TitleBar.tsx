@@ -1,6 +1,7 @@
 import { LogIn, LogOut, Minus, RefreshCw, Square, X } from "lucide-react";
 import type { DesktopBridge } from "../../shared/desktop-contract";
-import type { AuthStatus } from "../types";
+import type { AuthStatus, LibrarySource } from "../types";
+import { LibrarySourceSwitch } from "./LibrarySourceSwitch";
 
 type TitleBarSend = Pick<
   DesktopBridge["send"],
@@ -13,6 +14,8 @@ type TitleBarProps = {
   subtitle?: string;
   compact?: boolean;
   auth?: AuthStatus;
+  source?: LibrarySource;
+  onSourceChange?: (source: LibrarySource) => void;
   onLogin?: () => void;
   onLogout?: () => void;
   onSync?: () => void;
@@ -55,6 +58,8 @@ export function TitleBar({
   subtitle,
   compact = false,
   auth,
+  source,
+  onSourceChange,
   onLogin,
   onLogout,
   onSync,
@@ -87,7 +92,10 @@ export function TitleBar({
       </div>
 
       <div className="app-region-no-drag flex items-center">
-        <div className="hidden sm:flex items-center gap-1.5 pr-2">
+        <div className="hidden sm:flex items-center gap-2 pr-2">
+          {source && onSourceChange ? (
+            <LibrarySourceSwitch value={source} onChange={onSourceChange} />
+          ) : null}
           {auth?.loggedIn ? (
             <>
               <button
