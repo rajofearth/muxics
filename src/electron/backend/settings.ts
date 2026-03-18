@@ -3,10 +3,12 @@ import { SETTINGS_PATH, ensureAppDataDirs } from "./paths";
 
 export interface Settings {
   watchFolders: string[];
+  allowPlaintextYtMusicSession?: boolean;
 }
 
 const DEFAULT_SETTINGS: Settings = {
   watchFolders: [],
+  allowPlaintextYtMusicSession: false,
 };
 
 export function loadSettings(): Settings {
@@ -20,6 +22,10 @@ export function loadSettings(): Settings {
       watchFolders: Array.isArray(parsed.watchFolders)
         ? parsed.watchFolders
         : DEFAULT_SETTINGS.watchFolders,
+      allowPlaintextYtMusicSession:
+        typeof parsed.allowPlaintextYtMusicSession === "boolean"
+          ? parsed.allowPlaintextYtMusicSession
+          : DEFAULT_SETTINGS.allowPlaintextYtMusicSession,
     };
   } catch {
     return { ...DEFAULT_SETTINGS };

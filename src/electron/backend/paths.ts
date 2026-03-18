@@ -33,6 +33,9 @@ function resolveAppDataPath(): string {
 export const APP_DATA_PATH = resolveAppDataPath();
 export const SETTINGS_PATH = path.join(APP_DATA_PATH, "settings.json");
 export const PLAYLISTS_DIR = path.join(APP_DATA_PATH, "playlists");
+export const YTMUSIC_DIR = path.join(APP_DATA_PATH, "ytmusic");
+export const YTMUSIC_SESSION_PATH = path.join(YTMUSIC_DIR, "session.json");
+export const YTMUSIC_CACHE_PATH = path.join(YTMUSIC_DIR, "cache.json");
 
 export function getDefaultMusicPath(): string {
   const home = os.homedir();
@@ -52,5 +55,9 @@ export function ensureAppDataDirs(): void {
 
   if (!fs.existsSync(PLAYLISTS_DIR)) {
     fs.mkdirSync(PLAYLISTS_DIR, { recursive: true });
+  }
+
+  if (!fs.existsSync(YTMUSIC_DIR)) {
+    fs.mkdirSync(YTMUSIC_DIR, { recursive: true });
   }
 }

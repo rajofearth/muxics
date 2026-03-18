@@ -1,6 +1,22 @@
+export type MusicProvider = "local" | "ytmusic";
+
+export type LibrarySource = "all" | "local" | "ytmusic";
+
+export type PlaybackMode = "direct" | "hidden" | "unavailable";
+
+export interface TrackPlayback {
+  mode: PlaybackMode;
+  targetId?: string;
+  url?: string;
+  expiresAt?: number;
+  loudnessDb?: number;
+}
+
 export interface Track {
   id: string;
-  path: string;
+  provider: MusicProvider;
+  providerId: string;
+  path?: string;
   title: string;
   artist: string;
   album: string;
@@ -8,13 +24,18 @@ export interface Track {
   duration: number;
   genre: string;
   picture?: string;
+  sourceLabel?: string;
+  playback?: TrackPlayback;
 }
 
 export interface Playlist {
   id: string;
+  provider: MusicProvider;
+  providerId: string;
   name: string;
-  path: string;
+  path?: string;
   trackIds: string[];
+  editable?: boolean;
 }
 
 export type RepeatMode = "off" | "all" | "one";
@@ -37,4 +58,14 @@ export type NavView =
 export interface NavState {
   view: NavView;
   id?: string;
+}
+
+export interface AuthStatus {
+  loggedIn: boolean;
+  provider: "ytmusic";
+  profileName?: string;
+  avatarUrl?: string;
+  lastSyncedAt?: number;
+  persistent: boolean;
+  error?: string;
 }

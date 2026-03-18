@@ -18,6 +18,7 @@
     "music-metadata": "^11.12.1",
     "react": "latest",
     "react-dom": "latest",
+    "youtubei.js": "^17.0.1",
     "zustand": "^5.0.11"
   },
   "devDependencies": {

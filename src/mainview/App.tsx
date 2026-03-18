@@ -23,7 +23,7 @@ export default function App({ desktop }: AppProps) {
   const [windowMode, setWindowMode] = useState<"main" | "mini">("main");
   const initRef = useRef(false);
 
-  const { setRpc, loadLibrary, loadPlaylists, player } = usePlayerStore();
+  const { setRpc, loadLibrary, loadPlaylists, loadAuthStatus, syncYtMusicLibrary, player } = usePlayerStore();
   const playTrack = usePlayerStore((s) => s.playTrack);
   const togglePlay = usePlayerStore((s) => s.togglePlay);
   const setVolume = usePlayerStore((s) => s.setVolume);
@@ -45,10 +45,14 @@ export default function App({ desktop }: AppProps) {
   useEffect(() => {
     if (!initRef.current && rpcReady) {
       initRef.current = true;
-      loadLibrary();
-      loadPlaylists();
+      void (async () => {
+        await loadAuthStatus();
+        await loadLibrary();
+        await loadPlaylists();
+        await syncYtMusicLibrary();
+      })();
     }
-  }, [rpcReady, loadLibrary, loadPlaylists]);
+  }, [rpcReady, loadAuthStatus, loadLibrary, loadPlaylists, syncYtMusicLibrary]);
 
   useEffect(() => {
     if (player.currentTrack) {

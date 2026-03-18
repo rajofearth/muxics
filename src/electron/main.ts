@@ -17,6 +17,24 @@ import { formatMetadataTime, getTrackMetadata } from "./backend/metadata";
 import { getAudioServerPort, setAllowedPaths, startAudioServer } from "./backend/audioServer";
 import { listPlaylists, loadPlaylist, savePlaylist } from "./backend/playlists";
 import { loadSettings, saveSettings } from "./backend/settings";
+import {
+  addTrackToYtMusicPlaylist,
+  createYtMusicPlaylist,
+  deleteYtMusicPlaylist,
+  getCachedYtMusicLibrary,
+  getYtMusicAuthStatus,
+  getYtMusicHome,
+  getYtMusicPlayback,
+  getYtMusicPlaylist,
+  likeYtMusicTrack,
+  loginToYtMusic,
+  logoutFromYtMusic,
+  removeTrackFromYtMusicPlaylist,
+  renameYtMusicPlaylist,
+  searchYtMusic,
+  syncYtMusicLibrary,
+  unlikeYtMusicTrack,
+} from "./backend/ytmusic";
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
@@ -396,9 +414,19 @@ const requestHandlers: RequestHandlerMap = {
     }
 
     return {
+      id: `local-playlist:${playlist.path}`,
+      provider: "local",
+      providerId: playlist.path,
       name: playlist.name,
       path: playlist.path,
-      entries: playlist.entries,
+      editable: true,
+      entries: playlist.entries.map((entry) => ({
+        id: `local:${entry.path}`,
+        provider: "local" as const,
+        providerId: entry.path,
+        path: entry.path,
+        title: entry.title,
+      })),
     };
   },
   savePlaylist: ({ path: targetPath, name, entries }) => {
@@ -406,9 +434,19 @@ const requestHandlers: RequestHandlerMap = {
   },
   listPlaylists: () =>
     listPlaylists().map((playlist) => ({
+      id: `local-playlist:${playlist.path}`,
+      provider: "local",
+      providerId: playlist.path,
       name: playlist.name,
       path: playlist.path,
-      entries: playlist.entries,
+      editable: true,
+      entries: playlist.entries.map((entry) => ({
+        id: `local:${entry.path}`,
+        provider: "local" as const,
+        providerId: entry.path,
+        path: entry.path,
+        title: entry.title,
+      })),
     })),
   getPlaylistsDir: () => PLAYLISTS_DIR,
   renamePlaylist: ({ oldPath, newName }) => {
@@ -441,6 +479,27 @@ const requestHandlers: RequestHandlerMap = {
     return path.join(PLAYLISTS_DIR, `${name}.m3u8`);
   },
   getPlatform: () => process.platform,
+  authGetStatus: () => getYtMusicAuthStatus(),
+  authLogin: () => loginToYtMusic(mainWindow),
+  authLogout: () => logoutFromYtMusic(),
+  ytmusicSyncLibrary: () => syncYtMusicLibrary(),
+  ytmusicGetHome: async () => {
+    try {
+      return await getYtMusicHome();
+    } catch {
+      return { tracks: getCachedYtMusicLibrary().tracks.slice(0, 25) };
+    }
+  },
+  ytmusicSearch: ({ query }) => searchYtMusic(query),
+  ytmusicGetPlaylist: ({ playlistId }) => getYtMusicPlaylist(playlistId),
+  ytmusicGetPlayback: ({ trackId, providerId }) => getYtMusicPlayback(trackId, providerId),
+  ytmusicLike: ({ videoId }) => likeYtMusicTrack(videoId),
+  ytmusicUnlike: ({ videoId }) => unlikeYtMusicTrack(videoId),
+  ytmusicCreatePlaylist: ({ name, trackProviderIds }) => createYtMusicPlaylist(name, trackProviderIds),
+  ytmusicRenamePlaylist: ({ playlistId, name }) => renameYtMusicPlaylist(playlistId, name),
+  ytmusicDeletePlaylist: ({ playlistId }) => deleteYtMusicPlaylist(playlistId),
+  ytmusicAddTrackToPlaylist: ({ playlistId, videoId }) => addTrackToYtMusicPlaylist(playlistId, videoId),
+  ytmusicRemoveTrackFromPlaylist: ({ playlistId, videoId }) => removeTrackFromYtMusicPlaylist(playlistId, videoId),
 };
 
 const messageHandlers: MessageHandlerMap = {

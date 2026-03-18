@@ -42,6 +42,32 @@ const desktopBridge: DesktopBridge = {
     exportPlaylist: (params) =>
       ipcRenderer.invoke("desktop:request:exportPlaylist", params),
     getPlatform: () => ipcRenderer.invoke("desktop:request:getPlatform"),
+    authGetStatus: () => ipcRenderer.invoke("desktop:request:authGetStatus"),
+    authLogin: () => ipcRenderer.invoke("desktop:request:authLogin"),
+    authLogout: () => ipcRenderer.invoke("desktop:request:authLogout"),
+    ytmusicSyncLibrary: () =>
+      ipcRenderer.invoke("desktop:request:ytmusicSyncLibrary"),
+    ytmusicGetHome: () => ipcRenderer.invoke("desktop:request:ytmusicGetHome"),
+    ytmusicSearch: (params) =>
+      ipcRenderer.invoke("desktop:request:ytmusicSearch", params),
+    ytmusicGetPlaylist: (params) =>
+      ipcRenderer.invoke("desktop:request:ytmusicGetPlaylist", params),
+    ytmusicGetPlayback: (params) =>
+      ipcRenderer.invoke("desktop:request:ytmusicGetPlayback", params),
+    ytmusicLike: (params) =>
+      ipcRenderer.invoke("desktop:request:ytmusicLike", params),
+    ytmusicUnlike: (params) =>
+      ipcRenderer.invoke("desktop:request:ytmusicUnlike", params),
+    ytmusicCreatePlaylist: (params) =>
+      ipcRenderer.invoke("desktop:request:ytmusicCreatePlaylist", params),
+    ytmusicRenamePlaylist: (params) =>
+      ipcRenderer.invoke("desktop:request:ytmusicRenamePlaylist", params),
+    ytmusicDeletePlaylist: (params) =>
+      ipcRenderer.invoke("desktop:request:ytmusicDeletePlaylist", params),
+    ytmusicAddTrackToPlaylist: (params) =>
+      ipcRenderer.invoke("desktop:request:ytmusicAddTrackToPlaylist", params),
+    ytmusicRemoveTrackFromPlaylist: (params) =>
+      ipcRenderer.invoke("desktop:request:ytmusicRemoveTrackFromPlaylist", params),
   },
   send: {
     resizeWindow: (payload) =>

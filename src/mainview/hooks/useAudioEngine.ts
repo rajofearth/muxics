@@ -122,8 +122,25 @@ export function useAudioEngine() {
 
     const loadAndPlay = async () => {
       try {
-        const url = await rpc.request.getPlaybackUrl({ path: currentTrack.path });
+        let url: string | null = null;
+        if (currentTrack.provider === "ytmusic") {
+          const playback = await rpc.request.ytmusicGetPlayback({
+            trackId: currentTrack.id,
+            providerId: currentTrack.providerId,
+          });
+          if (playback.mode === "direct" && playback.url) {
+            url = playback.url;
+          } else {
+            throw new Error(playback.error ?? "Playback unavailable for this YouTube Music track.");
+          }
+        } else if (currentTrack.path) {
+          url = await rpc.request.getPlaybackUrl({ path: currentTrack.path });
+        }
+
         if (cancelled) return;
+        if (!url) {
+          throw new Error("No playback URL was resolved.");
+        }
 
         usePlayerStore.getState().setPlaybackUrl(url);
         const el = audioRef.current;

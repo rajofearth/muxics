@@ -13,7 +13,7 @@ type SearchViewProps = {
 
 export function SearchView({ currentTrack, isPlaying, onPlayTrack, onNavigate }: SearchViewProps) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const { search, setSearchQuery, library } = usePlayerStore();
+  const { search, setSearchQuery, library, auth } = usePlayerStore();
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -73,8 +73,8 @@ export function SearchView({ currentTrack, isPlaying, onPlayTrack, onNavigate }:
             ref={inputRef}
             type="text"
             value={search.query}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Songs, artists, albums..."
+            onChange={(e) => void setSearchQuery(e.target.value)}
+            placeholder={auth.loggedIn && library.source !== "local" ? "Songs, artists, albums on YouTube Music..." : "Songs, artists, albums..."}
             className="w-full pl-11 pr-10 py-3 bg-app-elevated rounded-xl text-[14px] text-app-text-primary placeholder-app-text-tertiary border border-app-border focus:border-app-text-tertiary outline-none"
           />
           {search.query && (
@@ -91,12 +91,19 @@ export function SearchView({ currentTrack, isPlaying, onPlayTrack, onNavigate }:
       {!search.query ? (
         <div className="flex-1 flex flex-col items-center justify-center text-app-text-tertiary gap-2">
           <Search size={40} strokeWidth={1} className="opacity-30" />
-          <div className="text-sm">Search your library</div>
+          <div className="text-sm">
+            {auth.loggedIn && library.source !== "local" ? "Search YouTube Music" : "Search your library"}
+          </div>
+        </div>
+      ) : search.loading ? (
+        <div className="flex-1 flex flex-col items-center justify-center text-app-text-tertiary gap-2">
+          <div className="w-8 h-8 border-2 border-app-text-tertiary border-t-app-text-primary rounded-full animate-spin" />
+          <div className="text-sm">Searching...</div>
         </div>
       ) : search.results.length === 0 && artists.length === 0 && albums.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center text-app-text-tertiary gap-2">
           <div className="text-sm">No results for "{search.query}"</div>
-          <div className="text-xs">Try a different search term</div>
+          <div className="text-xs">{search.error ?? "Try a different search term"}</div>
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto">

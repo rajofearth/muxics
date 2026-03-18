@@ -11,6 +11,9 @@ import {
   Play,
   Heart,
   Shuffle,
+  LogIn,
+  RefreshCw,
+  LogOut,
 } from "lucide-react";
 import { shuffleArray } from "./utils";
 import { TitleBar } from "./components/TitleBar";
@@ -80,7 +83,18 @@ export function MainWindow({
     settings,
     recentlyPlayed,
     getFavoriteTracks,
+    auth,
+    setLibrarySource,
+    loginToYtMusic,
+    logoutFromYtMusic,
+    syncYtMusicLibrary,
   } = usePlayerStore();
+
+  const sourceTabs: { id: "all" | "local" | "ytmusic"; label: string }[] = [
+    { id: "ytmusic", label: "YouTube Music" },
+    { id: "local", label: "Local Files" },
+    { id: "all", label: "All Sources" },
+  ];
 
   const handleNavigate = useCallback((view: NavView, id?: string) => {
     setNavState({ view, id });
@@ -262,6 +276,34 @@ export function MainWindow({
           </div>
         }
       />
+      <div className="px-8 pt-3 pb-2 flex items-center justify-between gap-3 shrink-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          {sourceTabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setLibrarySource(tab.id)}
+              className={`px-3 py-1.5 rounded-full text-[12px] border transition-colors ${
+                library.source === tab.id
+                  ? "bg-app-text-primary text-app-bg border-app-text-primary"
+                  : "bg-app-elevated text-app-text-secondary border-app-border hover:text-app-text-primary"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-2 text-[11px] text-app-text-tertiary">
+          {library.syncingRemote ? (
+            <>
+              <RefreshCw size={12} className="animate-spin" />
+              Syncing
+            </>
+          ) : auth.lastSyncedAt ? (
+            <span>Synced</span>
+          ) : null}
+        </div>
+      </div>
       <TabNav
         tabs={[
           "All",
@@ -285,6 +327,41 @@ export function MainWindow({
   );
 
   const renderMainContent = () => {
+    if (library.source === "ytmusic" && !auth.loggedIn) {
+      return (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="max-w-md text-center px-8">
+            <div className="mx-auto mb-4 w-16 h-16 rounded-2xl bg-app-elevated flex items-center justify-center">
+              <Music size={26} className="text-app-text-primary" />
+            </div>
+            <h2 className="text-2xl font-bold text-app-text-primary mb-2">
+              Sign in to YouTube Music
+            </h2>
+            <p className="text-[13px] text-app-text-tertiary mb-5">
+              Connect your account to sync playlists, search your library, and stream directly inside the app.
+            </p>
+            <div className="flex items-center justify-center gap-2">
+              <button
+                type="button"
+                onClick={() => loginToYtMusic()}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-app-text-primary text-app-bg text-[13px] font-medium hover:opacity-90"
+              >
+                <LogIn size={14} />
+                Sign In
+              </button>
+              <button
+                type="button"
+                onClick={() => setLibrarySource("local")}
+                className="px-4 py-2 rounded-xl bg-app-elevated text-app-text-primary text-[13px] hover:bg-app-active"
+              >
+                Use Local Files
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     if (library.loading) {
       return (
         <div className="flex-1 flex items-center justify-center">
@@ -591,6 +668,10 @@ export function MainWindow({
         desktop={desktop}
         title={currentTrack ? currentTrack.title : "Muxics"}
         subtitle={currentTrack ? currentTrack.artist : "Library"}
+        auth={auth}
+        onLogin={loginToYtMusic}
+        onLogout={logoutFromYtMusic}
+        onSync={syncYtMusicLibrary}
       />
 
       <div className="flex flex-1 overflow-hidden">

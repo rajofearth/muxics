@@ -1,3 +1,7 @@
+export type MusicProvider = "local" | "ytmusic";
+export type LibrarySource = "all" | "local" | "ytmusic";
+export type PlaybackMode = "direct" | "hidden" | "unavailable";
+
 export interface ScannedFileResult {
   path: string;
   ext: string;
@@ -13,15 +17,67 @@ export interface TrackMetadataResult {
   picture?: string;
 }
 
+export interface TrackPlaybackResult {
+  mode: PlaybackMode;
+  targetId?: string;
+  url?: string;
+  expiresAt?: number;
+  loudnessDb?: number;
+  error?: string;
+}
+
+export interface TrackResult {
+  id: string;
+  provider: MusicProvider;
+  providerId: string;
+  path?: string;
+  title: string;
+  artist: string;
+  album: string;
+  time: string;
+  duration: number;
+  genre: string;
+  picture?: string;
+  sourceLabel?: string;
+  playback?: TrackPlaybackResult;
+}
+
 export interface PlaylistEntryResult {
-  path: string;
+  id: string;
+  provider: MusicProvider;
+  providerId: string;
+  path?: string;
   title?: string;
 }
 
 export interface PlaylistResult {
+  id: string;
+  provider: MusicProvider;
+  providerId: string;
   name: string;
-  path: string;
+  path?: string;
+  editable?: boolean;
   entries: PlaylistEntryResult[];
+}
+
+export interface AuthStatusResult {
+  loggedIn: boolean;
+  provider: "ytmusic";
+  profileName?: string;
+  avatarUrl?: string;
+  lastSyncedAt?: number;
+  persistent: boolean;
+  error?: string;
+}
+
+export interface YTMusicLibrarySyncResult {
+  tracks: TrackResult[];
+  playlists: PlaylistResult[];
+  lastSyncedAt: number;
+}
+
+export interface YTMusicHomeResult {
+  tracks: TrackResult[];
 }
 
 export interface DesktopRequestMap {
@@ -48,6 +104,36 @@ export interface DesktopRequestMap {
   importPlaylist: { params: { path: string }; response: boolean };
   exportPlaylist: { params: { name: string; entries: string[] }; response: string };
   getPlatform: { params: void; response: string };
+  authGetStatus: { params: void; response: AuthStatusResult };
+  authLogin: { params: void; response: AuthStatusResult };
+  authLogout: { params: void; response: AuthStatusResult };
+  ytmusicSyncLibrary: { params: void; response: YTMusicLibrarySyncResult };
+  ytmusicGetHome: { params: void; response: YTMusicHomeResult };
+  ytmusicSearch: { params: { query: string }; response: TrackResult[] };
+  ytmusicGetPlaylist: { params: { playlistId: string }; response: PlaylistResult | null };
+  ytmusicGetPlayback: { params: { trackId: string; providerId: string }; response: TrackPlaybackResult };
+  ytmusicLike: { params: { videoId: string }; response: { success: boolean } };
+  ytmusicUnlike: { params: { videoId: string }; response: { success: boolean } };
+  ytmusicCreatePlaylist: {
+    params: { name: string; trackProviderIds?: string[] };
+    response: { success: boolean; playlistId?: string };
+  };
+  ytmusicRenamePlaylist: {
+    params: { playlistId: string; name: string };
+    response: { success: boolean };
+  };
+  ytmusicDeletePlaylist: {
+    params: { playlistId: string };
+    response: { success: boolean };
+  };
+  ytmusicAddTrackToPlaylist: {
+    params: { playlistId: string; videoId: string };
+    response: { success: boolean };
+  };
+  ytmusicRemoveTrackFromPlaylist: {
+    params: { playlistId: string; videoId: string };
+    response: { success: boolean };
+  };
 }
 
 export interface DesktopMessageMap {

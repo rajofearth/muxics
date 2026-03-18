@@ -96,7 +96,7 @@ export function TrackContextMenu({ x, y, track, onClose, playlistId }: TrackCont
             <div className="px-3 py-2 text-[12px] text-app-text-tertiary">No playlists</div>
           ) : (
             playlists.items.map((pl) => {
-              const isInPlaylist = pl.trackIds.includes(track.path);
+              const isInPlaylist = pl.trackIds.includes(track.id);
               return (
                 <button
                   key={pl.id}
@@ -130,7 +130,7 @@ export function TrackContextMenu({ x, y, track, onClose, playlistId }: TrackCont
           <button
             role="menuitem"
             onClick={async () => {
-              await removeTrackFromPlaylist(playlistId, track.path);
+              await removeTrackFromPlaylist(playlistId, track.id);
               showToast("Removed from playlist", "info");
               onClose();
             }}
