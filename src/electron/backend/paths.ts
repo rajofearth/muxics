@@ -37,6 +37,7 @@ export const YTMUSIC_DIR = path.join(APP_DATA_PATH, "ytmusic");
 export const YTMUSIC_SESSION_PATH = path.join(YTMUSIC_DIR, "session.json");
 export const YTMUSIC_CACHE_PATH = path.join(YTMUSIC_DIR, "cache.json");
 export const YTMUSIC_DEBUG_DIR = path.join(YTMUSIC_DIR, "debug");
+export const YTMUSIC_TOOLS_DIR = path.join(YTMUSIC_DIR, "tools");
 
 export function getDefaultMusicPath(): string {
   const home = os.homedir();
@@ -64,5 +65,9 @@ export function ensureAppDataDirs(): void {
 
   if (!fs.existsSync(YTMUSIC_DEBUG_DIR)) {
     fs.mkdirSync(YTMUSIC_DEBUG_DIR, { recursive: true });
+  }
+
+  if (!fs.existsSync(YTMUSIC_TOOLS_DIR)) {
+    fs.mkdirSync(YTMUSIC_TOOLS_DIR, { recursive: true });
   }
 }

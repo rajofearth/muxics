@@ -58,6 +58,7 @@ export interface PlaylistResult {
   path?: string;
   editable?: boolean;
   entries: PlaylistEntryResult[];
+  tracks?: TrackResult[];
 }
 
 export interface AuthStatusResult {
@@ -145,6 +146,7 @@ export interface DesktopRequestMap {
   scanFolders: { params: { paths: string[] }; response: { files: ScannedFileResult[] } };
   getTrackMetadata: { params: { path: string }; response: TrackMetadataResult | null };
   getPlaybackUrl: { params: { path: string }; response: string };
+  getRemotePlaybackUrl: { params: { url: string }; response: string };
   getWatchFolders: { params: void; response: string[] };
   addFolder: { params: { path: string }; response: { success: boolean; error?: string } };
   validateFolder: {

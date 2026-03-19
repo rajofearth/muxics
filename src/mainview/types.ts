@@ -36,6 +36,7 @@ export interface Playlist {
   path?: string;
   trackIds: string[];
   editable?: boolean;
+  tracks?: Track[];
 }
 
 export type RepeatMode = "off" | "all" | "one";

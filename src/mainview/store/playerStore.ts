@@ -78,7 +78,26 @@ function toPlaylist(playlist: PlaylistResult): Playlist {
     path: playlist.path,
     trackIds: playlist.entries.map((entry) => entry.id),
     editable: playlist.editable,
+    tracks: playlist.tracks?.map(toTrack),
   };
+}
+
+function mergeUniqueTracks(...groups: Track[][]): Track[] {
+  const byId = new Map<string, Track>();
+  for (const group of groups) {
+    for (const track of group) {
+      byId.set(track.id, track);
+    }
+  }
+  return [...byId.values()];
+}
+
+function collectPlaylistTracks(playlists: Playlist[]): Track[] {
+  const groups = playlists
+    .map((playlist) => playlist.tracks ?? [])
+    .filter((tracks) => tracks.length > 0);
+
+  return groups.length > 0 ? mergeUniqueTracks(...groups) : [];
 }
 
 async function pLimit<T, R>(items: T[], fn: (x: T) => Promise<R>): Promise<R[]> {
@@ -149,6 +168,8 @@ interface PlayerState {
     localItems: Playlist[];
     remoteItems: Playlist[];
     activeId: string | null;
+    hydratingById: Record<string, boolean>;
+    hydrationErrors: Record<string, string | null>;
   };
   player: {
     currentTrack: Track | null;
@@ -180,6 +201,7 @@ interface PlayerActions {
   setLibrarySource: (source: LibrarySource) => void;
   loadLibrary: () => Promise<void>;
   syncYtMusicLibrary: () => Promise<void>;
+  ensurePlaylistHydrated: (playlistId: string) => Promise<void>;
   addFolder: (path: string) => Promise<void>;
   removeFolder: (path: string) => Promise<void>;
   playTrack: (track: Track, queue?: Track[] | null) => void;
@@ -239,6 +261,8 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
     localItems: [],
     remoteItems: [],
     activeId: null,
+    hydratingById: {},
+    hydrationErrors: {},
   },
   player: {
     currentTrack: null,
@@ -408,6 +432,8 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
         ...s.playlists,
         remoteItems: [],
         items: mergePlaylists("local", s.playlists.localItems, []),
+        hydratingById: {},
+        hydrationErrors: {},
       },
     }));
   },
@@ -521,8 +547,11 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
 
     try {
       const synced = await rpc.request.ytmusicSyncLibrary();
-      const remoteTracks = synced.tracks.map(toTrack);
       const remoteItems = synced.playlists.map(toPlaylist);
+      const remoteTracks = mergeUniqueTracks(
+        synced.tracks.map(toTrack),
+        collectPlaylistTracks(remoteItems),
+      );
 
       set((s) => ({
         auth: { ...s.auth, lastSyncedAt: synced.lastSyncedAt },
@@ -545,6 +574,70 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
           ...s.library,
           syncingRemote: false,
           error: error instanceof Error ? error.message : "Failed to sync YouTube Music.",
+        },
+      }));
+    }
+  },
+
+  ensurePlaylistHydrated: async (playlistId) => {
+    const { rpc, playlists } = get();
+    if (!rpc) return;
+
+    const playlist = playlists.items.find((item) => item.id === playlistId);
+    if (!playlist || playlist.provider !== "ytmusic" || playlist.trackIds.length > 0) {
+      return;
+    }
+
+    if (playlists.hydratingById[playlistId]) {
+      return;
+    }
+
+    set((s) => ({
+      playlists: {
+        ...s.playlists,
+        hydratingById: { ...s.playlists.hydratingById, [playlistId]: true },
+        hydrationErrors: { ...s.playlists.hydrationErrors, [playlistId]: null },
+      },
+    }));
+
+    try {
+      const detailed = await rpc.request.ytmusicGetPlaylist({ playlistId: playlist.providerId });
+      if (!detailed) {
+        throw new Error("Playlist tracks could not be loaded from YouTube Music.");
+      }
+
+      const updated = toPlaylist(detailed);
+      set((s) => {
+        const remoteItems = s.playlists.remoteItems.map((item) =>
+          item.id === updated.id ? updated : item,
+        );
+        const remoteTracks = mergeUniqueTracks(s.library.remoteTracks, collectPlaylistTracks(remoteItems));
+
+        return {
+          library: {
+            ...s.library,
+            remoteTracks,
+            tracks: mergeTracks(s.library.source, s.library.localTracks, remoteTracks),
+          },
+          playlists: {
+            ...s.playlists,
+            remoteItems,
+            items: mergePlaylists(s.library.source, s.playlists.localItems, remoteItems),
+            hydratingById: { ...s.playlists.hydratingById, [playlistId]: false },
+            hydrationErrors: { ...s.playlists.hydrationErrors, [playlistId]: null },
+          },
+        };
+      });
+    } catch (error) {
+      set((s) => ({
+        playlists: {
+          ...s.playlists,
+          hydratingById: { ...s.playlists.hydratingById, [playlistId]: false },
+          hydrationErrors: {
+            ...s.playlists.hydrationErrors,
+            [playlistId]:
+              error instanceof Error ? error.message : "Failed to load YouTube Music playlist.",
+          },
         },
       }));
     }
@@ -766,7 +859,16 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
           const remoteItems = s.playlists.remoteItems.map((item) =>
             item.id === updated.id ? updated : item,
           );
+          const remoteTracks = mergeUniqueTracks(
+            s.library.remoteTracks,
+            collectPlaylistTracks(remoteItems),
+          );
           return {
+            library: {
+              ...s.library,
+              remoteTracks,
+              tracks: mergeTracks(s.library.source, s.library.localTracks, remoteTracks),
+            },
             playlists: {
               ...s.playlists,
               remoteItems,
@@ -807,7 +909,16 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
           const remoteItems = s.playlists.remoteItems.map((item) =>
             item.id === updated.id ? updated : item,
           );
+          const remoteTracks = mergeUniqueTracks(
+            s.library.remoteTracks,
+            collectPlaylistTracks(remoteItems),
+          );
           return {
+            library: {
+              ...s.library,
+              remoteTracks,
+              tracks: mergeTracks(s.library.source, s.library.localTracks, remoteTracks),
+            },
             playlists: {
               ...s.playlists,
               remoteItems,
@@ -833,6 +944,10 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
     const { playlists, library } = get();
     const pl = playlists.items.find((p) => p.id === playlistId);
     if (!pl) return [];
+
+    if (pl.tracks && pl.tracks.length > 0) {
+      return pl.tracks;
+    }
 
     const trackMap = new Map([...library.localTracks, ...library.remoteTracks].map((track) => [track.id, track]));
     return pl.trackIds.map((id) => trackMap.get(id)).filter((t): t is Track => t != null);

@@ -129,7 +129,7 @@ export function useAudioEngine() {
             providerId: currentTrack.providerId,
           });
           if (playback.mode === "direct" && playback.url) {
-            url = playback.url;
+            url = await rpc.request.getRemotePlaybackUrl({ url: playback.url });
           } else {
             throw new Error(playback.error ?? "Playback unavailable for this YouTube Music track.");
           }
@@ -142,6 +142,12 @@ export function useAudioEngine() {
           throw new Error("No playback URL was resolved.");
         }
 
+        console.info("Resolved playback URL", {
+          provider: currentTrack.provider,
+          trackId: currentTrack.id,
+          url,
+        });
+
         usePlayerStore.getState().setPlaybackUrl(url);
         const el = audioRef.current;
         if (!el) return;
@@ -153,6 +159,7 @@ export function useAudioEngine() {
         }
 
         el.src = url;
+        el.load();
         await el.play();
       } catch (err) {
         console.warn("Playback start failed:", err);

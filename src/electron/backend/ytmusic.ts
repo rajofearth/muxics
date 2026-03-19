@@ -1,5 +1,9 @@
 import fs from "node:fs";
 import crypto from "node:crypto";
+import path from "node:path";
+import vm from "node:vm";
+import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
 import { Innertube } from "youtubei.js";
 import type MusicResponsiveListItem from "youtubei.js/dist/src/parser/classes/MusicResponsiveListItem.js";
 import type MusicTwoRowItem from "youtubei.js/dist/src/parser/classes/MusicTwoRowItem.js";
@@ -18,6 +22,10 @@ import type {
 } from "../../shared/desktop-contract";
 import { ensureAppDataDirs, YTMUSIC_CACHE_PATH, YTMUSIC_DEBUG_DIR } from "./paths";
 import { log } from "./logger";
+import {
+  getYtDlpPlaylistItems,
+  resolveYtDlpPlayback,
+} from "./ytDlp";
 import {
   clearStoredYtMusicSession,
   loadStoredYtMusicSession,
@@ -52,6 +60,8 @@ let cachedAuthStatus: AuthStatusResult | null = null;
 let pendingLogin: PendingLoginState | null = null;
 let nextPendingLoginId = 0;
 let loggedLibraryAuthDebug = false;
+let installedPlayerEvaluator = false;
+const require = createRequire(__filename);
 
 const YTMUSIC_ORIGIN = "https://music.youtube.com";
 const YTMUSIC_CLIENT_NAME = "WEB_REMIX";
@@ -68,6 +78,40 @@ const DIAGNOSTIC_COOKIE_NAMES = [
   "HSID",
   "SSID",
 ] as const;
+
+async function ensurePlayerEvaluator(): Promise<void> {
+  if (installedPlayerEvaluator) {
+    return;
+  }
+
+  const packageJsonPath = require.resolve("youtubei.js/package.json");
+  const utilsPath = path.join(path.dirname(packageJsonPath), "dist", "src", "utils", "Utils.js");
+  const { Platform } = await import(pathToFileURL(utilsPath).href);
+
+  Platform.shim.eval = async (data: { output?: string }, env: Record<string, unknown>) => {
+    const context = vm.createContext({
+      ...env,
+      globalThis: {},
+      console,
+      URL,
+      URLSearchParams,
+      TextEncoder,
+      TextDecoder,
+      encodeURIComponent,
+      decodeURIComponent,
+      atob,
+      btoa,
+      setTimeout,
+      clearTimeout,
+    });
+
+    return vm.runInContext(String(data.output ?? ""), context, {
+      timeout: 1000,
+    });
+  };
+
+  installedPlayerEvaluator = true;
+}
 
 function formatDuration(seconds?: number): string {
   const total = Math.max(0, Math.floor(seconds ?? 0));
@@ -220,6 +264,19 @@ function getThumbnailUrl(item: { thumbnails?: { url: string }[]; thumbnail?: { c
   return thumbnails[thumbnails.length - 1]?.url;
 }
 
+function summarizePlaybackCandidate(format: Format) {
+  return {
+    itag: format.itag,
+    mimeType: format.mime_type,
+    hasAudio: format.has_audio,
+    hasVideo: format.has_video,
+    bitrate: format.average_bitrate ?? format.bitrate ?? 0,
+    hasUrl: Boolean(format.url),
+    hasSignatureCipher: Boolean(format.signature_cipher),
+    hasCipher: Boolean(format.cipher),
+  };
+}
+
 function sortPlaybackFormats(formats: Format[]): Format[] {
   return [...formats].sort((left, right) => {
     const leftAudioOnly = left.has_audio && !left.has_video ? 1 : 0;
@@ -234,10 +291,10 @@ function sortPlaybackFormats(formats: Format[]): Format[] {
       return rightDirectUrl - leftDirectUrl;
     }
 
-    const leftCipher = left.signature_cipher || left.cipher ? 1 : 0;
-    const rightCipher = right.signature_cipher || right.cipher ? 1 : 0;
-    if (leftCipher !== rightCipher) {
-      return rightCipher - leftCipher;
+    const leftNonCipher = left.signature_cipher || left.cipher ? 0 : 1;
+    const rightNonCipher = right.signature_cipher || right.cipher ? 0 : 1;
+    if (leftNonCipher !== rightNonCipher) {
+      return rightNonCipher - leftNonCipher;
     }
 
     const leftBitrate = left.average_bitrate ?? left.bitrate ?? 0;
@@ -249,6 +306,7 @@ function sortPlaybackFormats(formats: Format[]): Format[] {
 async function resolvePlaybackUrlFromFormats(
   client: Innertube,
   videoId: string,
+  context: { source: string },
 ): Promise<{ url: string; loudnessDb?: number } | null> {
   const info = await client.getBasicInfo(videoId);
   const streamingData = info.streaming_data;
@@ -291,24 +349,42 @@ async function resolvePlaybackUrlFromFormats(
 
   log("ytmusic", "warn", "Failed every YT Music playback candidate", {
     videoId,
-    candidates: candidateFormats.slice(0, 5).map((format) => ({
-      itag: format.itag,
-      mimeType: format.mime_type,
-      hasAudio: format.has_audio,
-      hasVideo: format.has_video,
-      bitrate: format.average_bitrate ?? format.bitrate ?? 0,
-      hasUrl: Boolean(format.url),
-      hasSignatureCipher: Boolean(format.signature_cipher),
-      hasCipher: Boolean(format.cipher),
-    })),
+    source: context.source,
+    candidates: candidateFormats.slice(0, 5).map(summarizePlaybackCandidate),
     failures: failures.slice(0, 5),
   });
 
   return null;
 }
 
+function readParsedItemPlayableVideoId(item: MusicResponsiveListItem | MusicTwoRowItem): string | undefined {
+  const parsed = item as MusicResponsiveListItem & MusicTwoRowItem & Record<string, any>;
+  const menuItems = parsed?.menu?.items ?? parsed?.menu?.menu_renderer?.items ?? [];
+  const topLevelButtons =
+    parsed?.menu?.top_level_buttons
+    ?? parsed?.menu?.menu_renderer?.top_level_buttons
+    ?? [];
+  const subtitleRuns = parsed?.subtitle?.runs ?? [];
+
+  return findFirstVideoId([
+    parsed.id,
+    parsed.video_id,
+    parsed.endpoint?.payload?.videoId,
+    parsed.endpoint?.payload?.video_id,
+    parsed.navigationEndpoint?.watchEndpoint?.videoId,
+    parsed.navigationEndpoint?.watchPlaylistEndpoint?.videoId,
+    parsed.overlay?.content?.play_button?.endpoint?.payload?.videoId,
+    parsed.overlay?.content?.musicPlayButtonRenderer?.playNavigationEndpoint?.watchEndpoint?.videoId,
+    parsed.thumbnail_overlay?.content?.musicPlayButtonRenderer?.playNavigationEndpoint?.watchEndpoint?.videoId,
+    ...subtitleRuns.map((run: any) => run?.endpoint?.payload?.videoId),
+    ...menuItems.map((entry: any) => entry?.navigation_endpoint?.watch_endpoint?.video_id),
+    ...menuItems.map((entry: any) => entry?.service_endpoint?.queue_add_endpoint?.queue_target?.video_id),
+    ...topLevelButtons.map((entry: any) => entry?.navigation_endpoint?.watch_endpoint?.video_id),
+  ]);
+}
+
 function toTrack(item: MusicResponsiveListItem | MusicTwoRowItem): TrackResult | null {
-  const providerId = item.id;
+  const providerId = readParsedItemPlayableVideoId(item);
   if (!providerId) {
     return null;
   }
@@ -395,6 +471,18 @@ function saveCache(cache: CacheShape): void {
   fs.writeFileSync(YTMUSIC_CACHE_PATH, JSON.stringify(cache, null, 2), "utf-8");
 }
 
+function upsertCachedPlaylist(playlist: PlaylistResult): void {
+  const cache = loadCache();
+  const playlists = cache.playlists.some((item) => item.id === playlist.id)
+    ? cache.playlists.map((item) => (item.id === playlist.id ? playlist : item))
+    : [...cache.playlists, playlist];
+
+  saveCache({
+    ...cache,
+    playlists,
+  });
+}
+
 function writeDebugJson(name: string, payload: unknown): string | null {
   ensureAppDataDirs();
 
@@ -413,6 +501,7 @@ function writeDebugJson(name: string, payload: unknown): string | null {
 
 async function createClient(cookie?: string): Promise<Innertube> {
   loggedLibraryAuthDebug = false;
+  await ensurePlayerEvaluator();
   return Innertube.create({
     cookie,
     fetch: createFetchWithYtMusicAuth(cookie),
@@ -736,6 +825,84 @@ function toPlaylistFromRaw(renderer: RawNode): PlaylistResult | null {
   };
 }
 
+function mergePlaylistSummaryWithCachedDetail(
+  summary: PlaylistResult,
+  cached: PlaylistResult | undefined,
+): PlaylistResult {
+  if (!cached || cached.entries.length === 0) {
+    return summary;
+  }
+
+  return {
+    ...summary,
+    entries: cached.entries,
+    tracks: cached.tracks,
+  };
+}
+
+function toPlaylistEntries(tracks: TrackResult[]) {
+  return tracks.map((track) => ({
+    id: track.id,
+    provider: track.provider,
+    providerId: track.providerId,
+    title: track.title,
+  }));
+}
+
+async function getYtMusicPlaylistFromRaw(client: Innertube, playlistId: string): Promise<PlaylistResult | null> {
+  const raw = await client.actions.execute("/browse", {
+    browseId: playlistId.startsWith("VL") ? playlistId : `VL${playlistId}`,
+    client: "YTMUSIC",
+  });
+  const payload = raw.data;
+  const renderers = [
+    ...collectRenderers(payload, "musicResponsiveListItemRenderer"),
+    ...collectRenderers(payload, "musicTwoRowItemRenderer"),
+    ...collectCandidateMusicNodes(payload),
+  ];
+  const tracks = uniqueById(
+    renderers
+      .map((renderer) => toTrackFromRaw(renderer))
+      .filter((track): track is TrackResult => track != null),
+  );
+
+  if (tracks.length === 0) {
+    return null;
+  }
+
+  const headerTitle =
+    readText(payload?.header?.musicDetailHeaderRenderer?.title) ||
+    readText(payload?.header?.musicEditablePlaylistDetailHeaderRenderer?.header?.musicDetailHeaderRenderer?.title) ||
+    readText(payload?.header?.musicResponsiveHeaderRenderer?.title) ||
+    "Playlist";
+
+  return {
+    id: `ytmusic-playlist:${playlistId}`,
+    provider: "ytmusic",
+    providerId: playlistId,
+    name: headerTitle,
+    editable: true,
+    entries: toPlaylistEntries(tracks),
+    tracks,
+  };
+}
+
+async function collectPlaylistItems(playlist: Awaited<ReturnType<Innertube["music"]["getPlaylist"]>>) {
+  const items = [...playlist.items];
+  let current = playlist;
+
+  while (current.has_continuation) {
+    current = await current.getContinuation();
+    items.push(...current.items);
+  }
+
+  return uniqueById(
+    items
+      .map((item) => toTrack(item))
+      .filter((item): item is TrackResult => item != null),
+  );
+}
+
 function collectRenderers(node: any, key: string, results: RawNode[] = []): RawNode[] {
   if (!node || typeof node !== "object") {
     return results;
@@ -945,6 +1112,11 @@ function normalizeCookieString(cookie: string): string {
     .join("; ");
 }
 
+function getStoredCookieHeader(): string | undefined {
+  const stored = loadStoredYtMusicSession();
+  return stored?.auth.kind === "cookie" ? stored.auth.cookie : undefined;
+}
+
 export async function importYtMusicSession(
   cookie: string,
   details?: ImportedSessionDetails,
@@ -1057,6 +1229,8 @@ export async function logoutFromYtMusic(): Promise<AuthStatusResult> {
 
 export async function syncYtMusicLibrary(): Promise<YTMusicLibrarySyncResult> {
   const client = await getClient();
+  const existingCache = loadCache();
+  const cachedPlaylists = new Map(existingCache.playlists.map((playlist) => [playlist.id, playlist]));
   const libraryPage = await getLibraryPageData(client);
   const libraryAuthState = classifyLibraryAuthState(libraryPage);
   if (!libraryAuthState.authenticated) {
@@ -1134,15 +1308,8 @@ export async function syncYtMusicLibrary(): Promise<YTMusicLibrarySyncResult> {
     rawDumpPaths,
   });
 
-  const playlists = await Promise.all(
-    playlistSummaries.map(async (playlist) => {
-      try {
-        const detailed = await getYtMusicPlaylist(playlist.providerId);
-        return detailed ?? playlist;
-      } catch {
-        return playlist;
-      }
-    }),
+  const playlists = playlistSummaries.map((playlist) =>
+    mergePlaylistSummaryWithCachedDetail(playlist, cachedPlaylists.get(playlist.id)),
   );
 
   const lastSyncedAt = Date.now();
@@ -1188,40 +1355,123 @@ export async function searchYtMusic(query: string): Promise<TrackResult[]> {
 }
 
 export async function getYtMusicPlaylist(playlistId: string): Promise<PlaylistResult | null> {
+  const cookieHeader = getStoredCookieHeader();
+  try {
+    const resolved = await getYtDlpPlaylistItems(playlistId, cookieHeader);
+    if (resolved) {
+      const detailed = {
+        id: `ytmusic-playlist:${playlistId}`,
+        provider: "ytmusic" as const,
+        providerId: playlistId,
+        name: resolved.name,
+        editable: true,
+        entries: toPlaylistEntries(
+          resolved.tracks.map((track) => ({
+            id: `ytmusic:${track.providerId}`,
+            provider: "ytmusic" as const,
+            providerId: track.providerId,
+            title: track.title,
+            artist: track.artist,
+            album: track.album,
+            duration: track.duration,
+            time: track.time,
+            genre: "YouTube Music",
+            picture: track.picture,
+            sourceLabel: "YouTube Music",
+          })),
+        ),
+        tracks: resolved.tracks.map((track) => ({
+          id: `ytmusic:${track.providerId}`,
+          provider: "ytmusic" as const,
+          providerId: track.providerId,
+          title: track.title,
+          artist: track.artist,
+          album: track.album,
+          duration: track.duration,
+          time: track.time,
+          genre: "YouTube Music",
+          picture: track.picture,
+          sourceLabel: "YouTube Music",
+        })),
+      };
+
+      upsertCachedPlaylist(detailed);
+      return detailed;
+    }
+  } catch (error) {
+    log("ytmusic", "warn", "yt-dlp playlist fetch failed, falling back to youtubei.js", {
+      playlistId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
   const client = await getClient();
-  const playlist = await client.music.getPlaylist(playlistId);
+  try {
+    const playlist = await client.music.getPlaylist(playlistId);
+    const tracks = await collectPlaylistItems(playlist);
 
-  const entries = playlist.items
-    .map((item) => toTrack(item))
-    .filter((item): item is TrackResult => item != null)
-    .map((track) => ({
-      id: track.id,
-      provider: track.provider,
-      providerId: track.providerId,
-      title: track.title,
-    }));
+    if (tracks.length === 0) {
+      throw new Error("Parsed playlist did not include any playable tracks.");
+    }
 
-  const header = playlist.header;
-  const name =
-    ("title" in (header ?? {}) && (header as any).title?.toString?.()) ||
-    ("name" in (header ?? {}) && (header as any).name?.toString?.()) ||
-    "Playlist";
+    const header = playlist.header;
+    const name =
+      ("title" in (header ?? {}) && (header as any).title?.toString?.()) ||
+      ("name" in (header ?? {}) && (header as any).name?.toString?.()) ||
+      "Playlist";
 
-  return {
-    id: `ytmusic-playlist:${playlistId}`,
-    provider: "ytmusic",
-    providerId: playlistId,
-    name,
-    editable: true,
-    entries,
-  };
+    const detailed = {
+      id: `ytmusic-playlist:${playlistId}`,
+      provider: "ytmusic" as const,
+      providerId: playlistId,
+      name,
+      editable: true,
+      entries: toPlaylistEntries(tracks),
+      tracks,
+    };
+
+    upsertCachedPlaylist(detailed);
+    return detailed;
+  } catch (error) {
+    log("ytmusic", "warn", "Parsed playlist fetch failed, falling back to raw extraction", {
+      playlistId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+
+    const detailed = await getYtMusicPlaylistFromRaw(client, playlistId);
+    if (detailed) {
+      upsertCachedPlaylist(detailed);
+    }
+    return detailed;
+  }
 }
 
 export async function getYtMusicPlayback(trackId: string, providerId: string): Promise<TrackPlaybackResult> {
+  const videoId = providerId || trackId.replace(/^ytmusic:/, "");
+  const cookieHeader = getStoredCookieHeader();
+
+  try {
+    const resolved = await resolveYtDlpPlayback(videoId, cookieHeader);
+    if (resolved?.url) {
+      return {
+        mode: "direct",
+        targetId: videoId,
+        url: resolved.url,
+        expiresAt: resolved.expiresAt,
+      };
+    }
+  } catch (error) {
+    log("ytmusic", "warn", "yt-dlp playback resolution failed, falling back to youtubei.js", {
+      videoId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
   try {
     const client = await getClient();
-    const videoId = providerId || trackId.replace(/^ytmusic:/, "");
-    const resolved = await resolvePlaybackUrlFromFormats(client, videoId);
+    const resolved = await resolvePlaybackUrlFromFormats(client, videoId, {
+      source: trackId.startsWith("ytmusic:") ? "ytmusic" : "unknown",
+    });
     if (!resolved?.url) {
       return {
         mode: "unavailable",
@@ -1241,7 +1491,7 @@ export async function getYtMusicPlayback(trackId: string, providerId: string): P
     log("ytmusic", "warn", "Failed to resolve playback", error);
     return {
       mode: "unavailable",
-      targetId: providerId || trackId.replace(/^ytmusic:/, ""),
+      targetId: videoId,
       error: error instanceof Error ? error.message : "Playback is unavailable.",
     };
   }

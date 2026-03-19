@@ -18,6 +18,8 @@ const desktopBridge: DesktopBridge = {
       ipcRenderer.invoke("desktop:request:getTrackMetadata", params),
     getPlaybackUrl: (params) =>
       ipcRenderer.invoke("desktop:request:getPlaybackUrl", params),
+    getRemotePlaybackUrl: (params) =>
+      ipcRenderer.invoke("desktop:request:getRemotePlaybackUrl", params),
     getWatchFolders: () =>
       ipcRenderer.invoke("desktop:request:getWatchFolders"),
     addFolder: (params) =>

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import path from "node:path";
+import { Readable } from "node:stream";
 import { MIME_TYPES } from "../../shared/constants";
 import { getYtMusicAuthStatus, importYtMusicSession } from "./ytmusic";
 
@@ -125,6 +126,80 @@ function handlePlayback(req: IncomingMessage, res: ServerResponse): void {
   fs.createReadStream(filePath).pipe(res);
 }
 
+async function handleRemotePlayback(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
+  if (!req.url) {
+    return false;
+  }
+
+  const url = new URL(req.url, "http://127.0.0.1");
+  if (url.pathname !== "/proxy") {
+    return false;
+  }
+
+  const sourceUrl = url.searchParams.get("url");
+  if (!sourceUrl) {
+    sendText(res, 400, "Missing url");
+    return true;
+  }
+
+  let parsedSource: URL;
+  try {
+    parsedSource = new URL(sourceUrl);
+  } catch {
+    sendText(res, 400, "Invalid url");
+    return true;
+  }
+
+  if (parsedSource.protocol !== "https:") {
+    sendText(res, 400, "Unsupported protocol");
+    return true;
+  }
+
+  const upstream = await fetch(parsedSource, {
+    headers: {
+      ...(req.headers.range ? { Range: req.headers.range } : {}),
+      "User-Agent":
+        req.headers["user-agent"] ??
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
+      Accept: req.headers.accept ?? "*/*",
+    },
+  });
+
+  if (!upstream.ok && upstream.status !== 206) {
+    sendText(res, upstream.status, `Upstream request failed (${upstream.status})`);
+    return true;
+  }
+
+  const headers: Record<string, string> = {
+    "Access-Control-Allow-Origin": "*",
+    "Accept-Ranges": upstream.headers.get("accept-ranges") ?? "bytes",
+  };
+
+  const contentType = upstream.headers.get("content-type");
+  const contentLength = upstream.headers.get("content-length");
+  const contentRange = upstream.headers.get("content-range");
+
+  if (contentType) {
+    headers["Content-Type"] = contentType;
+  }
+  if (contentLength) {
+    headers["Content-Length"] = contentLength;
+  }
+  if (contentRange) {
+    headers["Content-Range"] = contentRange;
+  }
+
+  res.writeHead(upstream.status, headers);
+
+  if (!upstream.body) {
+    res.end();
+    return true;
+  }
+
+  Readable.fromWeb(upstream.body as globalThis.ReadableStream<Uint8Array>).pipe(res);
+  return true;
+}
+
 async function readJsonBody(req: IncomingMessage): Promise<any> {
   const chunks: Buffer[] = [];
   for await (const chunk of req) {
@@ -189,6 +264,9 @@ export async function startAudioServer(): Promise<number> {
     void (async () => {
       try {
         if (await handleBridge(req, res)) {
+          return;
+        }
+        if (await handleRemotePlayback(req, res)) {
           return;
         }
         handlePlayback(req, res);

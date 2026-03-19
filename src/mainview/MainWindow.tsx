@@ -91,6 +91,7 @@ export function MainWindow({
     library,
     playlists,
     loadPlaylistTracks,
+    ensurePlaylistHydrated,
     settings,
     recentlyPlayed,
     getFavoriteTracks,
@@ -201,6 +202,19 @@ export function MainWindow({
     document.addEventListener("app-navigate", navHandler);
     return () => document.removeEventListener("app-navigate", navHandler);
   }, [handleNavigate]);
+
+  useEffect(() => {
+    if (navState.view !== "playlist_detail" || !navState.id) {
+      return;
+    }
+
+    const activePlaylist = playlists.items.find((playlist) => playlist.id === navState.id);
+    if (!activePlaylist || activePlaylist.provider !== "ytmusic") {
+      return;
+    }
+
+    void ensurePlaylistHydrated(activePlaylist.id);
+  }, [ensurePlaylistHydrated, navState.id, navState.view, playlists.items]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -710,9 +724,59 @@ export function MainWindow({
         const activePlaylist = playlists.items.find(
           (p) => p.id === navState.id,
         );
+        const playlistLoading = activePlaylist ? playlists.hydratingById[activePlaylist.id] : false;
+        const playlistError = activePlaylist ? playlists.hydrationErrors[activePlaylist.id] : null;
+
+        if (activePlaylist?.provider === "ytmusic" && playlistLoading && plTracks.length === 0) {
+          return (
+            <div className="flex-1 flex flex-col overflow-hidden">
+              <HeroHeader
+                title={activePlaylist.name}
+                subtitle="YouTube Music"
+                meta="Loading playlist tracks..."
+                icon={<ListMusic size={40} className="text-app-text-tertiary" />}
+                onBack={() => handleNavigate("playlists")}
+              />
+              <div className="flex-1 flex items-center justify-center px-8">
+                <div className="w-full max-w-xl rounded-3xl border border-app-border bg-app-surface-alt/70 px-6 py-8 text-center">
+                  <div className="mx-auto mb-4 h-10 w-10 rounded-full border-2 border-app-text-tertiary border-t-app-text-primary animate-spin" />
+                  <div className="text-[15px] font-medium text-app-text-primary">
+                    Loading this YouTube Music playlist...
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        if (activePlaylist?.provider === "ytmusic" && playlistError && plTracks.length === 0) {
+          return (
+            <div className="flex-1 flex flex-col overflow-hidden">
+              <HeroHeader
+                title={activePlaylist.name}
+                subtitle="YouTube Music"
+                meta="Playlist unavailable"
+                icon={<ListMusic size={40} className="text-app-text-tertiary" />}
+                onBack={() => handleNavigate("playlists")}
+                actions={(
+                  <PlaylistHeaderActions
+                    playlist={activePlaylist}
+                    onNavigate={handleNavigate}
+                  />
+                )}
+              />
+              <div className="flex-1 px-8 pb-8">
+                <div className="rounded-3xl border border-red-400/30 bg-red-500/10 px-5 py-4 text-[13px] text-red-200">
+                  {playlistError}
+                </div>
+              </div>
+            </div>
+          );
+        }
+
         return renderTrackView(
           activePlaylist?.name ?? "Playlist",
-          "Playlist",
+          activePlaylist?.provider === "ytmusic" ? "YouTube Music" : "Playlist",
           plTracks,
           <ListMusic size={40} className="text-app-text-tertiary" />,
           activePlaylist && (

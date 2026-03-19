@@ -367,6 +367,10 @@ const requestHandlers: RequestHandlerMap = {
     const port = getAudioServerPort();
     return `http://127.0.0.1:${port}/play?path=${encodeURIComponent(filePath)}`;
   },
+  getRemotePlaybackUrl: ({ url }) => {
+    const port = getAudioServerPort();
+    return `http://127.0.0.1:${port}/proxy?url=${encodeURIComponent(url)}`;
+  },
   getWatchFolders: () => loadSettings().watchFolders,
   addFolder: ({ path: folderPath }) => {
     const resolved = path.resolve(folderPath.trim());

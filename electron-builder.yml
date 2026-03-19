@@ -9,6 +9,11 @@ files:
   - assets/**
   - icon.iconset/**
   - package.json
+extraResources:
+  - from: assets/vendor/yt-dlp
+    to: yt-dlp
+    filter:
+      - '**/*'
 asar: true
 artifactName: ${productName}-${version}-${os}-${arch}.${ext}
 mac:
