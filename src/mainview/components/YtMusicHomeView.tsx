@@ -141,34 +141,32 @@ export const YtMusicHomeView = memo(function YtMusicHomeView({
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <div className="relative isolate overflow-hidden px-8 pt-6 pb-7">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(255,103,0,0.18),_transparent_42%),radial-gradient(circle_at_top_right,_rgba(255,0,81,0.14),_transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.03),transparent_55%)]" />
-        <div className="absolute -right-12 top-0 h-52 w-52 rounded-full bg-orange-500/10 blur-3xl" />
-        <div className="absolute bottom-0 left-1/3 h-60 w-60 rounded-full bg-rose-500/10 blur-3xl" />
-        <div className="relative flex flex-col gap-5">
+      <div className="px-8 pt-6 pb-7">
+        <div className="rounded-[28px] border border-app-border bg-app-surface-alt/80 px-6 py-6 shadow-[0_20px_60px_rgba(0,0,0,0.2)]">
+          <div className="flex flex-col gap-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-3xl">
-              <div className="inline-flex items-center gap-2 rounded-full border border-app-border bg-app-elevated/80 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.28em] text-app-text-tertiary">
+              <div className="inline-flex items-center gap-2 rounded-full border border-app-border bg-app-elevated px-3 py-1 text-[11px] font-medium uppercase tracking-[0.22em] text-app-text-tertiary">
                 <Sparkles size={12} />
                 YouTube Music
               </div>
-              <h1 className="mt-3 text-3xl font-bold tracking-tight text-app-text-primary md:text-4xl">
+              <h1 className="mt-3 text-[32px] font-semibold tracking-tight text-app-text-primary">
                 {formatGreeting()}, {profileName ?? "listener"}
               </h1>
               <p className="mt-2 max-w-2xl text-[13px] leading-relaxed text-app-text-secondary">
-                Your home, mixes, and playlists in one place. Start with a suggestion, jump back into your library, or just keep the queue moving.
+                Jump back into playlists, start listening quickly, or open search without leaving your library.
               </p>
             </div>
             <div className="grid grid-cols-3 gap-2 sm:max-w-lg">
-              <div className="rounded-2xl border border-app-border bg-app-elevated/75 px-4 py-3">
+              <div className="rounded-2xl border border-app-border bg-app-elevated px-4 py-3">
                 <div className="text-[10px] uppercase tracking-[0.24em] text-app-text-tertiary">Songs</div>
                 <div className="mt-1 text-[14px] font-medium text-app-text-primary">{tracks.length}</div>
               </div>
-              <div className="rounded-2xl border border-app-border bg-app-elevated/75 px-4 py-3">
+              <div className="rounded-2xl border border-app-border bg-app-elevated px-4 py-3">
                 <div className="text-[10px] uppercase tracking-[0.24em] text-app-text-tertiary">Playlists</div>
                 <div className="mt-1 text-[14px] font-medium text-app-text-primary">{playlists.length}</div>
               </div>
-              <div className="rounded-2xl border border-app-border bg-app-elevated/75 px-4 py-3">
+              <div className="rounded-2xl border border-app-border bg-app-elevated px-4 py-3">
                 <div className="text-[10px] uppercase tracking-[0.24em] text-app-text-tertiary">Duration</div>
                 <div className="mt-1 text-[14px] font-medium text-app-text-primary">{formatTotalDuration(tracks)}</div>
               </div>
@@ -212,6 +210,7 @@ export const YtMusicHomeView = memo(function YtMusicHomeView({
             </button>
           </div>
         </div>
+        </div>
       </div>
 
       <div className="space-y-8 px-8 pb-8">
@@ -224,6 +223,28 @@ export const YtMusicHomeView = memo(function YtMusicHomeView({
         {error && playableTracks.length === 0 ? (
           <div className="rounded-3xl border border-red-400/30 bg-red-500/10 px-5 py-4 text-[13px] text-red-200">
             {error}
+          </div>
+        ) : null}
+
+        {!loading && !error && tracks.length === 0 && playlists.length > 0 ? (
+          <div className="rounded-3xl border border-app-border bg-app-surface-alt/70 px-6 py-5 text-center">
+            <div className="text-[15px] font-medium text-app-text-primary">
+              Your playlists are loaded, but songs could not be extracted yet
+            </div>
+            <div className="mt-2 text-[13px] text-app-text-tertiary">
+              You can still open your playlists while we tighten the song sync path.
+            </div>
+          </div>
+        ) : null}
+
+        {!loading && !error && tracks.length === 0 && playlists.length === 0 ? (
+          <div className="rounded-3xl border border-app-border bg-app-surface-alt/70 px-6 py-5 text-center">
+            <div className="text-[15px] font-medium text-app-text-primary">
+              No YouTube Music songs found yet
+            </div>
+            <div className="mt-2 text-[13px] text-app-text-tertiary">
+              Sync again after opening your library in YouTube Music if this account already has saved songs.
+            </div>
           </div>
         ) : null}
 

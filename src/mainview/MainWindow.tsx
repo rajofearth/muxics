@@ -445,6 +445,24 @@ export function MainWindow({
       );
     }
 
+    if (navState.view === "library" && library.source === "ytmusic") {
+      const homeTracks = ytHomeTracks.length > 0 ? ytHomeTracks : library.remoteTracks;
+      return (
+        <YtMusicHomeView
+          tracks={homeTracks}
+          playlists={playlists.remoteItems}
+          recentlyPlayed={recentlyPlayed}
+          currentTrack={currentTrack}
+          isPlaying={isPlaying}
+          loading={ytHomeLoading && homeTracks.length === 0}
+          error={ytHomeError}
+          profileName={auth.profileName}
+          onNavigate={handleNavigate}
+          onPlayTrack={onPlayTrack}
+        />
+      );
+    }
+
     if (library.loading) {
       return (
         <div className="flex-1 flex items-center justify-center">
@@ -472,6 +490,7 @@ export function MainWindow({
     }
 
     if (
+      library.source !== "ytmusic" &&
       library.tracks.length === 0 &&
       !library.error &&
       settings.watchFolders.length === 0
@@ -500,7 +519,7 @@ export function MainWindow({
       );
     }
 
-    if (library.tracks.length === 0 && settings.watchFolders.length > 0) {
+    if (library.source !== "ytmusic" && library.tracks.length === 0 && settings.watchFolders.length > 0) {
       return (
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
@@ -571,23 +590,6 @@ export function MainWindow({
       }
 
       case "library":
-        if (library.source === "ytmusic") {
-          const homeTracks = ytHomeTracks.length > 0 ? ytHomeTracks : library.remoteTracks;
-          return (
-            <YtMusicHomeView
-              tracks={homeTracks}
-              playlists={playlists.remoteItems}
-              recentlyPlayed={recentlyPlayed}
-              currentTrack={currentTrack}
-              isPlaying={isPlaying}
-              loading={ytHomeLoading && homeTracks.length === 0}
-              error={ytHomeError}
-              profileName={auth.profileName}
-              onNavigate={handleNavigate}
-              onPlayTrack={onPlayTrack}
-            />
-          );
-        }
         return renderTrackView(
           "All Songs",
           "Library",

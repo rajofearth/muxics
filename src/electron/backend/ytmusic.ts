@@ -16,7 +16,7 @@ import type {
   YTMusicHomeResult,
   YTMusicLibrarySyncResult,
 } from "../../shared/desktop-contract";
-import { ensureAppDataDirs, YTMUSIC_CACHE_PATH } from "./paths";
+import { ensureAppDataDirs, YTMUSIC_CACHE_PATH, YTMUSIC_DEBUG_DIR } from "./paths";
 import { log } from "./logger";
 import {
   clearStoredYtMusicSession,
@@ -308,6 +308,22 @@ function saveCache(cache: CacheShape): void {
   fs.writeFileSync(YTMUSIC_CACHE_PATH, JSON.stringify(cache, null, 2), "utf-8");
 }
 
+function writeDebugJson(name: string, payload: unknown): string | null {
+  ensureAppDataDirs();
+
+  try {
+    const filePath = `${YTMUSIC_DEBUG_DIR}/${name}`;
+    fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf-8");
+    return filePath;
+  } catch (error) {
+    log("ytmusic", "warn", "Failed to write YT Music debug dump", {
+      name,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
 async function createClient(cookie?: string): Promise<Innertube> {
   loggedLibraryAuthDebug = false;
   return Innertube.create({
@@ -460,13 +476,45 @@ function readText(raw: any): string {
   return readRunsText(raw.runs);
 }
 
+function isLikelyVideoId(value: unknown): value is string {
+  return typeof value === "string"
+    && /^[A-Za-z0-9_-]{11}$/.test(value)
+    && !/^(VL|PL|LM|MPR|FEmusic_)/.test(value);
+}
+
+function findFirstVideoId(values: unknown[]): string | undefined {
+  return values.find((value): value is string => isLikelyVideoId(value));
+}
+
 function readRendererPlayableVideoId(renderer: RawNode): string | undefined {
-  return renderer?.playlistItemData?.videoId
-    ?? renderer?.navigationEndpoint?.watchEndpoint?.videoId
-    ?? renderer?.overlay?.musicItemThumbnailOverlayRenderer?.content?.musicPlayButtonRenderer?.playNavigationEndpoint?.watchEndpoint?.videoId
-    ?? renderer?.thumbnailOverlay?.musicItemThumbnailOverlayRenderer?.content?.musicPlayButtonRenderer?.playNavigationEndpoint?.watchEndpoint?.videoId
-    ?? renderer?.menu?.menuRenderer?.items?.find((item: any) => item.menuNavigationItemRenderer?.navigationEndpoint?.watchEndpoint?.videoId)
-      ?.menuNavigationItemRenderer?.navigationEndpoint?.watchEndpoint?.videoId;
+  const menuItems = renderer?.menu?.menuRenderer?.items ?? [];
+  const topLevelButtons = renderer?.menu?.menuRenderer?.topLevelButtons ?? [];
+  const subtitleRuns =
+    renderer?.subtitle?.runs
+    ?? renderer?.flexColumns?.[1]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs
+    ?? [];
+
+  return findFirstVideoId([
+    renderer?.playlistItemData?.videoId,
+    renderer?.navigationEndpoint?.watchEndpoint?.videoId,
+    renderer?.navigationEndpoint?.watchPlaylistEndpoint?.videoId,
+    renderer?.navigationEndpoint?.browseEndpoint?.browseId,
+    renderer?.navigationEndpoint?.watchEndpointMusicSupportedConfigs?.watchEndpointMusicConfig?.musicVideoType === "MUSIC_VIDEO_TYPE_ATV"
+      ? renderer?.navigationEndpoint?.watchEndpoint?.videoId
+      : undefined,
+    renderer?.overlay?.musicItemThumbnailOverlayRenderer?.content?.musicPlayButtonRenderer?.playNavigationEndpoint?.watchEndpoint?.videoId,
+    renderer?.overlay?.musicItemThumbnailOverlayRenderer?.content?.musicPlayButtonRenderer?.playNavigationEndpoint?.watchPlaylistEndpoint?.videoId,
+    renderer?.thumbnailOverlay?.musicItemThumbnailOverlayRenderer?.content?.musicPlayButtonRenderer?.playNavigationEndpoint?.watchEndpoint?.videoId,
+    renderer?.thumbnailOverlay?.musicItemThumbnailOverlayRenderer?.content?.musicPlayButtonRenderer?.playNavigationEndpoint?.watchPlaylistEndpoint?.videoId,
+    ...subtitleRuns.map((run: any) => run?.endpoint?.payload?.videoId),
+    ...menuItems.map((item: any) => item?.menuNavigationItemRenderer?.navigationEndpoint?.watchEndpoint?.videoId),
+    ...menuItems.map((item: any) => item?.menuNavigationItemRenderer?.navigationEndpoint?.watchPlaylistEndpoint?.videoId),
+    ...menuItems.map((item: any) => item?.menuServiceItemRenderer?.serviceEndpoint?.queueAddEndpoint?.queueTarget?.videoId),
+    ...menuItems.map((item: any) => item?.toggleMenuServiceItemRenderer?.defaultServiceEndpoint?.queueAddEndpoint?.queueTarget?.videoId),
+    ...menuItems.map((item: any) => item?.toggleMenuServiceItemRenderer?.toggledServiceEndpoint?.queueAddEndpoint?.queueTarget?.videoId),
+    ...topLevelButtons.map((button: any) => button?.buttonRenderer?.navigationEndpoint?.watchEndpoint?.videoId),
+    ...topLevelButtons.map((button: any) => button?.buttonRenderer?.navigationEndpoint?.watchPlaylistEndpoint?.videoId),
+  ]);
 }
 
 function readRendererPlaylistId(renderer: RawNode): string | undefined {
@@ -524,6 +572,64 @@ function toTrackFromRaw(renderer: RawNode): TrackResult | null {
     }),
     sourceLabel: "YouTube Music",
   };
+}
+
+function summarizeFailedTrackRenderer(renderer: RawNode) {
+  return {
+    title: readText(renderer?.title) || readText(renderer?.flexColumns?.[0]?.musicResponsiveListItemFlexColumnRenderer?.text) || null,
+    navigationEndpoint: renderer?.navigationEndpoint ?? null,
+    thumbnailOverlay: renderer?.thumbnailOverlay ?? null,
+    menuItems: (renderer?.menu?.menuRenderer?.items ?? []).slice(0, 2),
+    topLevelButtons: (renderer?.menu?.menuRenderer?.topLevelButtons ?? []).slice(0, 2),
+  };
+}
+
+function readNestedBrowseEndpoint(node: RawNode): RawNode | null {
+  if (!node || typeof node !== "object") {
+    return null;
+  }
+
+  if (node.browseEndpoint && typeof node.browseEndpoint === "object") {
+    return node.browseEndpoint;
+  }
+
+  const persistCommand = node.musicLibraryPersistLaunchNavigationCommand?.command;
+  if (persistCommand) {
+    const nestedPersistEndpoint = readNestedBrowseEndpoint(persistCommand);
+    if (nestedPersistEndpoint) {
+      return nestedPersistEndpoint;
+    }
+  }
+
+  const commandExecutorCommands = node.commandExecutorCommand?.commands;
+  if (Array.isArray(commandExecutorCommands)) {
+    for (const command of commandExecutorCommands) {
+      const nestedCommandEndpoint = readNestedBrowseEndpoint(command);
+      if (nestedCommandEndpoint) {
+        return nestedCommandEndpoint;
+      }
+    }
+  }
+
+  const nestedCandidates = [
+    node.navigationEndpoint,
+    node.onSelectCommand,
+    node.serviceEndpoint,
+    node.command,
+  ];
+
+  for (const candidate of nestedCandidates) {
+    const nestedEndpoint = readNestedBrowseEndpoint(candidate);
+    if (nestedEndpoint) {
+      return nestedEndpoint;
+    }
+  }
+
+  return null;
+}
+
+function readChipBrowseEndpoint(chip: RawNode): RawNode | null {
+  return readNestedBrowseEndpoint(chip);
 }
 
 function toPlaylistFromRaw(renderer: RawNode): PlaylistResult | null {
@@ -656,9 +762,10 @@ function classifyLibraryAuthState(node: any): LibraryAuthState {
 function findFilterToken(node: any, filter: string): string | null {
   const chips = collectRenderers(node, "chipCloudChipRenderer");
   const match = chips.find((chip) => readText(chip.text) === filter);
-  return match?.navigationEndpoint?.browseEndpoint?.continuation
-    ?? match?.navigationEndpoint?.browseEndpoint?.params
-    ?? match?.navigationEndpoint?.browseEndpoint?.browseId
+  const endpoint = readChipBrowseEndpoint(match);
+  return endpoint?.continuation
+    ?? endpoint?.params
+    ?? endpoint?.browseId
     ?? null;
 }
 
@@ -674,7 +781,7 @@ async function getLibraryPageData(client: Innertube, filter?: string): Promise<a
   const base = await getLibraryPageData(client);
   const chipRenderers = collectRenderers(base, "chipCloudChipRenderer");
   const chip = chipRenderers.find((entry) => readText(entry.text) === filter);
-  const endpoint = chip?.navigationEndpoint?.browseEndpoint;
+  const endpoint = readChipBrowseEndpoint(chip);
   if (!endpoint) {
     return base;
   }
@@ -877,6 +984,11 @@ export async function syncYtMusicLibrary(): Promise<YTMusicLibrarySyncResult> {
   const availableFilters = collectRenderers(libraryPage, "chipCloudChipRenderer").map((entry) => readText(entry.text));
   const tracksPage = availableFilters.includes("Songs") ? await getLibraryPageData(client, "Songs") : libraryPage;
   const playlistPage = availableFilters.includes("Playlists") ? await getLibraryPageData(client, "Playlists") : libraryPage;
+  const rawDumpPaths = {
+    library: writeDebugJson("library-landing.json", libraryPage),
+    tracks: writeDebugJson("library-songs.json", tracksPage),
+    playlists: writeDebugJson("library-playlists.json", playlistPage),
+  };
   const trackAuthState = classifyLibraryAuthState(tracksPage);
   if (!trackAuthState.authenticated) {
     throw new Error(trackAuthState.message);
@@ -908,6 +1020,14 @@ export async function syncYtMusicLibrary(): Promise<YTMusicLibrarySyncResult> {
       .filter((item): item is PlaylistResult => item != null),
   );
 
+  const failedTrackCandidates = tracks.length === 0
+    ? trackRenderers
+      .filter((renderer) => renderer?.title || renderer?.flexColumns?.[0] || renderer?.navigationEndpoint || renderer?.menu)
+      .filter((renderer) => !readRendererPlayableVideoId(renderer))
+      .slice(0, 2)
+      .map((renderer) => summarizeFailedTrackRenderer(renderer))
+    : [];
+
   log("ytmusic", "info", "Library extraction stats", {
     availableFilters,
     trackRendererCount: trackRenderers.length,
@@ -920,6 +1040,11 @@ export async function syncYtMusicLibrary(): Promise<YTMusicLibrarySyncResult> {
     topPlaylistRenderers: getTopRendererKeys(playlistPage, 15),
     trackMessage: getLibraryMessageSummary(tracksPage),
     playlistMessage: getLibraryMessageSummary(playlistPage),
+    trackFilterEndpointKeys: availableFilters.includes("Songs")
+      ? Object.keys(readChipBrowseEndpoint(collectRenderers(libraryPage, "chipCloudChipRenderer").find((entry) => readText(entry.text) === "Songs")) ?? {})
+      : [],
+    failedTrackCandidates,
+    rawDumpPaths,
   });
 
   const playlists = await Promise.all(
