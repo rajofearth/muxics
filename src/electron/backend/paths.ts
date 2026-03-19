@@ -36,8 +36,11 @@ export const PLAYLISTS_DIR = path.join(APP_DATA_PATH, "playlists");
 export const YTMUSIC_DIR = path.join(APP_DATA_PATH, "ytmusic");
 export const YTMUSIC_SESSION_PATH = path.join(YTMUSIC_DIR, "session.json");
 export const YTMUSIC_CACHE_PATH = path.join(YTMUSIC_DIR, "cache.json");
+export const YTMUSIC_MEDIA_INDEX_PATH = path.join(YTMUSIC_DIR, "media-index.json");
 export const YTMUSIC_DEBUG_DIR = path.join(YTMUSIC_DIR, "debug");
 export const YTMUSIC_TOOLS_DIR = path.join(YTMUSIC_DIR, "tools");
+export const YTMUSIC_AUDIO_CACHE_DIR = path.join(YTMUSIC_DIR, "audio");
+export const YTMUSIC_ARTWORK_CACHE_DIR = path.join(YTMUSIC_DIR, "artwork");
 
 export function getDefaultMusicPath(): string {
   const home = os.homedir();
@@ -69,5 +72,13 @@ export function ensureAppDataDirs(): void {
 
   if (!fs.existsSync(YTMUSIC_TOOLS_DIR)) {
     fs.mkdirSync(YTMUSIC_TOOLS_DIR, { recursive: true });
+  }
+
+  if (!fs.existsSync(YTMUSIC_AUDIO_CACHE_DIR)) {
+    fs.mkdirSync(YTMUSIC_AUDIO_CACHE_DIR, { recursive: true });
+  }
+
+  if (!fs.existsSync(YTMUSIC_ARTWORK_CACHE_DIR)) {
+    fs.mkdirSync(YTMUSIC_ARTWORK_CACHE_DIR, { recursive: true });
   }
 }

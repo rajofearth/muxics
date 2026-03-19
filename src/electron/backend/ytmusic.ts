@@ -26,6 +26,7 @@ import {
   getYtDlpPlaylistItems,
   resolveYtDlpPlayback,
 } from "./ytDlp";
+import { getCachedArtworkUrl, getCachedAudioUrl } from "./ytMusicCache";
 import {
   clearStoredYtMusicSession,
   loadStoredYtMusicSession,
@@ -264,6 +265,10 @@ function getThumbnailUrl(item: { thumbnails?: { url: string }[]; thumbnail?: { c
   return thumbnails[thumbnails.length - 1]?.url;
 }
 
+function getCachedTrackPicture(providerId: string, sourceUrl?: string): string | undefined {
+  return getCachedArtworkUrl(providerId, sourceUrl);
+}
+
 function summarizePlaybackCandidate(format: Format) {
   return {
     itag: format.itag,
@@ -413,7 +418,7 @@ function toTrack(item: MusicResponsiveListItem | MusicTwoRowItem): TrackResult |
     duration: seconds ?? 0,
     time,
     genre: "YouTube Music",
-    picture: getThumbnailUrl(item),
+    picture: getCachedTrackPicture(providerId, getThumbnailUrl(item)),
     sourceLabel: "YouTube Music",
   };
 }
@@ -743,9 +748,9 @@ function toTrackFromRaw(renderer: RawNode): TrackResult | null {
     duration: readDurationSeconds(durationText),
     time: durationText || formatDuration(readDurationSeconds(durationText)),
     genre: "YouTube Music",
-    picture: getThumbnailUrl({
+    picture: getCachedTrackPicture(providerId, getThumbnailUrl({
       thumbnails: renderer.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails,
-    }),
+    })),
     sourceLabel: "YouTube Music",
   };
 }
@@ -1456,7 +1461,7 @@ export async function getYtMusicPlayback(trackId: string, providerId: string): P
       return {
         mode: "direct",
         targetId: videoId,
-        url: resolved.url,
+        url: getCachedAudioUrl(videoId, resolved.url),
         expiresAt: resolved.expiresAt,
       };
     }
@@ -1483,7 +1488,7 @@ export async function getYtMusicPlayback(trackId: string, providerId: string): P
     return {
       mode: "direct",
       targetId: videoId,
-      url: resolved.url,
+      url: getCachedAudioUrl(videoId, resolved.url),
       expiresAt: Date.now() + 1000 * 60 * 20,
       loudnessDb: resolved.loudnessDb,
     };

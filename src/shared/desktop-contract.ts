@@ -26,6 +26,11 @@ export interface TrackPlaybackResult {
   error?: string;
 }
 
+export interface CacheStatsResult {
+  usageBytes: number;
+  limitBytes: number;
+}
+
 export interface TrackResult {
   id: string;
   provider: MusicProvider;
@@ -146,8 +151,14 @@ export interface DesktopRequestMap {
   scanFolders: { params: { paths: string[] }; response: { files: ScannedFileResult[] } };
   getTrackMetadata: { params: { path: string }; response: TrackMetadataResult | null };
   getPlaybackUrl: { params: { path: string }; response: string };
-  getRemotePlaybackUrl: { params: { url: string }; response: string };
   getWatchFolders: { params: void; response: string[] };
+  getSettings: { params: void; response: { ytmusicCacheLimitBytes: number } };
+  saveSettings: {
+    params: { ytmusicCacheLimitBytes: number };
+    response: { success: boolean };
+  };
+  getYtMusicCacheStats: { params: void; response: CacheStatsResult };
+  clearYtMusicCache: { params: void; response: { success: boolean } };
   addFolder: { params: { path: string }; response: { success: boolean; error?: string } };
   validateFolder: {
     params: { path: string };

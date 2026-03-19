@@ -6,6 +6,7 @@ import { URL } from "node:url";
 import type { TrackResult } from "../../shared/desktop-contract";
 import { log } from "./logger";
 import { YTMUSIC_TOOLS_DIR, ensureAppDataDirs } from "./paths";
+import { getCachedArtworkUrl } from "./ytMusicCache";
 
 export type ResolvedPlayback = {
   url: string;
@@ -422,7 +423,7 @@ function normalizeTrack(entry: JsonLike): ResolvedTrack | null {
     album: pickString(entry.album) ?? "Single",
     duration,
     time,
-    picture: pickThumbnail(entry),
+    picture: getCachedArtworkUrl(providerId, pickThumbnail(entry)),
   };
 }
 

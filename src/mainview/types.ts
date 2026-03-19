@@ -54,7 +54,8 @@ export type NavView =
   | "queue"
   | "search"
   | "favorites"
-  | "now_playing";
+  | "now_playing"
+  | "settings";
 
 export interface NavState {
   view: NavView;

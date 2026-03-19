@@ -17,6 +17,7 @@ export function useAudioEngine() {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const ctxRef = useRef<AudioContext | null>(null);
   const gainRef = useRef<GainNode | null>(null);
+  const loadTokenRef = useRef(0);
   const [analyserReady, setAnalyserReady] = useState(false);
 
   // ── 1. Create audio element + AudioContext once ──────────────────────
@@ -121,6 +122,14 @@ export function useAudioEngine() {
     let cancelled = false;
 
     const loadAndPlay = async () => {
+      const token = ++loadTokenRef.current;
+      const el = audioRef.current;
+      if (!el) return;
+
+      el.pause();
+      el.removeAttribute("src");
+      el.load();
+
       try {
         let url: string | null = null;
         if (currentTrack.provider === "ytmusic") {
@@ -129,7 +138,7 @@ export function useAudioEngine() {
             providerId: currentTrack.providerId,
           });
           if (playback.mode === "direct" && playback.url) {
-            url = await rpc.request.getRemotePlaybackUrl({ url: playback.url });
+            url = playback.url;
           } else {
             throw new Error(playback.error ?? "Playback unavailable for this YouTube Music track.");
           }
@@ -137,20 +146,14 @@ export function useAudioEngine() {
           url = await rpc.request.getPlaybackUrl({ path: currentTrack.path });
         }
 
-        if (cancelled) return;
+        if (cancelled || loadTokenRef.current !== token) return;
         if (!url) {
           throw new Error("No playback URL was resolved.");
         }
 
-        console.info("Resolved playback URL", {
-          provider: currentTrack.provider,
-          trackId: currentTrack.id,
-          url,
-        });
-
         usePlayerStore.getState().setPlaybackUrl(url);
-        const el = audioRef.current;
-        if (!el) return;
+        const currentEl = audioRef.current;
+        if (!currentEl || loadTokenRef.current !== token) return;
 
         // Resume AudioContext if suspended (browser autoplay policy)
         const ctx = ctxRef.current;
@@ -158,11 +161,13 @@ export function useAudioEngine() {
           await ctx.resume();
         }
 
-        el.src = url;
-        el.load();
-        await el.play();
+        currentEl.src = url;
+        currentEl.load();
+        await currentEl.play();
       } catch (err) {
-        console.warn("Playback start failed:", err);
+        if (!cancelled && loadTokenRef.current === token) {
+          console.warn("Playback start failed:", err);
+        }
       }
     };
 

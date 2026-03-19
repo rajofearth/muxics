@@ -16,6 +16,7 @@ import { getDefaultMusicPath, PLAYLISTS_DIR } from "./backend/paths";
 import { scanFolders } from "./backend/scanner";
 import { formatMetadataTime, getTrackMetadata } from "./backend/metadata";
 import { getAudioServerPort, setAllowedPaths, startAudioServer } from "./backend/audioServer";
+import { clearYtMusicCache, getYtMusicCacheStats } from "./backend/ytMusicCache";
 import { listPlaylists, loadPlaylist, savePlaylist } from "./backend/playlists";
 import { loadSettings, saveSettings } from "./backend/settings";
 import { installBrowserBridgeHost, prepareBrowserBridgeBundle } from "./backend/browserBridge";
@@ -367,11 +368,23 @@ const requestHandlers: RequestHandlerMap = {
     const port = getAudioServerPort();
     return `http://127.0.0.1:${port}/play?path=${encodeURIComponent(filePath)}`;
   },
-  getRemotePlaybackUrl: ({ url }) => {
-    const port = getAudioServerPort();
-    return `http://127.0.0.1:${port}/proxy?url=${encodeURIComponent(url)}`;
-  },
   getWatchFolders: () => loadSettings().watchFolders,
+  getSettings: () => {
+    const settings = loadSettings();
+    return {
+      ytmusicCacheLimitBytes: settings.ytmusicCacheLimitBytes ?? 1024 * 1024 * 1024,
+    };
+  },
+  saveSettings: ({ ytmusicCacheLimitBytes }) => {
+    const settings = loadSettings();
+    saveSettings({
+      ...settings,
+      ytmusicCacheLimitBytes,
+    });
+    return { success: true };
+  },
+  getYtMusicCacheStats: () => getYtMusicCacheStats(),
+  clearYtMusicCache: () => clearYtMusicCache(),
   addFolder: ({ path: folderPath }) => {
     const resolved = path.resolve(folderPath.trim());
 

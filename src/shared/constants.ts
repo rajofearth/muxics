@@ -25,6 +25,7 @@ export const MIME_TYPES: Record<string, string> = {
 export const APP_NAME = "Muxics";
 export const APP_ID = "dev.muxics.player";
 export const APP_DATA_ID = "muxics.player";
+export const AUDIO_SERVER_PORT = 46021;
 export const LEGACY_APP_DATA_IDS = [
   "muse.player",
   "muse.electrobun.dev",

@@ -18,10 +18,16 @@ const desktopBridge: DesktopBridge = {
       ipcRenderer.invoke("desktop:request:getTrackMetadata", params),
     getPlaybackUrl: (params) =>
       ipcRenderer.invoke("desktop:request:getPlaybackUrl", params),
-    getRemotePlaybackUrl: (params) =>
-      ipcRenderer.invoke("desktop:request:getRemotePlaybackUrl", params),
     getWatchFolders: () =>
       ipcRenderer.invoke("desktop:request:getWatchFolders"),
+    getSettings: () =>
+      ipcRenderer.invoke("desktop:request:getSettings"),
+    saveSettings: (params) =>
+      ipcRenderer.invoke("desktop:request:saveSettings", params),
+    getYtMusicCacheStats: () =>
+      ipcRenderer.invoke("desktop:request:getYtMusicCacheStats"),
+    clearYtMusicCache: () =>
+      ipcRenderer.invoke("desktop:request:clearYtMusicCache"),
     addFolder: (params) =>
       ipcRenderer.invoke("desktop:request:addFolder", params),
     validateFolder: (params) =>

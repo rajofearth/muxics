@@ -32,6 +32,7 @@ import { NowPlayingView } from "./components/NowPlayingView";
 import { BrowserBridgeDialog } from "./components/BrowserBridgeDialog";
 import { showToast } from "./components/Toast";
 import { YtMusicHomeView } from "./components/YtMusicHomeView";
+import { SettingsView } from "./components/SettingsView";
 import type { DesktopBridge } from "../shared/desktop-contract";
 
 type MainWindowProps = {
@@ -814,6 +815,9 @@ export function MainWindow({
           <Music size={40} className="text-app-text-tertiary" />,
         );
       }
+
+      case "settings":
+        return <SettingsView desktop={desktop} />;
 
       default: {
         const defaultTracks =

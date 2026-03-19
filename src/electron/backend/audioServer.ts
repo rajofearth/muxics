@@ -2,12 +2,18 @@ import fs from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import path from "node:path";
 import { Readable } from "node:stream";
-import { MIME_TYPES } from "../../shared/constants";
+import { AUDIO_SERVER_PORT, MIME_TYPES } from "../../shared/constants";
 import { getYtMusicAuthStatus, importYtMusicSession } from "./ytmusic";
+import {
+  ensureArtworkCached,
+  getAudioPathByKey,
+  getArtworkPathByKey,
+  touchAudioEntry,
+  warmAudioCache,
+} from "./ytMusicCache";
 
 let allowedPaths = new Set<string>();
 let serverPort = 0;
-const FIXED_SERVER_PORT = 46021;
 
 function toComparablePath(filePath: string): string {
   const resolved = path.resolve(filePath);
@@ -126,77 +132,132 @@ function handlePlayback(req: IncomingMessage, res: ServerResponse): void {
   fs.createReadStream(filePath).pipe(res);
 }
 
-async function handleRemotePlayback(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
+function streamLocalFile(req: IncomingMessage, res: ServerResponse, filePath: string, contentType?: string | null): void {
+  const stat = fs.statSync(filePath);
+  const resolvedType = contentType ?? MIME_TYPES[path.extname(filePath).toLowerCase()] ?? "application/octet-stream";
+  const rangeHeader = req.headers.range;
+
+  if (rangeHeader) {
+    const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
+    if (!match) {
+      sendText(res, 416, "Range Not Satisfiable");
+      return;
+    }
+
+    const start = Number.parseInt(match[1], 10);
+    const end = match[2] ? Math.min(Number.parseInt(match[2], 10), stat.size - 1) : stat.size - 1;
+
+    res.writeHead(206, {
+      "Content-Type": resolvedType,
+      "Content-Range": `bytes ${start}-${end}/${stat.size}`,
+      "Content-Length": String(end - start + 1),
+      "Accept-Ranges": "bytes",
+      "Access-Control-Allow-Origin": "*",
+    });
+
+    fs.createReadStream(filePath, { start, end }).pipe(res);
+    return;
+  }
+
+  res.writeHead(200, {
+    "Content-Type": resolvedType,
+    "Content-Length": String(stat.size),
+    "Accept-Ranges": "bytes",
+    "Access-Control-Allow-Origin": "*",
+  });
+
+  fs.createReadStream(filePath).pipe(res);
+}
+
+async function handleYtCache(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
   if (!req.url) {
     return false;
   }
 
   const url = new URL(req.url, "http://127.0.0.1");
-  if (url.pathname !== "/proxy") {
+  if (!url.pathname.startsWith("/yt-cache/")) {
     return false;
   }
 
-  const sourceUrl = url.searchParams.get("url");
-  if (!sourceUrl) {
-    sendText(res, 400, "Missing url");
+  const key = url.searchParams.get("key");
+  const sourceUrl = url.searchParams.get("source");
+  if (!key) {
+    sendText(res, 400, "Missing key");
     return true;
   }
 
-  let parsedSource: URL;
-  try {
-    parsedSource = new URL(sourceUrl);
-  } catch {
-    sendText(res, 400, "Invalid url");
+  if (url.pathname === "/yt-cache/artwork") {
+    try {
+      const cached = getArtworkPathByKey(key);
+      const filePath = cached ?? (sourceUrl ? await ensureArtworkCached(key, sourceUrl) : null);
+      if (!filePath) {
+        sendText(res, 404, "Artwork not found");
+        return true;
+      }
+
+      streamLocalFile(req, res, filePath, null);
+      return true;
+    } catch {
+      sendText(res, 500, "Artwork cache failed");
+      return true;
+    }
+  }
+
+  if (url.pathname === "/yt-cache/audio") {
+    const cached = getAudioPathByKey(key);
+    if (cached) {
+      touchAudioEntry(key);
+      streamLocalFile(req, res, cached, null);
+      return true;
+    }
+
+    if (!sourceUrl) {
+      sendText(res, 404, "Audio not found");
+      return true;
+    }
+
+    const upstream = await fetch(sourceUrl, {
+      headers: {
+        ...(req.headers.range ? { Range: req.headers.range } : {}),
+        "User-Agent":
+          req.headers["user-agent"] ??
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
+        Accept: req.headers.accept ?? "*/*",
+      },
+    });
+
+    if (!upstream.ok && upstream.status !== 206) {
+      sendText(res, upstream.status, `Upstream request failed (${upstream.status})`);
+      return true;
+    }
+
+    void warmAudioCache(key, sourceUrl).catch(() => {});
+
+    const headers: Record<string, string> = {
+      "Access-Control-Allow-Origin": "*",
+      "Accept-Ranges": upstream.headers.get("accept-ranges") ?? "bytes",
+    };
+
+    const contentType = upstream.headers.get("content-type");
+    const contentLength = upstream.headers.get("content-length");
+    const contentRange = upstream.headers.get("content-range");
+
+    if (contentType) headers["Content-Type"] = contentType;
+    if (contentLength) headers["Content-Length"] = contentLength;
+    if (contentRange) headers["Content-Range"] = contentRange;
+
+    res.writeHead(upstream.status, headers);
+
+    if (!upstream.body) {
+      res.end();
+      return true;
+    }
+
+    Readable.fromWeb(upstream.body as globalThis.ReadableStream<Uint8Array>).pipe(res);
     return true;
   }
 
-  if (parsedSource.protocol !== "https:") {
-    sendText(res, 400, "Unsupported protocol");
-    return true;
-  }
-
-  const upstream = await fetch(parsedSource, {
-    headers: {
-      ...(req.headers.range ? { Range: req.headers.range } : {}),
-      "User-Agent":
-        req.headers["user-agent"] ??
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
-      Accept: req.headers.accept ?? "*/*",
-    },
-  });
-
-  if (!upstream.ok && upstream.status !== 206) {
-    sendText(res, upstream.status, `Upstream request failed (${upstream.status})`);
-    return true;
-  }
-
-  const headers: Record<string, string> = {
-    "Access-Control-Allow-Origin": "*",
-    "Accept-Ranges": upstream.headers.get("accept-ranges") ?? "bytes",
-  };
-
-  const contentType = upstream.headers.get("content-type");
-  const contentLength = upstream.headers.get("content-length");
-  const contentRange = upstream.headers.get("content-range");
-
-  if (contentType) {
-    headers["Content-Type"] = contentType;
-  }
-  if (contentLength) {
-    headers["Content-Length"] = contentLength;
-  }
-  if (contentRange) {
-    headers["Content-Range"] = contentRange;
-  }
-
-  res.writeHead(upstream.status, headers);
-
-  if (!upstream.body) {
-    res.end();
-    return true;
-  }
-
-  Readable.fromWeb(upstream.body as globalThis.ReadableStream<Uint8Array>).pipe(res);
+  sendText(res, 404, "Not Found");
   return true;
 }
 
@@ -266,7 +327,7 @@ export async function startAudioServer(): Promise<number> {
         if (await handleBridge(req, res)) {
           return;
         }
-        if (await handleRemotePlayback(req, res)) {
+        if (await handleYtCache(req, res)) {
           return;
         }
         handlePlayback(req, res);
@@ -278,7 +339,7 @@ export async function startAudioServer(): Promise<number> {
 
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
-    server.listen(FIXED_SERVER_PORT, "127.0.0.1", () => resolve());
+    server.listen(AUDIO_SERVER_PORT, "127.0.0.1", () => resolve());
   });
 
   const address = server.address();

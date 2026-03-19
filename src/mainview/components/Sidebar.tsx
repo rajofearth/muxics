@@ -11,6 +11,7 @@ import {
   LayoutList,
   Heart,
   Music,
+  Settings,
 } from "lucide-react";
 import type { NavState, NavView, Playlist } from "../types";
 import { usePlayerStore } from "../store/playerStore";
@@ -45,6 +46,7 @@ export const Sidebar = memo(function Sidebar({ navState, playlists, onNavigate }
   const MANAGE_ITEMS: { id: NavView; icon: typeof FolderOpen; label: string }[] = [
     { id: "playlists", icon: ListMusic, label: "All Playlists" },
     { id: "folders", icon: FolderOpen, label: "Folders" },
+    { id: "settings", icon: Settings, label: "Settings" },
   ];
 
   const NavButton = ({ id, icon: Icon, label, count }: { id: NavView; icon: typeof Library; label: string; count?: number }) => {
