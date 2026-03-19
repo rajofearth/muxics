@@ -220,6 +220,93 @@ function getThumbnailUrl(item: { thumbnails?: { url: string }[]; thumbnail?: { c
   return thumbnails[thumbnails.length - 1]?.url;
 }
 
+function sortPlaybackFormats(formats: Format[]): Format[] {
+  return [...formats].sort((left, right) => {
+    const leftAudioOnly = left.has_audio && !left.has_video ? 1 : 0;
+    const rightAudioOnly = right.has_audio && !right.has_video ? 1 : 0;
+    if (leftAudioOnly !== rightAudioOnly) {
+      return rightAudioOnly - leftAudioOnly;
+    }
+
+    const leftDirectUrl = left.url ? 1 : 0;
+    const rightDirectUrl = right.url ? 1 : 0;
+    if (leftDirectUrl !== rightDirectUrl) {
+      return rightDirectUrl - leftDirectUrl;
+    }
+
+    const leftCipher = left.signature_cipher || left.cipher ? 1 : 0;
+    const rightCipher = right.signature_cipher || right.cipher ? 1 : 0;
+    if (leftCipher !== rightCipher) {
+      return rightCipher - leftCipher;
+    }
+
+    const leftBitrate = left.average_bitrate ?? left.bitrate ?? 0;
+    const rightBitrate = right.average_bitrate ?? right.bitrate ?? 0;
+    return rightBitrate - leftBitrate;
+  });
+}
+
+async function resolvePlaybackUrlFromFormats(
+  client: Innertube,
+  videoId: string,
+): Promise<{ url: string; loudnessDb?: number } | null> {
+  const info = await client.getBasicInfo(videoId);
+  const streamingData = info.streaming_data;
+
+  if (!streamingData) {
+    log("ytmusic", "warn", "Playback info missing streaming data", { videoId });
+    return null;
+  }
+
+  const candidateFormats = sortPlaybackFormats(
+    [...streamingData.adaptive_formats, ...streamingData.formats].filter(
+      (format) => format.has_audio && !format.is_type_otf,
+    ),
+  );
+
+  if (candidateFormats.length === 0) {
+    log("ytmusic", "warn", "No audio playback formats available", { videoId });
+    return null;
+  }
+
+  const failures: string[] = [];
+  for (const format of candidateFormats) {
+    try {
+      const url = format.url ?? (await format.decipher(client.session.player));
+      if (!url) {
+        failures.push(`itag:${format.itag}:empty-url`);
+        continue;
+      }
+
+      return {
+        url,
+        loudnessDb: format.loudness_db,
+      };
+    } catch (error) {
+      failures.push(
+        `itag:${format.itag}:${error instanceof Error ? error.message : "decipher-failed"}`,
+      );
+    }
+  }
+
+  log("ytmusic", "warn", "Failed every YT Music playback candidate", {
+    videoId,
+    candidates: candidateFormats.slice(0, 5).map((format) => ({
+      itag: format.itag,
+      mimeType: format.mime_type,
+      hasAudio: format.has_audio,
+      hasVideo: format.has_video,
+      bitrate: format.average_bitrate ?? format.bitrate ?? 0,
+      hasUrl: Boolean(format.url),
+      hasSignatureCipher: Boolean(format.signature_cipher),
+      hasCipher: Boolean(format.cipher),
+    })),
+    failures: failures.slice(0, 5),
+  });
+
+  return null;
+}
+
 function toTrack(item: MusicResponsiveListItem | MusicTwoRowItem): TrackResult | null {
   const providerId = item.id;
   if (!providerId) {
@@ -1134,14 +1221,8 @@ export async function getYtMusicPlayback(trackId: string, providerId: string): P
   try {
     const client = await getClient();
     const videoId = providerId || trackId.replace(/^ytmusic:/, "");
-    const format = await client.getStreamingData(videoId, {
-      type: "audio",
-      quality: "best",
-      format: "any",
-    });
-
-    const url = format.url ?? (await format.decipher(client.session.player));
-    if (!url || !format.has_audio) {
+    const resolved = await resolvePlaybackUrlFromFormats(client, videoId);
+    if (!resolved?.url) {
       return {
         mode: "unavailable",
         targetId: videoId,
@@ -1152,9 +1233,9 @@ export async function getYtMusicPlayback(trackId: string, providerId: string): P
     return {
       mode: "direct",
       targetId: videoId,
-      url,
+      url: resolved.url,
       expiresAt: Date.now() + 1000 * 60 * 20,
-      loudnessDb: format.loudness_db,
+      loudnessDb: resolved.loudnessDb,
     };
   } catch (error) {
     log("ytmusic", "warn", "Failed to resolve playback", error);
