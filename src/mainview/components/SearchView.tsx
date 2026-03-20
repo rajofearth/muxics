@@ -9,6 +9,7 @@ type SearchViewProps = {
   currentTrack: Track | null;
   isPlaying: boolean;
   onPlayTrack: (track: Track, queue: Track[]) => void;
+  onPlayPause: () => void;
   onNavigate?: (view: NavView, id?: string) => void;
 };
 
@@ -39,7 +40,7 @@ function buildLibrarySearchMaps(tracks: readonly Track[]) {
   return { artistMap, albumMap };
 }
 
-export function SearchView({ currentTrack, isPlaying, onPlayTrack, onNavigate }: SearchViewProps) {
+export function SearchView({ currentTrack, isPlaying, onPlayTrack, onPlayPause, onNavigate }: SearchViewProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const { search, setSearchQuery, libraryTracks, librarySource, auth } = usePlayerStore(
     useShallow((s) => ({
@@ -211,6 +212,7 @@ export function SearchView({ currentTrack, isPlaying, onPlayTrack, onNavigate }:
                 currentTrack={currentTrack}
                 isPlaying={isPlaying}
                 onTrackClick={onPlayTrack}
+                onActiveTrackClick={onPlayPause}
               />
             </div>
           )}

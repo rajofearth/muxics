@@ -13,6 +13,7 @@ type TrackTableProps = {
   currentTrack: Track | null;
   isPlaying: boolean;
   onTrackClick: (track: Track, queue: Track[]) => void;
+  onActiveTrackClick?: () => void;
   compact?: boolean;
   sortable?: boolean;
   playlistId?: string;
@@ -34,6 +35,7 @@ export const TrackTable = memo(function TrackTable({
   currentTrack,
   isPlaying,
   onTrackClick,
+  onActiveTrackClick,
   compact = false,
   sortable = true,
   playlistId,
@@ -70,14 +72,20 @@ export const TrackTable = memo(function TrackTable({
   sortedRef.current = sortedTracks;
   const onTrackClickRef = useRef(onTrackClick);
   onTrackClickRef.current = onTrackClick;
+  const onActiveTrackClickRef = useRef(onActiveTrackClick);
+  onActiveTrackClickRef.current = onActiveTrackClick;
 
   const handleRowActivate = useCallback((trackId: string) => {
     const list = sortedRef.current;
     const track = list.find((t) => t.id === trackId);
     if (track) {
+      if (track.id === currentTrack?.id) {
+        onActiveTrackClickRef.current?.();
+        return;
+      }
       onTrackClickRef.current(track, list);
     }
-  }, []);
+  }, [currentTrack?.id]);
 
   const rowHeight = compact ? ROW_HEIGHT_COMPACT : ROW_HEIGHT_FULL;
   const useVirtual = sortedTracks.length >= VIRTUALIZE_THRESHOLD;

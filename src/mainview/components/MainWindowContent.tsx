@@ -164,6 +164,7 @@ export function MainWindowContent({
         currentTrack={currentTrack}
         isPlaying={isPlaying}
         onTrackClick={(track, queue) => onPlayTrack(track, queue)}
+        onActiveTrackClick={onPlayPause}
         playlistId={playlistId}
       />
     </div>
@@ -308,6 +309,7 @@ export function MainWindowContent({
           currentTrack={currentTrack}
           isPlaying={isPlaying}
           onPlayTrack={(track, queue) => onPlayTrack(track, queue)}
+          onPlayPause={onPlayPause}
           onNavigate={handleNavigate}
         />
       );

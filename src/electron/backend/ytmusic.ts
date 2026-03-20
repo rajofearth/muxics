@@ -308,38 +308,58 @@ function expiresAtFromStreamUrl(url: string): number | undefined {
   }
 }
 
+/**
+ * WEB_REMIX / WEB streams increasingly expect a Proof-of-Origin token (`pot` on googlevideo URLs).
+ * Mobile/TV InnerTube clients often still return playable URLs without browser BotGuard (YouTube.js #724).
+ * @see https://github.com/LuanRT/YouTube.js/issues/724
+ */
+const PLAYBACK_INNERTUBE_CLIENTS = [
+  "ANDROID",
+  "YTMUSIC_ANDROID",
+  "IOS",
+  "TV",
+  "WEB",
+  "MWEB",
+  "YTMUSIC",
+] as const;
+
+type PlaybackInnertubeClient = (typeof PLAYBACK_INNERTUBE_CLIENTS)[number];
+
 async function resolvePlaybackUrlFromFormats(
   client: Innertube,
   videoId: string,
   context: { source: string },
+  innertubeClient: PlaybackInnertubeClient,
 ): Promise<{ url: string; loudnessDb?: number } | null> {
-  const innertubeClient = { client: "YTMUSIC" as const };
+  const clientOpts = { client: innertubeClient };
   let streamingData: Awaited<ReturnType<typeof client.getBasicInfo>>["streaming_data"] | undefined;
 
   try {
-    const full = await client.getInfo(videoId, innertubeClient);
+    const full = await client.getInfo(videoId, clientOpts);
     streamingData = full.streaming_data;
   } catch (error) {
     log("ytmusic", "info", "getInfo failed for playback, falling back to getBasicInfo", {
       videoId,
+      innerClient: innertubeClient,
       error: error instanceof Error ? error.message : String(error),
     });
   }
 
   if (!streamingData) {
     try {
-      const basic = await client.getBasicInfo(videoId, innertubeClient);
+      const basic = await client.getBasicInfo(videoId, clientOpts);
       streamingData = basic.streaming_data;
     } catch (error) {
       log("ytmusic", "warn", "getBasicInfo failed for playback", {
         videoId,
+        innerClient: innertubeClient,
         error: error instanceof Error ? error.message : String(error),
       });
     }
   }
 
   if (!streamingData) {
-    log("ytmusic", "warn", "Playback info missing streaming data", { videoId });
+    log("ytmusic", "warn", "Playback info missing streaming data", { videoId, innerClient: innertubeClient });
     return null;
   }
 
@@ -350,7 +370,7 @@ async function resolvePlaybackUrlFromFormats(
   );
 
   if (candidateFormats.length === 0) {
-    log("ytmusic", "warn", "No audio playback formats available", { videoId });
+    log("ytmusic", "warn", "No audio playback formats available", { videoId, innerClient: innertubeClient });
     return null;
   }
 
@@ -374,9 +394,10 @@ async function resolvePlaybackUrlFromFormats(
     }
   }
 
-  log("ytmusic", "warn", "Failed every YT Music playback candidate", {
+  log("ytmusic", "warn", "Failed every playback format candidate for client", {
     videoId,
     source: context.source,
+    innerClient: innertubeClient,
     candidates: candidateFormats.slice(0, 5).map(summarizePlaybackCandidate),
     failures: failures.slice(0, 5),
   });
@@ -1451,37 +1472,67 @@ export async function getYtMusicPlaylist(playlistId: string): Promise<PlaylistRe
   }
 }
 
-export async function getYtMusicPlayback(trackId: string, providerId: string): Promise<TrackPlaybackResult> {
-  const videoId = providerId || trackId.replace(/^ytmusic:/, "");
-  const source = trackId.startsWith("ytmusic:") ? "ytmusic" : "unknown";
-  const fallbackExpiresAt = () => Date.now() + 1000 * 60 * 20;
+/**
+ * Resolves a fresh signed googlevideo (or CDN) stream URL for a YT Music video id.
+ * Used by playback IPC and by the local audio proxy when a cached file is missing
+ * or the stored source URL returns 403/404 (expired signature, eviction, etc.).
+ */
+export async function resolveYtMusicDirectStream(
+  videoId: string,
+): Promise<{ url: string; loudnessDb?: number } | null> {
+  const source = "ytmusic";
 
   try {
     const client = await getClient();
 
-    try {
-      const format = await client.getStreamingData(videoId, {
-        type: "audio",
-        quality: "best",
-        client: "YTMUSIC",
-      });
-      if (format.url) {
-        return {
-          mode: "direct",
-          targetId: videoId,
-          url: getCachedAudioUrl(videoId, format.url),
-          expiresAt: expiresAtFromStreamUrl(format.url) ?? fallbackExpiresAt(),
-          loudnessDb: format.loudness_db,
-        };
+    for (const innerClient of PLAYBACK_INNERTUBE_CLIENTS) {
+      try {
+        const format = await client.getStreamingData(videoId, {
+          type: "audio",
+          quality: "best",
+          client: innerClient,
+        });
+        if (format.url) {
+          log("ytmusic", "info", "Playback URL via getStreamingData", {
+            videoId,
+            innerClient,
+            itag: format.itag,
+          });
+          return { url: format.url, loudnessDb: format.loudness_db };
+        }
+      } catch (error) {
+        log("ytmusic", "info", "getStreamingData failed for client", {
+          videoId,
+          innerClient,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
-    } catch (error) {
-      log("ytmusic", "info", "getStreamingData failed, trying format scan", {
-        videoId,
-        error: error instanceof Error ? error.message : String(error),
-      });
     }
 
-    const resolved = await resolvePlaybackUrlFromFormats(client, videoId, { source });
+    for (const innerClient of PLAYBACK_INNERTUBE_CLIENTS) {
+      const resolved = await resolvePlaybackUrlFromFormats(client, videoId, { source }, innerClient);
+      if (resolved) {
+        log("ytmusic", "info", "Playback URL via format scan", { videoId, innerClient });
+        return resolved;
+      }
+    }
+
+    return null;
+  } catch (error) {
+    log("ytmusic", "warn", "resolveYtMusicDirectStream failed", {
+      videoId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
+export async function getYtMusicPlayback(trackId: string, providerId: string): Promise<TrackPlaybackResult> {
+  const videoId = providerId || trackId.replace(/^ytmusic:/, "");
+  const fallbackExpiresAt = () => Date.now() + 1000 * 60 * 20;
+
+  try {
+    const resolved = await resolveYtMusicDirectStream(videoId);
     if (resolved?.url) {
       return {
         mode: "direct",
