@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import type { OAuth2Tokens } from "youtubei.js/dist/src/core/OAuth2.js";
+import type { OAuth2Tokens } from "youtubei.js";
 import { safeStorage } from "electron";
 import { YTMUSIC_SESSION_PATH, ensureAppDataDirs } from "./paths";
 import { loadSettings } from "./settings";

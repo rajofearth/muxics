@@ -201,8 +201,6 @@ export interface DesktopRequestMap {
   openPath: { params: { path: string }; response: { success: boolean } };
   ytmusicSyncLibrary: { params: void; response: YTMusicLibrarySyncResult };
   ytmusicLoadCachedLibrary: { params: void; response: YTMusicLibrarySyncResult | null };
-  ytmusicGetHome: { params: void; response: YTMusicHomeResult };
-  ytmusicGetHomeSnapshot: { params: void; response: YTMusicHomeResult | null };
   ytmusicSearch: { params: { query: string }; response: TrackResult[] };
   ytmusicGetPlaylist: { params: { playlistId: string }; response: PlaylistResult | null };
   ytmusicGetPlayback: { params: { trackId: string; providerId: string }; response: TrackPlaybackResult };

@@ -7,7 +7,7 @@ function getConfigRoot(): string {
   const home = os.homedir();
 
   if (process.platform === "win32") {
-    return process.env.APPDATA ?? path.join(home, "AppData", "Roaming");
+    return process.env["APPDATA"] ?? path.join(home, "AppData", "Roaming");
   }
 
   if (process.platform === "darwin") {
@@ -48,7 +48,7 @@ export function getDefaultMusicPath(): string {
   const home = os.homedir();
 
   if (process.platform === "win32") {
-    const userProfile = process.env.USERPROFILE ?? home;
+    const userProfile = process.env["USERPROFILE"] ?? home;
     return path.join(userProfile, "Music");
   }
 

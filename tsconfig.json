@@ -16,7 +16,7 @@
 		"noFallthroughCasesInSwitch": true,
 		"noUnusedLocals": true,
 		"noUnusedParameters": true,
-		"noPropertyAccessFromIndexSignature": true
+		"noPropertyAccessFromIndexSignature": false
 	},
 	"include": ["src/**/*"],
 	"exclude": ["node_modules", "dist", "dist-electron", "build", "../../package/dist"]

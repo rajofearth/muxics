@@ -35,8 +35,6 @@ import {
   clearYtMusicMetadataCache,
   getCachedYtMusicLibrary,
   getYtMusicAuthStatus,
-  getYtMusicHome,
-  getYtMusicHomeSnapshot,
   getYtMusicPlayback,
   getYtMusicPlaylist,
   importYtMusicSession,
@@ -77,7 +75,7 @@ type MessageHandlerMap = {
 };
 
 function getRendererEntry(): string | null {
-  const devServerUrl = process.env.VITE_DEV_SERVER_URL;
+  const devServerUrl = process.env["VITE_DEV_SERVER_URL"];
   if (devServerUrl) {
     return devServerUrl;
   }
@@ -551,18 +549,6 @@ const requestHandlers: RequestHandlerMap = {
       lastSyncedAt: cached.lastSyncedAt ?? 0,
     };
   },
-  ytmusicGetHome: async () => {
-    try {
-      return await getYtMusicHome();
-    } catch {
-      const snap = getYtMusicHomeSnapshot();
-      if (snap?.tracks?.length) {
-        return snap;
-      }
-      return { tracks: getCachedYtMusicLibrary().tracks.slice(0, 25) };
-    }
-  },
-  ytmusicGetHomeSnapshot: () => getYtMusicHomeSnapshot(),
   ytmusicSearch: async ({ query }) => {
     const s = loadSettings();
     const cacheOn = s.ytmusicSearchCacheEnabled !== false;

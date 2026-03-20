@@ -36,13 +36,12 @@
 3. Keep playback routed through the local audio server and cache.
    - Use localhost URLs for YT audio/artwork.
    - Cache recent audio, artwork, and hydrated playlist data in app data.
-4. Keep the UI YT-specific but restrained.
-   - Do not reuse local-library empty states for YT views.
-   - Keep the YT home page simple, muted, and app-native.
+4. Keep the main library UI consistent across sources.
+   - YT Music uses the same “All Songs” / grid views as local files; only sign-in and sync states differ.
 5. Validate the full YT flow after any change.
    - Auth import
    - Library sync
-   - Home songs
+   - Library “All Songs” (synced tracks)
    - Playlist open/play
    - Search
    - Like/unlike
@@ -51,8 +50,11 @@
 
 ## Useful Files
 - `src/electron/backend/ytmusic.ts`
+- `src/electron/backend/ytmusicHomeSnapshot.ts`
 - `src/electron/backend/ytDlp.ts`
 - `src/electron/backend/ytMusicCache.ts`
 - `src/electron/backend/audioServer.ts`
 - `src/mainview/MainWindow.tsx`
+- `src/mainview/components/MainWindowContent.tsx`
+- `src/electron/backend/ytmusicStrings.ts`
 - `src/mainview/hooks/useAudioEngine.ts`

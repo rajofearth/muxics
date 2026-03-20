@@ -73,9 +73,6 @@ const desktopBridge: DesktopBridge = {
       ipcRenderer.invoke("desktop:request:ytmusicSyncLibrary"),
     ytmusicLoadCachedLibrary: () =>
       ipcRenderer.invoke("desktop:request:ytmusicLoadCachedLibrary"),
-    ytmusicGetHome: () => ipcRenderer.invoke("desktop:request:ytmusicGetHome"),
-    ytmusicGetHomeSnapshot: () =>
-      ipcRenderer.invoke("desktop:request:ytmusicGetHomeSnapshot"),
     ytmusicSearch: (params) =>
       ipcRenderer.invoke("desktop:request:ytmusicSearch", params),
     ytmusicGetPlaylist: (params) =>

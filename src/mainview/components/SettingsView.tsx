@@ -107,124 +107,129 @@ export function SettingsView({ desktop }: SettingsViewProps) {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto px-8 py-8">
-      <div className="mx-auto max-w-3xl space-y-6">
-        <div>
-          <div className="text-[11px] uppercase tracking-[0.28em] text-app-text-tertiary">Settings</div>
-          <h1 className="mt-2 text-[28px] font-semibold text-app-text-primary">Playback and cache</h1>
-          <p className="mt-2 text-[13px] text-app-text-secondary">
-            Control disk usage, offline-friendly library data, and YouTube Music home/search caching.
-          </p>
-        </div>
+    <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="px-8 pt-8 pb-4 shrink-0">
+        <div className="text-[11px] font-medium text-app-text-tertiary uppercase tracking-wider mb-1">Settings</div>
+        <h1 className="text-3xl font-bold text-app-text-primary tracking-tight mb-1">Playback &amp; cache</h1>
+        <p className="text-[13px] text-app-text-secondary">
+          Disk usage for YouTube Music streams and optional metadata caches.
+        </p>
+      </div>
 
-        <section className="rounded-3xl border border-app-border bg-app-surface-alt/80 p-6">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h2 className="text-[16px] font-medium text-app-text-primary">YT media cache size</h2>
-              <p className="mt-1 text-[12px] text-app-text-tertiary">
-                Budget for cached audio and artwork. Oldest entries are removed when you exceed the limit.
-              </p>
-            </div>
-            <div className="rounded-xl border border-app-border bg-app-elevated px-3 py-2 text-[12px] text-app-text-secondary">
-              {loading ? "Loading..." : `${formatBytes(usageBytes)} used`}
-            </div>
+      <div className="flex-1 overflow-y-auto px-8 pb-8 space-y-8">
+        <section>
+          <div className="text-[11px] text-app-text-tertiary font-medium uppercase tracking-wider mb-3">
+            Media cache
           </div>
-
-          <div className="mt-5">
-            <input
-              type="range"
-              min={1}
-              max={10}
-              step={1}
-              value={limitGb}
-              onChange={(event) => void saveLimit(Number(event.target.value))}
-              disabled={loading || !settings}
-              className="w-full accent-app-accent"
-            />
-            <div className="mt-2 flex items-center justify-between text-[12px] text-app-text-tertiary">
-              <span>1 GB</span>
-              <span>{limitGb} GB limit</span>
-              <span>10 GB</span>
-            </div>
-          </div>
-
-          <div className="mt-5 flex items-center justify-between gap-3 rounded-2xl border border-app-border bg-app-elevated/70 px-4 py-3">
-            <div>
-              <div className="text-[13px] font-medium text-app-text-primary">Clear media cache</div>
-              <div className="text-[12px] text-app-text-tertiary">
-                Removes cached audio and artwork files. Your account stays connected.
+          <div className="p-5 bg-app-surface rounded-xl border border-app-border space-y-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="text-[13px] font-medium text-app-text-primary">Size limit</div>
+                <p className="mt-1 text-[12px] text-app-text-tertiary max-w-xl">
+                  Oldest cached audio and artwork are removed when usage exceeds this budget.
+                </p>
+              </div>
+              <div className="text-[12px] text-app-text-secondary tabular-nums shrink-0">
+                {loading ? "…" : `${formatBytes(usageBytes)} used`}
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => void clearMediaCache()}
-              className="rounded-xl border border-app-border px-3 py-2 text-[12px] font-medium text-app-text-primary hover:bg-app-active"
-            >
-              Clear media
-            </button>
+
+            <div>
+              <input
+                type="range"
+                min={1}
+                max={10}
+                step={1}
+                value={limitGb}
+                onChange={(event) => void saveLimit(Number(event.target.value))}
+                disabled={loading || !settings}
+                className="w-full accent-app-accent"
+              />
+              <div className="mt-2 flex items-center justify-between text-[11px] text-app-text-tertiary">
+                <span>1 GB</span>
+                <span>{limitGb} GB limit</span>
+                <span>10 GB</span>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-app-border">
+              <p className="text-[12px] text-app-text-tertiary">Signed-in account is not affected.</p>
+              <button
+                type="button"
+                onClick={() => void clearMediaCache()}
+                className="px-4 py-2 bg-app-elevated hover:bg-app-active rounded-lg text-[13px] text-app-text-primary font-medium border border-app-border"
+              >
+                Clear media
+              </button>
+            </div>
           </div>
         </section>
 
-        <section className="rounded-3xl border border-app-border bg-app-surface-alt/80 p-6 space-y-4">
-          <h2 className="text-[16px] font-medium text-app-text-primary">Library and search data</h2>
-          <p className="text-[12px] text-app-text-tertiary">
-            Metadata is stored separately from media bytes. Disable options to always fetch fresh data (slower cold
-            start).
+        <section>
+          <div className="text-[11px] text-app-text-tertiary font-medium uppercase tracking-wider mb-3">
+            Library &amp; search data
+          </div>
+          <p className="text-[12px] text-app-text-secondary mb-4 max-w-2xl">
+            Stored separately from media. Turning these off forces fresh fetches (slower cold start).
           </p>
 
-          <label className="flex cursor-pointer items-start gap-3 text-[13px] text-app-text-secondary">
-            <input
-              type="checkbox"
-              className="mt-0.5 accent-app-accent"
-              checked={settings?.ytmusicUseLibraryDiskCache !== false}
-              disabled={loading || !settings}
-              onChange={(e) => void persistPartial({ ytmusicUseLibraryDiskCache: e.target.checked })}
-            />
-            <span>
-              <span className="font-medium text-app-text-primary">Load library from disk on startup</span>
-              <span className="mt-0.5 block text-[12px] text-app-text-tertiary">
-                Show playlist names and last-synced tracks immediately, then refresh in the background.
+          <div className="space-y-2">
+            <label className="flex cursor-pointer items-start gap-3 px-4 py-3 bg-app-surface rounded-xl border border-app-border text-[13px] text-app-text-secondary">
+              <input
+                type="checkbox"
+                className="mt-0.5 accent-app-accent"
+                checked={settings?.ytmusicUseLibraryDiskCache !== false}
+                disabled={loading || !settings}
+                onChange={(e) => void persistPartial({ ytmusicUseLibraryDiskCache: e.target.checked })}
+              />
+              <span>
+                <span className="font-medium text-app-text-primary block">Load library from disk on startup</span>
+                <span className="text-[12px] text-app-text-tertiary">
+                  Show playlists and last-synced tracks immediately, then refresh in the background.
+                </span>
               </span>
-            </span>
-          </label>
+            </label>
 
-          <label className="flex cursor-pointer items-start gap-3 text-[13px] text-app-text-secondary">
-            <input
-              type="checkbox"
-              className="mt-0.5 accent-app-accent"
-              checked={settings?.ytmusicHomeSnapshotEnabled !== false}
-              disabled={loading || !settings}
-              onChange={(e) => void persistPartial({ ytmusicHomeSnapshotEnabled: e.target.checked })}
-            />
-            <span>
-              <span className="font-medium text-app-text-primary">Save home feed snapshot</span>
-              <span className="mt-0.5 block text-[12px] text-app-text-tertiary">
-                Remember the last home recommendations for instant display while the feed reloads.
+            <label className="flex cursor-pointer items-start gap-3 px-4 py-3 bg-app-surface rounded-xl border border-app-border text-[13px] text-app-text-secondary">
+              <input
+                type="checkbox"
+                className="mt-0.5 accent-app-accent"
+                checked={settings?.ytmusicHomeSnapshotEnabled !== false}
+                disabled={loading || !settings}
+                onChange={(e) => void persistPartial({ ytmusicHomeSnapshotEnabled: e.target.checked })}
+              />
+              <span>
+                <span className="font-medium text-app-text-primary block">Save home feed snapshot</span>
+                <span className="text-[12px] text-app-text-tertiary">
+                  After each successful library sync, refresh a small on-disk copy of the YT Music home feed.
+                </span>
               </span>
-            </span>
-          </label>
+            </label>
 
-          <label className="flex cursor-pointer items-start gap-3 text-[13px] text-app-text-secondary">
-            <input
-              type="checkbox"
-              className="mt-0.5 accent-app-accent"
-              checked={settings?.ytmusicSearchCacheEnabled !== false}
-              disabled={loading || !settings}
-              onChange={(e) => void persistPartial({ ytmusicSearchCacheEnabled: e.target.checked })}
-            />
-            <span>
-              <span className="font-medium text-app-text-primary">Cache search results</span>
-              <span className="mt-0.5 block text-[12px] text-app-text-tertiary">
-                Reuse recent queries within the TTL below (per-session invalidation on sign-out / new import).
+            <label className="flex cursor-pointer items-start gap-3 px-4 py-3 bg-app-surface rounded-xl border border-app-border text-[13px] text-app-text-secondary">
+              <input
+                type="checkbox"
+                className="mt-0.5 accent-app-accent"
+                checked={settings?.ytmusicSearchCacheEnabled !== false}
+                disabled={loading || !settings}
+                onChange={(e) => void persistPartial({ ytmusicSearchCacheEnabled: e.target.checked })}
+              />
+              <span>
+                <span className="font-medium text-app-text-primary block">Cache search results</span>
+                <span className="text-[12px] text-app-text-tertiary">
+                  Reuse recent queries within the TTL below. Cleared on sign-out or new session import.
+                </span>
               </span>
-            </span>
-          </label>
+            </label>
+          </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="text-[12px] font-medium text-app-text-primary">Search cache TTL</label>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div className="px-4 py-3 bg-app-surface rounded-xl border border-app-border">
+              <label className="text-[11px] text-app-text-tertiary font-medium uppercase tracking-wider block mb-2">
+                Search cache TTL
+              </label>
               <select
-                className="mt-1 w-full rounded-xl border border-app-border bg-app-elevated px-3 py-2 text-[13px] text-app-text-primary"
+                className="w-full px-3 py-2 bg-app-bg border border-app-border rounded-lg text-[13px] text-app-text-primary outline-none focus:border-app-text-tertiary"
                 value={settings?.ytmusicSearchCacheTtlMinutes ?? 30}
                 disabled={loading || !settings}
                 onChange={(e) => void persistPartial({ ytmusicSearchCacheTtlMinutes: Number(e.target.value) })}
@@ -236,10 +241,12 @@ export function SettingsView({ desktop }: SettingsViewProps) {
                 ))}
               </select>
             </div>
-            <div>
-              <label className="text-[12px] font-medium text-app-text-primary">Search cache max entries</label>
+            <div className="px-4 py-3 bg-app-surface rounded-xl border border-app-border">
+              <label className="text-[11px] text-app-text-tertiary font-medium uppercase tracking-wider block mb-2">
+                Search cache max entries
+              </label>
               <select
-                className="mt-1 w-full rounded-xl border border-app-border bg-app-elevated px-3 py-2 text-[13px] text-app-text-primary"
+                className="w-full px-3 py-2 bg-app-bg border border-app-border rounded-lg text-[13px] text-app-text-primary outline-none focus:border-app-text-tertiary"
                 value={settings?.ytmusicSearchCacheMaxEntries ?? 100}
                 disabled={loading || !settings}
                 onChange={(e) => void persistPartial({ ytmusicSearchCacheMaxEntries: Number(e.target.value) })}
@@ -253,18 +260,14 @@ export function SettingsView({ desktop }: SettingsViewProps) {
             </div>
           </div>
 
-          <div className="flex items-center justify-between gap-3 rounded-2xl border border-app-border bg-app-elevated/70 px-4 py-3">
-            <div>
-              <div className="text-[13px] font-medium text-app-text-primary">Clear library &amp; search cache</div>
-              <div className="text-[12px] text-app-text-tertiary">
-                Removes saved library JSON, home snapshot, and search cache. Does not remove media files or sign you
-                out.
-              </div>
-            </div>
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-app-surface rounded-xl border border-app-border">
+            <p className="text-[12px] text-app-text-tertiary max-w-xl">
+              Clear saved library JSON, home snapshot, and search cache. Does not remove media files or sign you out.
+            </p>
             <button
               type="button"
               onClick={() => void clearMetadataCache()}
-              className="rounded-xl border border-app-border px-3 py-2 text-[12px] font-medium text-app-text-primary hover:bg-app-active"
+              className="px-4 py-2 bg-app-elevated hover:bg-app-active rounded-lg text-[13px] text-app-text-primary font-medium border border-app-border shrink-0"
             >
               Clear metadata
             </button>

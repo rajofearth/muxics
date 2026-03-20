@@ -191,7 +191,7 @@ function loadVolume(): number {
   return 0.75;
 }
 
-interface PlayerState {
+export interface PlayerState {
   rpc: DesktopBridge | null;
   auth: AuthStatus;
   authLogin: {

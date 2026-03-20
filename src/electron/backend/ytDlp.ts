@@ -484,18 +484,6 @@ function sortFormats(formats: JsonLike[]): JsonLike[] {
   });
 }
 
-function summarizeFormats(formats: JsonLike[]) {
-  return formats.slice(0, 5).map((format) => ({
-    formatId: pickString(format.format_id) ?? null,
-    ext: pickString(format.ext) ?? null,
-    acodec: pickString(format.acodec) ?? null,
-    vcodec: pickString(format.vcodec) ?? null,
-    abr: Number(format.abr ?? format.tbr ?? 0),
-    hasUrl: Boolean(format.url),
-    protocol: pickString(format.protocol) ?? null,
-  }));
-}
-
 export async function resolveYtDlpPlayback(
   videoId: string,
   cookieHeader?: string,

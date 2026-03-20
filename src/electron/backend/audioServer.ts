@@ -253,7 +253,7 @@ async function handleYtCache(req: IncomingMessage, res: ServerResponse): Promise
       return true;
     }
 
-    Readable.fromWeb(upstream.body as globalThis.ReadableStream<Uint8Array>).pipe(res);
+    Readable.fromWeb(upstream.body as Parameters<typeof Readable.fromWeb>[0]).pipe(res);
     return true;
   }
 

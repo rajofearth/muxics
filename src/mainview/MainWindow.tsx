@@ -1,56 +1,14 @@
 import { useState, useMemo, useCallback, useEffect, startTransition } from "react";
-import type { Track, NavState, NavView } from "./types";
+import type { NavState, NavView, Track } from "./types";
 import { usePlayerStore } from "./store/playerStore";
-import { formatTotalDuration, playlistVisibleTrackCount } from "./utils";
-import {
-  Library,
-  Mic2,
-  Disc3,
-  ListMusic,
-  Music,
-  Play,
-  Heart,
-  Shuffle,
-  LogIn,
-  RefreshCw,
-} from "lucide-react";
 import { shuffleArray } from "./utils";
 import { TitleBar } from "./components/TitleBar";
 import { Sidebar } from "./components/Sidebar";
 import { PlayerBar } from "./components/PlayerBar";
-import { HeroHeader } from "./components/HeroHeader";
-import { TabNav } from "./components/TabNav";
-import { TrackTable } from "./components/TrackTable";
-import { GridView } from "./components/GridView";
-import { FoldersView } from "./components/FoldersView";
-import { EmptyLibrary } from "./components/EmptyLibrary";
-import { PlaylistHeaderActions } from "./components/PlaylistHeaderActions";
-import { SearchView } from "./components/SearchView";
-import { QueueView } from "./components/QueueView";
-import { NowPlayingView } from "./components/NowPlayingView";
 import { BrowserBridgeDialog } from "./components/BrowserBridgeDialog";
 import { showToast } from "./components/Toast";
-import { YtMusicHomeView } from "./components/YtMusicHomeView";
-import { SettingsView } from "./components/SettingsView";
-import type { DesktopBridge, TrackResult } from "../shared/desktop-contract";
-
-function mapTrackResultsToTracks(results: TrackResult[]): Track[] {
-  return results.map((t) => ({
-    id: t.id,
-    provider: t.provider,
-    providerId: t.providerId,
-    path: t.path,
-    title: t.title,
-    artist: t.artist,
-    album: t.album,
-    time: t.time,
-    duration: t.duration,
-    genre: t.genre,
-    picture: t.picture,
-    sourceLabel: t.sourceLabel,
-    playback: t.playback,
-  }));
-}
+import { MainWindowContent } from "./components/MainWindowContent";
+import type { DesktopBridge } from "../shared/desktop-contract";
 
 type MainWindowProps = {
   desktop?: DesktopBridge;
@@ -101,14 +59,9 @@ export function MainWindow({
   const [bridgeFolderPath, setBridgeFolderPath] = useState<string | null>(null);
   const [bridgeZipPath, setBridgeZipPath] = useState<string | null>(null);
   const [bridgeExtensionId, setBridgeExtensionId] = useState<string | null>(null);
-  const [ytHomeTracks, setYtHomeTracks] = useState<Track[]>([]);
-  const [ytHomeLoading, setYtHomeLoading] = useState(false);
-  const [ytHomeError, setYtHomeError] = useState<string | null>(null);
-
   const {
     library,
     playlists,
-    loadPlaylistTracks,
     ensurePlaylistHydrated,
     settings,
     recentlyPlayed,
@@ -120,7 +73,10 @@ export function MainWindow({
     clearAuthLoginError,
     logoutFromYtMusic,
     syncYtMusicLibrary,
+    loadPlaylistTracks,
   } = usePlayerStore();
+
+  const libraryScopeLabel = library.source === "ytmusic" ? "YouTube Music" : "Library";
 
   const handleOpenLogin = useCallback(() => {
     clearAuthLoginError();
@@ -168,50 +124,6 @@ export function MainWindow({
     })();
   }, [loadAuthStatus, syncYtMusicLibrary]);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    if (!desktop?.request.ytmusicGetHome || library.source !== "ytmusic" || !auth.loggedIn) {
-      setYtHomeTracks([]);
-      setYtHomeLoading(false);
-      setYtHomeError(null);
-      return undefined;
-    }
-
-    setYtHomeLoading(true);
-    setYtHomeError(null);
-
-    void (async () => {
-      try {
-        const snap = await desktop.request.ytmusicGetHomeSnapshot();
-        if (!cancelled && snap?.tracks?.length) {
-          setYtHomeTracks(mapTrackResultsToTracks(snap.tracks));
-        }
-      } catch {
-        // ignore snapshot errors
-      }
-
-      try {
-        const result = await desktop.request.ytmusicGetHome();
-        if (!cancelled) {
-          setYtHomeTracks(mapTrackResultsToTracks(result.tracks ?? []));
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setYtHomeError(error instanceof Error ? error.message : "Failed to load YouTube Music home.");
-        }
-      } finally {
-        if (!cancelled) {
-          setYtHomeLoading(false);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [auth.loggedIn, auth.lastSyncedAt, desktop, library.source]);
-
   const handleNavigate = useCallback((view: NavView, id?: string) => {
     setNavState({ view, id });
     setActiveTab("All");
@@ -241,11 +153,7 @@ export function MainWindow({
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (
-        e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement
-      )
-        return;
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       switch (e.key) {
         case " ":
           e.preventDefault();
@@ -318,7 +226,16 @@ export function MainWindow({
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [onPlayPause, onNext, onPrev, onVolumeChange, volume, handleNavigate]);
+  }, [
+    currentTrack,
+    handleNavigate,
+    navState.view,
+    onNext,
+    onPlayPause,
+    onPrev,
+    onVolumeChange,
+    volume,
+  ]);
 
   const artists = useMemo(
     () =>
@@ -367,501 +284,6 @@ export function MainWindow({
     [onPlayTrack],
   );
 
-  const renderTrackView = (
-    title: string,
-    subtitle: string,
-    tracks: Track[],
-    icon: React.ReactNode,
-    extraActions?: React.ReactNode,
-    playlistId?: string,
-    onBack?: () => void,
-  ) => (
-    <div className="flex-1 flex flex-col overflow-hidden">
-      <HeroHeader
-        title={title}
-        subtitle={subtitle}
-        meta={`${tracks.length} songs · ${formatTotalDuration(tracks)}`}
-        icon={icon}
-        onBack={onBack}
-        actions={
-          <div className="flex items-center gap-2">
-            {tracks.length > 0 && (
-              <>
-                <button
-                  onClick={() => handlePlayAll(tracks)}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-app-text-primary text-app-bg rounded-full text-[12px] font-medium hover:opacity-90"
-                >
-                  <Play size={12} className="fill-current" /> Play
-                </button>
-                <button
-                  onClick={() => handleShufflePlay(tracks)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-app-elevated hover:bg-app-active text-app-text-primary rounded-full text-[12px] font-medium border border-app-border-strong"
-                >
-                  <Shuffle size={12} /> Shuffle
-                </button>
-              </>
-            )}
-            {extraActions}
-          </div>
-        }
-      />
-      <div className="px-8 pt-3 pb-2 flex items-center justify-between gap-3 shrink-0">
-        <div className="flex items-center gap-2 flex-wrap">
-        </div>
-        <div className="flex items-center gap-2 text-[11px] text-app-text-tertiary">
-          {library.syncingRemote ? (
-            <>
-              <RefreshCw size={12} className="animate-spin" />
-              Syncing
-            </>
-          ) : auth.lastSyncedAt ? (
-            <span>Synced</span>
-          ) : null}
-        </div>
-      </div>
-      <TabNav
-        tabs={[
-          "All",
-          ...Array.from(new Set(tracks.map((t) => t.genre).filter(Boolean))),
-        ]}
-        activeTab={activeTab}
-        onTabChange={setActiveTab}
-      />
-      <TrackTable
-        tracks={
-          activeTab === "All"
-            ? tracks
-            : tracks.filter((t) => t.genre === activeTab)
-        }
-        currentTrack={currentTrack}
-        isPlaying={isPlaying}
-        onTrackClick={(track, queue) => onPlayTrack(track, queue)}
-        playlistId={playlistId}
-      />
-    </div>
-  );
-
-  const renderMainContent = () => {
-    if (library.source === "ytmusic" && !auth.loggedIn) {
-      return (
-        <div className="flex-1 flex items-center justify-center">
-          <div className="max-w-md text-center px-8">
-            <div className="mx-auto mb-4 w-16 h-16 rounded-2xl bg-app-elevated flex items-center justify-center">
-              <Music size={26} className="text-app-text-primary" />
-            </div>
-            <h2 className="text-2xl font-bold text-app-text-primary mb-2">
-              Sign in to YouTube Music
-            </h2>
-            <p className="text-[13px] text-app-text-tertiary mb-5">
-              Connect your account to sync playlists, search your library, and stream directly inside the app.
-            </p>
-            {authLogin.error ? (
-              <div className="mb-4 rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-[12px] text-red-200">
-                {authLogin.error}
-              </div>
-            ) : null}
-            <div className="flex items-center justify-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleOpenLogin}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-app-text-primary text-app-bg text-[13px] font-medium hover:opacity-90"
-                >
-                <LogIn size={14} />
-                Sign In
-              </button>
-              <button
-                type="button"
-                onClick={() => setLibrarySource("local")}
-                className="px-4 py-2 rounded-xl bg-app-elevated text-app-text-primary text-[13px] hover:bg-app-active"
-              >
-                Use Local Files
-              </button>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    if (navState.view === "library" && library.source === "ytmusic") {
-      const homeTracks = ytHomeTracks.length > 0 ? ytHomeTracks : library.remoteTracks;
-      return (
-        <YtMusicHomeView
-          tracks={homeTracks}
-          playlists={playlists.remoteItems}
-          recentlyPlayed={recentlyPlayed}
-          currentTrack={currentTrack}
-          isPlaying={isPlaying}
-          loading={ytHomeLoading && homeTracks.length === 0}
-          error={ytHomeError}
-          profileName={auth.profileName}
-          onNavigate={handleNavigate}
-          onPlayTrack={onPlayTrack}
-        />
-      );
-    }
-
-    if (library.loading) {
-      return (
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center w-64">
-            <div className="w-10 h-10 border-2 border-app-text-tertiary border-t-app-text-primary rounded-full animate-spin mx-auto mb-4" />
-            <div className="text-[14px] text-app-text-primary mb-3">
-              Scanning library...
-            </div>
-            {library.scanProgress > 0 && (
-              <div>
-                <div className="h-1 bg-app-border-strong rounded-full overflow-hidden mb-2">
-                  <div
-                    className="h-full bg-app-text-primary rounded-full transition-all duration-300"
-                    style={{ width: `${library.scanProgress}%` }}
-                  />
-                </div>
-                <div className="text-[11px] text-app-text-tertiary">
-                  {library.scanProgress}% complete
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      );
-    }
-
-    if (
-      library.source !== "ytmusic" &&
-      library.tracks.length === 0 &&
-      !library.error &&
-      settings.watchFolders.length === 0
-    ) {
-      return <EmptyLibrary />;
-    }
-
-    if (library.error) {
-      return (
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center max-w-md">
-            <div className="text-[14px] text-red-400 mb-2">
-              Something went wrong
-            </div>
-            <div className="text-[13px] text-app-text-tertiary mb-4">
-              {library.error}
-            </div>
-            <button
-              onClick={() => usePlayerStore.getState().loadLibrary()}
-              className="px-4 py-2 bg-app-elevated hover:bg-app-active rounded-lg text-[13px] text-app-text-primary"
-            >
-              Retry
-            </button>
-          </div>
-        </div>
-      );
-    }
-
-    if (library.source !== "ytmusic" && library.tracks.length === 0 && settings.watchFolders.length > 0) {
-      return (
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center">
-            <div className="text-[14px] text-app-text-primary mb-2">
-              No tracks found
-            </div>
-            <div className="text-[13px] text-app-text-tertiary mb-4">
-              Try adding more folders
-            </div>
-            <button
-              onClick={() => handleNavigate("folders")}
-              className="px-4 py-2 bg-app-elevated hover:bg-app-active rounded-lg text-[13px] text-app-text-primary"
-            >
-              Manage Folders
-            </button>
-          </div>
-        </div>
-      );
-    }
-
-    switch (navState.view) {
-      case "now_playing":
-        if (currentTrack) {
-          return (
-            <NowPlayingView
-              currentTrack={currentTrack}
-              isPlaying={isPlaying}
-              currentTime={currentTime}
-              volume={volume}
-              shuffle={shuffle}
-              repeat={repeat}
-              onClose={() => handleNavigate("library")}
-              onPlayPause={onPlayPause}
-              onNext={onNext}
-              onPrev={onPrev}
-              onScrubberChange={onScrubberChange}
-              onVolumeChange={onVolumeChange}
-              onToggleShuffle={onToggleShuffle}
-              onCycleRepeat={onCycleRepeat}
-            />
-          );
-        }
-        return renderTrackView(
-          "All Songs",
-          "Library",
-          library.tracks,
-          <Library size={40} className="text-app-text-tertiary" />,
-        );
-
-      case "search":
-        return (
-          <SearchView
-            currentTrack={currentTrack}
-            isPlaying={isPlaying}
-            onPlayTrack={(track, queue) => onPlayTrack(track, queue)}
-            onNavigate={handleNavigate}
-          />
-        );
-
-      case "favorites": {
-        const favTracks = getFavoriteTracks();
-        return renderTrackView(
-          "Favorites",
-          "Your Collection",
-          favTracks,
-          <Heart size={40} className="text-app-accent fill-current" />,
-        );
-      }
-
-      case "library":
-        return renderTrackView(
-          "All Songs",
-          "Library",
-          library.tracks,
-          <Library size={40} className="text-app-text-tertiary" />,
-        );
-
-      case "artists":
-        return (
-          <div className="flex-1 flex flex-col overflow-hidden">
-            <HeroHeader
-              title="Artists"
-              subtitle="Library"
-              meta={`${artists.length} artists`}
-              icon={<Mic2 size={40} className="text-app-text-tertiary" />}
-            />
-            <GridView
-              items={artists}
-              onItemClick={(item) => handleNavigate("artist_detail", item.name)}
-              onPlayItem={(item) => {
-                const tracks = library.tracks.filter(
-                  (t) => t.artist === item.name,
-                );
-                if (tracks.length > 0) onPlayTrack(tracks[0], tracks);
-              }}
-            />
-          </div>
-        );
-
-      case "artist_detail": {
-        const artistTracks = library.tracks.filter(
-          (t) => t.artist === navState.id,
-        );
-        const artistPic = artistTracks.find((t) => t.picture)?.picture;
-        return renderTrackView(
-          navState.id ?? "Artist",
-          "Artist",
-          artistTracks,
-          artistPic ? (
-            <img
-              src={artistPic}
-              alt=""
-              className="w-full h-full object-cover"
-            />
-          ) : (
-            <Mic2 size={40} className="text-app-text-tertiary" />
-          ),
-          undefined,
-          undefined,
-          () => handleNavigate("artists"),
-        );
-      }
-
-      case "albums":
-        return (
-          <div className="flex-1 flex flex-col overflow-hidden">
-            <HeroHeader
-              title="Albums"
-              subtitle="Library"
-              meta={`${albums.length} albums`}
-              icon={<Disc3 size={40} className="text-app-text-tertiary" />}
-            />
-            <GridView
-              items={albums}
-              onItemClick={(item) => handleNavigate("album_detail", item.name)}
-              onPlayItem={(item) => {
-                const tracks = library.tracks.filter(
-                  (t) => t.album === item.name,
-                );
-                if (tracks.length > 0) onPlayTrack(tracks[0], tracks);
-              }}
-            />
-          </div>
-        );
-
-      case "album_detail": {
-        const albumTracks = library.tracks.filter(
-          (t) => t.album === navState.id,
-        );
-        const albumPic = albumTracks.find((t) => t.picture)?.picture;
-        return renderTrackView(
-          navState.id ?? "Album",
-          albumTracks[0]?.artist ?? "Album",
-          albumTracks,
-          albumPic ? (
-            <img src={albumPic} alt="" className="w-full h-full object-cover" />
-          ) : (
-            <Disc3 size={40} className="text-app-text-tertiary" />
-          ),
-          undefined,
-          undefined,
-          () => handleNavigate("albums"),
-        );
-      }
-
-      case "playlists":
-        return (
-          <div className="flex-1 flex flex-col overflow-hidden">
-            <HeroHeader
-              title="Playlists"
-              subtitle="Your Collection"
-              meta={`${playlists.items.length} playlists`}
-              icon={<ListMusic size={40} className="text-app-text-tertiary" />}
-            />
-            <GridView
-              items={playlists.items.map((p) => ({
-                id: p.id,
-                name: p.name,
-                desc: `${playlistVisibleTrackCount(p)} songs`,
-              }))}
-              onItemClick={(item) => handleNavigate("playlist_detail", item.id)}
-            />
-          </div>
-        );
-
-      case "playlist_detail": {
-        const plTracks = loadPlaylistTracks(navState.id ?? "");
-        const activePlaylist = playlists.items.find(
-          (p) => p.id === navState.id,
-        );
-        const playlistLoading = activePlaylist ? playlists.hydratingById[activePlaylist.id] : false;
-        const playlistError = activePlaylist ? playlists.hydrationErrors[activePlaylist.id] : null;
-
-        if (
-          activePlaylist?.provider === "ytmusic" &&
-          playlistLoading &&
-          !(activePlaylist.tracks && activePlaylist.tracks.length > 0)
-        ) {
-          return (
-            <div className="flex-1 flex flex-col overflow-hidden">
-              <HeroHeader
-                title={activePlaylist.name}
-                subtitle="YouTube Music"
-                meta="Loading playlist tracks..."
-                icon={<ListMusic size={40} className="text-app-text-tertiary" />}
-                onBack={() => handleNavigate("playlists")}
-              />
-              <div className="flex-1 flex items-center justify-center px-8">
-                <div className="w-full max-w-xl rounded-3xl border border-app-border bg-app-surface-alt/70 px-6 py-8 text-center">
-                  <div className="mx-auto mb-4 h-10 w-10 rounded-full border-2 border-app-text-tertiary border-t-app-text-primary animate-spin" />
-                  <div className="text-[15px] font-medium text-app-text-primary">
-                    Loading this YouTube Music playlist...
-                  </div>
-                </div>
-              </div>
-            </div>
-          );
-        }
-
-        if (
-          activePlaylist?.provider === "ytmusic" &&
-          playlistError &&
-          !(activePlaylist.tracks && activePlaylist.tracks.length > 0)
-        ) {
-          return (
-            <div className="flex-1 flex flex-col overflow-hidden">
-              <HeroHeader
-                title={activePlaylist.name}
-                subtitle="YouTube Music"
-                meta="Playlist unavailable"
-                icon={<ListMusic size={40} className="text-app-text-tertiary" />}
-                onBack={() => handleNavigate("playlists")}
-                actions={(
-                  <PlaylistHeaderActions
-                    playlist={activePlaylist}
-                    onNavigate={handleNavigate}
-                  />
-                )}
-              />
-              <div className="flex-1 px-8 pb-8">
-                <div className="rounded-3xl border border-red-400/30 bg-red-500/10 px-5 py-4 text-[13px] text-red-200">
-                  {playlistError}
-                </div>
-              </div>
-            </div>
-          );
-        }
-
-        return renderTrackView(
-          activePlaylist?.name ?? "Playlist",
-          activePlaylist?.provider === "ytmusic" ? "YouTube Music" : "Playlist",
-          plTracks,
-          <ListMusic size={40} className="text-app-text-tertiary" />,
-          activePlaylist && (
-            <PlaylistHeaderActions
-              playlist={activePlaylist}
-              onNavigate={handleNavigate}
-            />
-          ),
-          activePlaylist?.id,
-          () => handleNavigate("playlists"),
-        );
-      }
-
-      case "folders":
-        return <FoldersView />;
-
-      case "queue":
-        return (
-          <QueueView
-            queue={playQueue}
-            currentTrack={currentTrack}
-            onPlayTrack={(track, queue) => onPlayTrack(track, queue)}
-          />
-        );
-
-      case "recent": {
-        const recent =
-          recentlyPlayed.length > 0
-            ? recentlyPlayed
-            : library.tracks.slice(0, 20);
-        return renderTrackView(
-          "Recently Played",
-          "History",
-          recent,
-          <Music size={40} className="text-app-text-tertiary" />,
-        );
-      }
-
-      case "settings":
-        return <SettingsView desktop={desktop} />;
-
-      default: {
-        const defaultTracks =
-          playQueue.length > 0 ? playQueue : library.tracks.slice(0, 10);
-        return renderTrackView(
-          "Now Playing",
-          "Queue",
-          defaultTracks,
-          <Music size={40} className="text-app-text-tertiary" />,
-        );
-      }
-    }
-  };
-
   return (
     <div className="h-screen w-full bg-app-bg text-app-text-primary font-sans flex flex-col overflow-hidden">
       <TitleBar
@@ -877,16 +299,48 @@ export function MainWindow({
       />
 
       <div className="flex flex-1 overflow-hidden">
-        <Sidebar
-          navState={navState}
-          playlists={playlists.items}
-          onNavigate={handleNavigate}
-        />
+        <Sidebar navState={navState} playlists={playlists.items} onNavigate={handleNavigate} />
         <main
           key={`${navState.view}-${navState.id ?? ""}`}
           className="flex-1 flex flex-col overflow-hidden animate-fade-in"
         >
-          {renderMainContent()}
+          <MainWindowContent
+            desktop={desktop}
+            navState={navState}
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            handleNavigate={handleNavigate}
+            handleOpenLogin={handleOpenLogin}
+            setLibrarySource={setLibrarySource}
+            library={library}
+            playlists={playlists}
+            settings={settings}
+            auth={auth}
+            authLogin={authLogin}
+            recentlyPlayed={recentlyPlayed}
+            getFavoriteTracks={getFavoriteTracks}
+            loadPlaylistTracks={loadPlaylistTracks}
+            libraryScopeLabel={libraryScopeLabel}
+            artists={artists}
+            albums={albums}
+            currentTrack={currentTrack}
+            isPlaying={isPlaying}
+            playQueue={playQueue}
+            currentTime={currentTime}
+            volume={volume}
+            shuffle={shuffle}
+            repeat={repeat}
+            onPlayTrack={onPlayTrack}
+            onPlayPause={onPlayPause}
+            onNext={onNext}
+            onPrev={onPrev}
+            onScrubberChange={onScrubberChange}
+            onVolumeChange={onVolumeChange}
+            onToggleShuffle={onToggleShuffle}
+            onCycleRepeat={onCycleRepeat}
+            handlePlayAll={handlePlayAll}
+            handleShufflePlay={handleShufflePlay}
+          />
         </main>
       </div>
 

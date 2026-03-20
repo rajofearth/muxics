@@ -3,10 +3,11 @@ import crypto from "node:crypto";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
-import { Innertube } from "youtubei.js";
-import type MusicResponsiveListItem from "youtubei.js/dist/src/parser/classes/MusicResponsiveListItem.js";
-import type MusicTwoRowItem from "youtubei.js/dist/src/parser/classes/MusicTwoRowItem.js";
-import type { Format } from "youtubei.js/dist/src/parser/misc.js";
+import { Innertube, Misc, YTNodes } from "youtubei.js";
+
+type MusicResponsiveListItem = InstanceType<typeof YTNodes.MusicResponsiveListItem>;
+type MusicTwoRowItem = InstanceType<typeof YTNodes.MusicTwoRowItem>;
+type Format = InstanceType<typeof Misc.Format>;
 import type {
   AuthLoginCompleteResult,
   AuthLoginStartResult,
@@ -20,12 +21,8 @@ import type {
   YTMusicLibrarySyncResult,
 } from "../../shared/desktop-contract";
 import { loadSettings } from "./settings";
-import {
-  ensureAppDataDirs,
-  YTMUSIC_CACHE_PATH,
-  YTMUSIC_DEBUG_DIR,
-  YTMUSIC_HOME_SNAPSHOT_PATH,
-} from "./paths";
+import { ensureAppDataDirs, YTMUSIC_CACHE_PATH, YTMUSIC_DEBUG_DIR, YTMUSIC_HOME_SNAPSHOT_PATH } from "./paths";
+import { writeHomeSnapshotToDisk } from "./ytmusicHomeSnapshot";
 import { bumpYtMusicSearchCacheSession, clearYtMusicSearchCacheFile } from "./ytmusicSearchCache";
 import { log } from "./logger";
 import { getCachedArtworkUrl, getCachedAudioUrl } from "./ytMusicCache";
@@ -35,6 +32,7 @@ import {
   persistCookieString,
   persistOAuthTokens,
 } from "./ytmusicSession";
+import { formatDuration, readDurationSeconds, sanitizeText } from "./ytmusicStrings";
 
 type CacheShape = {
   tracks: TrackResult[];
@@ -61,7 +59,6 @@ type LibraryAuthState =
 let cachedClient: Innertube | null = null;
 let cachedAuthStatus: AuthStatusResult | null = null;
 let pendingLogin: PendingLoginState | null = null;
-let nextPendingLoginId = 0;
 let loggedLibraryAuthDebug = false;
 let installedPlayerEvaluator = false;
 const require = createRequire(__filename);
@@ -103,18 +100,6 @@ async function ensurePlayerEvaluator(): Promise<void> {
   };
 
   installedPlayerEvaluator = true;
-}
-
-function formatDuration(seconds?: number): string {
-  const total = Math.max(0, Math.floor(seconds ?? 0));
-  const minutes = Math.floor(total / 60);
-  const remainder = total % 60;
-  return `${minutes}:${remainder.toString().padStart(2, "0")}`;
-}
-
-function sanitizeText(value: string | undefined | null, fallback: string): string {
-  const trimmed = value?.trim();
-  return trimmed ? trimmed : fallback;
 }
 
 function getCookieValue(cookie: string | undefined, name: string): string | undefined {
@@ -238,7 +223,7 @@ function createFetchWithYtMusicAuth(cookie?: string): typeof fetch | undefined {
         ? {
             method: input.method,
             redirect: input.redirect,
-            duplex: "duplex" in input ? (input as Request & { duplex?: RequestDuplex }).duplex : undefined,
+            duplex: "duplex" in input ? (input as Request & { duplex?: "half" }).duplex : undefined,
           }
         : {};
 
@@ -251,8 +236,15 @@ function createFetchWithYtMusicAuth(cookie?: string): typeof fetch | undefined {
   };
 }
 
-function getThumbnailUrl(item: { thumbnails?: { url: string }[]; thumbnail?: { contents?: { url: string }[] } | null }) {
-  const thumbnails = item.thumbnails ?? item.thumbnail?.contents ?? [];
+function getThumbnailUrl(item: unknown): string | undefined {
+  if (!item || typeof item !== "object") {
+    return undefined;
+  }
+  const rec = item as {
+    thumbnails?: { url: string }[];
+    thumbnail?: { contents?: { url: string }[] } | null;
+  };
+  const thumbnails = rec.thumbnails ?? rec.thumbnail?.contents ?? [];
   return thumbnails[thumbnails.length - 1]?.url;
 }
 
@@ -393,7 +385,7 @@ async function resolvePlaybackUrlFromFormats(
 }
 
 function readParsedItemPlayableVideoId(item: MusicResponsiveListItem | MusicTwoRowItem): string | undefined {
-  const parsed = item as MusicResponsiveListItem & MusicTwoRowItem & Record<string, any>;
+  const parsed = item as unknown as Record<string, any>;
   const menuItems = parsed?.menu?.items ?? parsed?.menu?.menu_renderer?.items ?? [];
   const topLevelButtons =
     parsed?.menu?.top_level_buttons
@@ -428,7 +420,10 @@ function toTrack(item: MusicResponsiveListItem | MusicTwoRowItem): TrackResult |
     ? sanitizeText(typeof item.title === "string" ? item.title : item.title?.toString(), "Unknown Track")
     : sanitizeText(item.name, "Unknown Track");
   const artists = "artists" in item && Array.isArray(item.artists) && item.artists.length > 0
-    ? item.artists.map((artist) => artist.name).join(", ")
+    ? item.artists
+        .map((artist: { name?: string }) => artist.name)
+        .filter((name): name is string => Boolean(name))
+        .join(", ")
     : ("author" in item && item.author?.name) || "Unknown Artist";
   const album = "album" in item && item.album?.name
     ? item.album.name
@@ -450,26 +445,6 @@ function toTrack(item: MusicResponsiveListItem | MusicTwoRowItem): TrackResult |
     genre: "YouTube Music",
     picture: getCachedTrackPicture(providerId, getThumbnailUrl(item)),
     sourceLabel: "YouTube Music",
-  };
-}
-
-function toPlaylist(item: MusicResponsiveListItem | MusicTwoRowItem): PlaylistResult | null {
-  const providerId = item.id;
-  if (!providerId) {
-    return null;
-  }
-
-  const name = "title" in item
-    ? sanitizeText(typeof item.title === "string" ? item.title : item.title?.toString(), "Playlist")
-    : sanitizeText(item.name, "Playlist");
-
-  return {
-    id: `ytmusic-playlist:${providerId}`,
-    provider: "ytmusic",
-    providerId,
-    name,
-    editable: true,
-    entries: [],
   };
 }
 
@@ -516,32 +491,6 @@ function upsertCachedPlaylist(playlist: PlaylistResult): void {
     ...cache,
     playlists,
   });
-}
-
-function readHomeSnapshotFromDisk(): YTMusicHomeResult | null {
-  ensureAppDataDirs();
-  try {
-    const raw = fs.readFileSync(YTMUSIC_HOME_SNAPSHOT_PATH, "utf-8");
-    const parsed = JSON.parse(raw) as { tracks?: TrackResult[] };
-    if (!Array.isArray(parsed.tracks)) {
-      return null;
-    }
-    return { tracks: parsed.tracks };
-  } catch {
-    return null;
-  }
-}
-
-function writeHomeSnapshotToDisk(result: YTMusicHomeResult): void {
-  ensureAppDataDirs();
-  fs.writeFileSync(YTMUSIC_HOME_SNAPSHOT_PATH, JSON.stringify(result, null, 2), "utf-8");
-}
-
-export function getYtMusicHomeSnapshot(): YTMusicHomeResult | null {
-  if (loadSettings().ytmusicHomeSnapshotEnabled === false) {
-    return null;
-  }
-  return readHomeSnapshotFromDisk();
 }
 
 export function clearYtMusicMetadataCache(): { success: boolean } {
@@ -776,14 +725,6 @@ function readRendererPlaylistId(renderer: RawNode): string | undefined {
     ?? renderer?.thumbnailOverlay?.musicItemThumbnailOverlayRenderer?.content?.musicPlayButtonRenderer?.playNavigationEndpoint?.watchPlaylistEndpoint?.videoId;
 }
 
-function readDurationSeconds(text: string): number {
-  const parts = text.split(":").map((part) => Number.parseInt(part, 10)).filter((part) => Number.isFinite(part));
-  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-  if (parts.length === 2) return parts[0] * 60 + parts[1];
-  if (parts.length === 1) return parts[0];
-  return 0;
-}
-
 function toTrackFromRaw(renderer: RawNode): TrackResult | null {
   const providerId = readRendererPlayableVideoId(renderer);
   if (!providerId) {
@@ -881,7 +822,10 @@ function readNestedBrowseEndpoint(node: RawNode): RawNode | null {
   return null;
 }
 
-function readChipBrowseEndpoint(chip: RawNode): RawNode | null {
+function readChipBrowseEndpoint(chip: RawNode | undefined | null): RawNode | null {
+  if (!chip) {
+    return null;
+  }
   return readNestedBrowseEndpoint(chip);
 }
 
@@ -1002,7 +946,7 @@ async function collectPlaylistItems(playlist: Awaited<ReturnType<Innertube["musi
 
   return uniqueById(
     items
-      .map((item) => toTrack(item))
+      .map((item) => toTrack(item as MusicResponsiveListItem | MusicTwoRowItem))
       .filter((item): item is TrackResult => item != null),
   );
 }
@@ -1117,16 +1061,6 @@ function classifyLibraryAuthState(node: any): LibraryAuthState {
   return { authenticated: true };
 }
 
-function findFilterToken(node: any, filter: string): string | null {
-  const chips = collectRenderers(node, "chipCloudChipRenderer");
-  const match = chips.find((chip) => readText(chip.text) === filter);
-  const endpoint = readChipBrowseEndpoint(match);
-  return endpoint?.continuation
-    ?? endpoint?.params
-    ?? endpoint?.browseId
-    ?? null;
-}
-
 async function getLibraryPageData(client: Innertube, filter?: string): Promise<any> {
   if (!filter) {
     const response = await client.actions.execute("/browse", {
@@ -1163,12 +1097,6 @@ async function validateCookieClient(cookie: string): Promise<Innertube> {
   }
 
   return client;
-}
-
-function clearPendingLoginIfCurrent(id: number): void {
-  if (pendingLogin?.id === id) {
-    pendingLogin = null;
-  }
 }
 
 export async function getYtMusicAuthStatus(): Promise<AuthStatusResult> {
@@ -1432,6 +1360,10 @@ export async function syncYtMusicLibrary(): Promise<YTMusicLibrarySyncResult> {
     tracks: tracks.length,
     playlists: playlists.length,
   });
+
+  if (loadSettings().ytmusicHomeSnapshotEnabled !== false) {
+    void getYtMusicHome().catch(() => undefined);
+  }
 
   return { tracks, playlists, lastSyncedAt };
 }
