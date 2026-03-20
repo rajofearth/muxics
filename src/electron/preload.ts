@@ -28,6 +28,8 @@ const desktopBridge: DesktopBridge = {
       ipcRenderer.invoke("desktop:request:getYtMusicCacheStats"),
     clearYtMusicCache: () =>
       ipcRenderer.invoke("desktop:request:clearYtMusicCache"),
+    clearYtMusicMetadataCache: () =>
+      ipcRenderer.invoke("desktop:request:clearYtMusicMetadataCache"),
     addFolder: (params) =>
       ipcRenderer.invoke("desktop:request:addFolder", params),
     validateFolder: (params) =>
@@ -69,7 +71,11 @@ const desktopBridge: DesktopBridge = {
       ipcRenderer.invoke("desktop:request:openPath", params),
     ytmusicSyncLibrary: () =>
       ipcRenderer.invoke("desktop:request:ytmusicSyncLibrary"),
+    ytmusicLoadCachedLibrary: () =>
+      ipcRenderer.invoke("desktop:request:ytmusicLoadCachedLibrary"),
     ytmusicGetHome: () => ipcRenderer.invoke("desktop:request:ytmusicGetHome"),
+    ytmusicGetHomeSnapshot: () =>
+      ipcRenderer.invoke("desktop:request:ytmusicGetHomeSnapshot"),
     ytmusicSearch: (params) =>
       ipcRenderer.invoke("desktop:request:ytmusicSearch", params),
     ytmusicGetPlaylist: (params) =>
@@ -106,9 +112,9 @@ const desktopBridge: DesktopBridge = {
   },
 };
 
-function dispatchRendererEvent(
-  channel: keyof DesktopEventMap,
-  payload: DesktopEventMap[keyof DesktopEventMap],
+function dispatchMenuOrContextEvent(
+  channel: "contextMenuAction" | "menuAction",
+  payload: DesktopEventMap[typeof channel],
 ) {
   const eventName =
     channel === "contextMenuAction"
@@ -120,7 +126,15 @@ function dispatchRendererEvent(
 }
 
 ipcRenderer.on("desktop:event", (_event, message: RendererEventPayload) => {
-  dispatchRendererEvent(message.channel, message.payload);
+  if (message.channel === "ytmusicCacheStatsUpdated") {
+    document.dispatchEvent(
+      new CustomEvent("muxics-yt-cache-stats", { detail: message.payload }),
+    );
+    return;
+  }
+  if (message.channel === "contextMenuAction" || message.channel === "menuAction") {
+    dispatchMenuOrContextEvent(message.channel, message.payload);
+  }
 });
 
 contextBridge.exposeInMainWorld("muxicsDesktop", desktopBridge);

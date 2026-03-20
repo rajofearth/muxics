@@ -37,6 +37,8 @@ export interface Playlist {
   trackIds: string[];
   editable?: boolean;
   tracks?: Track[];
+  /** Shown in sidebar/lists before hydration completes */
+  listedItemCount?: number;
 }
 
 export type RepeatMode = "off" | "all" | "one";

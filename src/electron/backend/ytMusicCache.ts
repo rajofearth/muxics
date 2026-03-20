@@ -9,6 +9,7 @@ import {
   ensureAppDataDirs,
 } from "./paths";
 import { loadSettings } from "./settings";
+import { notifyYtMusicCacheStatsChanged } from "./rendererNotify";
 
 type CacheEntry = {
   fileName: string;
@@ -87,59 +88,61 @@ function getEntryPath(kind: "artwork" | "audio", entry: CacheEntry): string {
   return path.join(kind === "artwork" ? YTMUSIC_ARTWORK_CACHE_DIR : YTMUSIC_AUDIO_CACHE_DIR, entry.fileName);
 }
 
-function getFileSize(filePath: string): number {
-  try {
-    return fs.statSync(filePath).size;
-  } catch {
-    return 0;
-  }
-}
-
 function upsertEntry(kind: "artwork" | "audio", key: string, entry: CacheEntry): void {
   const index = loadIndex();
   index[kind][key] = entry;
   saveIndex(index);
 }
 
-function removeEntry(kind: "artwork" | "audio", key: string): void {
-  const index = loadIndex();
-  const entry = index[kind][key];
-  if (entry) {
-    try {
-      fs.unlinkSync(getEntryPath(kind, entry));
-    } catch {}
-    delete index[kind][key];
-    saveIndex(index);
-  }
-}
-
 function totalAudioUsage(index: MediaIndex): number {
   return Object.values(index.audio).reduce((sum, entry) => sum + entry.size, 0);
 }
 
-function enforceAudioLimit(): void {
+function totalArtworkUsage(index: MediaIndex): number {
+  return Object.values(index.artwork).reduce((sum, entry) => sum + entry.size, 0);
+}
+
+function enforceMediaCacheLimit(): void {
   const index = loadIndex();
   const limit = loadSettings().ytmusicCacheLimitBytes ?? 1024 * 1024 * 1024;
-  let usage = totalAudioUsage(index);
+  let usage = totalAudioUsage(index) + totalArtworkUsage(index);
   if (usage <= limit) {
+    notifyYtMusicCacheStatsChanged();
     return;
   }
 
-  const candidates = Object.entries(index.audio)
-    .sort(([, left], [, right]) => left.updatedAt - right.updatedAt);
+  const audioCandidates = Object.entries(index.audio).sort(
+    ([, left], [, right]) => left.updatedAt - right.updatedAt,
+  );
 
-  for (const [key, entry] of candidates) {
+  for (const [key, entry] of audioCandidates) {
+    if (usage <= limit) {
+      break;
+    }
     try {
       fs.unlinkSync(getEntryPath("audio", entry));
     } catch {}
     usage -= entry.size;
     delete index.audio[key];
+  }
+
+  const artCandidates = Object.entries(index.artwork).sort(
+    ([, left], [, right]) => left.updatedAt - right.updatedAt,
+  );
+
+  for (const [key, entry] of artCandidates) {
     if (usage <= limit) {
       break;
     }
+    try {
+      fs.unlinkSync(getEntryPath("artwork", entry));
+    } catch {}
+    usage -= entry.size;
+    delete index.artwork[key];
   }
 
   saveIndex(index);
+  notifyYtMusicCacheStatsChanged();
 }
 
 export function getArtworkCacheKey(providerId: string, sourceUrl: string): string {
@@ -221,6 +224,8 @@ export async function ensureArtworkCached(key: string, sourceUrl: string): Promi
     contentType: contentType ?? undefined,
   });
 
+  enforceMediaCacheLimit();
+
   return filePath;
 }
 
@@ -257,7 +262,7 @@ export function warmAudioCache(key: string, sourceUrl: string): Promise<void> {
       contentType: contentType ?? undefined,
     });
 
-    enforceAudioLimit();
+    enforceMediaCacheLimit();
   })().finally(() => {
     audioWarmups.delete(key);
   });
@@ -290,5 +295,6 @@ export function clearYtMusicCache(): { success: boolean } {
   }
 
   saveIndex({ ...EMPTY_INDEX });
+  notifyYtMusicCacheStatsChanged();
   return { success: true };
 }

@@ -24,6 +24,8 @@ export type ResolvedPlaylist = {
   providerId: string;
   name: string;
   tracks: ResolvedTrack[];
+  /** From yt-dlp when available (may exceed loaded `tracks` for huge playlists) */
+  playlistCount?: number;
 };
 
 type YtDlpCommand = {
@@ -397,30 +399,59 @@ function pickString(...values: Array<unknown>): string | undefined {
 }
 
 function pickThumbnail(entry: JsonLike): string | undefined {
-  const thumbnails = Array.isArray(entry.thumbnails) ? entry.thumbnails : [];
+  const thumbnails = Array.isArray(entry["thumbnails"]) ? entry["thumbnails"] : [];
   const last = thumbnails[thumbnails.length - 1];
-  return pickString(last?.url, entry.thumbnail, entry.artwork_url);
+  return pickString(last?.url, entry["thumbnail"], entry["artwork_url"]);
+}
+
+function videoIdFromYtDlpEntry(entry: JsonLike): string | undefined {
+  const direct = pickString(entry["id"], entry["video_id"]);
+  if (direct && /^[\w-]{11}$/.test(direct)) {
+    return direct;
+  }
+
+  for (const raw of [entry["url"], entry["webpage_url"]]) {
+    if (typeof raw !== "string" || !raw) continue;
+    try {
+      const parsed = new URL(raw, "https://www.youtube.com");
+      const v = parsed.searchParams.get("v");
+      if (v && /^[\w-]{11}$/.test(v)) {
+        return v;
+      }
+      if (parsed.hostname === "youtu.be") {
+        const id = parsed.pathname.replace(/^\//, "").split("/")[0];
+        if (id && /^[\w-]{11}$/.test(id)) {
+          return id;
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return undefined;
 }
 
 function normalizeTrack(entry: JsonLike): ResolvedTrack | null {
-  const providerId = pickString(entry.id, entry.url?.split("v=")[1]);
+  const providerId = videoIdFromYtDlpEntry(entry);
   if (!providerId) {
     return null;
   }
 
   const seconds =
-    typeof entry.duration === "number"
-      ? entry.duration
-      : typeof entry.duration_seconds === "number"
-        ? entry.duration_seconds
+    typeof entry["duration"] === "number"
+      ? entry["duration"]
+      : typeof entry["duration_seconds"] === "number"
+        ? entry["duration_seconds"]
         : undefined;
   const { duration, time } = normalizeDuration(seconds);
 
   return {
     providerId,
-    title: pickString(entry.track, entry.title) ?? "Unknown Track",
-    artist: pickString(entry.artist, entry.uploader, entry.channel, entry.creator) ?? "Unknown Artist",
-    album: pickString(entry.album) ?? "Single",
+    title: pickString(entry["track"], entry["title"]) ?? "Unknown Track",
+    artist:
+      pickString(entry["artist"], entry["uploader"], entry["channel"], entry["creator"]) ?? "Unknown Artist",
+    album: pickString(entry["album"]) ?? "Single",
     duration,
     time,
     picture: getCachedArtworkUrl(providerId, pickThumbnail(entry)),
@@ -553,19 +584,41 @@ export async function getYtDlpPlaylistItems(
   playlistId: string,
   cookieHeader?: string,
 ): Promise<ResolvedPlaylist | null> {
-  const info = await runJsonQuery(buildYtMusicUrl(playlistId, "playlist"), cookieHeader);
-  const entries = Array.isArray(info.entries) ? info.entries : [];
-  const tracks = entries
-    .map((entry) => normalizeTrack(entry))
-    .filter((entry): entry is ResolvedTrack => entry != null);
+  const urls = [buildYtMusicUrl(playlistId, "playlist"), buildYouTubeUrl(playlistId, "playlist")];
 
-  if (tracks.length === 0) {
-    return null;
+  for (const url of urls) {
+    try {
+      const info = await runJsonQuery(url, cookieHeader);
+      const entries = Array.isArray(info["entries"]) ? info["entries"] : [];
+      const tracks = entries
+        .map((entry) => normalizeTrack(entry as JsonLike))
+        .filter((entry): entry is ResolvedTrack => entry != null);
+
+      if (tracks.length === 0) {
+        continue;
+      }
+
+      const playlistCount =
+        typeof info["playlist_count"] === "number"
+          ? info["playlist_count"]
+          : typeof info["n_entries"] === "number"
+            ? info["n_entries"]
+            : tracks.length;
+
+      return {
+        providerId: playlistId,
+        name: pickString(info["title"], info["playlist_title"]) ?? "Playlist",
+        tracks,
+        playlistCount,
+      };
+    } catch (error) {
+      log("ytmusic", "info", "yt-dlp playlist JSON failed", {
+        url,
+        playlistId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
-  return {
-    providerId: playlistId,
-    name: pickString(info.title, info.playlist_title) ?? "Playlist",
-    tracks,
-  };
+  return null;
 }

@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback, useEffect, startTransition } from "react";
 import type { Track, NavState, NavView } from "./types";
 import { usePlayerStore } from "./store/playerStore";
-import { formatTotalDuration } from "./utils";
+import { formatTotalDuration, playlistVisibleTrackCount } from "./utils";
 import {
   Library,
   Mic2,
@@ -13,7 +13,6 @@ import {
   Shuffle,
   LogIn,
   RefreshCw,
-  LogOut,
 } from "lucide-react";
 import { shuffleArray } from "./utils";
 import { TitleBar } from "./components/TitleBar";
@@ -33,7 +32,25 @@ import { BrowserBridgeDialog } from "./components/BrowserBridgeDialog";
 import { showToast } from "./components/Toast";
 import { YtMusicHomeView } from "./components/YtMusicHomeView";
 import { SettingsView } from "./components/SettingsView";
-import type { DesktopBridge } from "../shared/desktop-contract";
+import type { DesktopBridge, TrackResult } from "../shared/desktop-contract";
+
+function mapTrackResultsToTracks(results: TrackResult[]): Track[] {
+  return results.map((t) => ({
+    id: t.id,
+    provider: t.provider,
+    providerId: t.providerId,
+    path: t.path,
+    title: t.title,
+    artist: t.artist,
+    album: t.album,
+    time: t.time,
+    duration: t.duration,
+    genre: t.genre,
+    picture: t.picture,
+    sourceLabel: t.sourceLabel,
+    playback: t.playback,
+  }));
+}
 
 type MainWindowProps = {
   desktop?: DesktopBridge;
@@ -105,10 +122,6 @@ export function MainWindow({
     syncYtMusicLibrary,
   } = usePlayerStore();
 
-  const handleOpenExternal = useCallback((url: string) => {
-    void desktop?.request.openExternalUrl({ url });
-  }, [desktop]);
-
   const handleOpenLogin = useCallback(() => {
     clearAuthLoginError();
     setShowBridgeDialog(true);
@@ -170,9 +183,18 @@ export function MainWindow({
 
     void (async () => {
       try {
+        const snap = await desktop.request.ytmusicGetHomeSnapshot();
+        if (!cancelled && snap?.tracks?.length) {
+          setYtHomeTracks(mapTrackResultsToTracks(snap.tracks));
+        }
+      } catch {
+        // ignore snapshot errors
+      }
+
+      try {
         const result = await desktop.request.ytmusicGetHome();
         if (!cancelled) {
-          setYtHomeTracks(result.tracks ?? []);
+          setYtHomeTracks(mapTrackResultsToTracks(result.tracks ?? []));
         }
       } catch (error) {
         if (!cancelled) {
@@ -713,7 +735,7 @@ export function MainWindow({
               items={playlists.items.map((p) => ({
                 id: p.id,
                 name: p.name,
-                desc: `${p.trackIds.length} songs`,
+                desc: `${playlistVisibleTrackCount(p)} songs`,
               }))}
               onItemClick={(item) => handleNavigate("playlist_detail", item.id)}
             />
@@ -728,7 +750,11 @@ export function MainWindow({
         const playlistLoading = activePlaylist ? playlists.hydratingById[activePlaylist.id] : false;
         const playlistError = activePlaylist ? playlists.hydrationErrors[activePlaylist.id] : null;
 
-        if (activePlaylist?.provider === "ytmusic" && playlistLoading && plTracks.length === 0) {
+        if (
+          activePlaylist?.provider === "ytmusic" &&
+          playlistLoading &&
+          !(activePlaylist.tracks && activePlaylist.tracks.length > 0)
+        ) {
           return (
             <div className="flex-1 flex flex-col overflow-hidden">
               <HeroHeader
@@ -750,7 +776,11 @@ export function MainWindow({
           );
         }
 
-        if (activePlaylist?.provider === "ytmusic" && playlistError && plTracks.length === 0) {
+        if (
+          activePlaylist?.provider === "ytmusic" &&
+          playlistError &&
+          !(activePlaylist.tracks && activePlaylist.tracks.length > 0)
+        ) {
           return (
             <div className="flex-1 flex flex-col overflow-hidden">
               <HeroHeader

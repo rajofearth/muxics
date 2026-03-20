@@ -2,7 +2,7 @@ import { memo } from "react";
 import { ListMusic, Play, Search, Shuffle } from "lucide-react";
 import type { NavView, Playlist, Track } from "../types";
 import { TrackTable } from "./TrackTable";
-import { formatTotalDuration, shuffleArray } from "../utils";
+import { formatTotalDuration, playlistVisibleTrackCount, shuffleArray } from "../utils";
 
 type YtMusicHomeViewProps = {
   tracks: Track[];
@@ -171,7 +171,9 @@ export const YtMusicHomeView = memo(function YtMusicHomeView({
                   className="w-full rounded-2xl border border-app-border bg-app-elevated px-4 py-3 text-left hover:bg-app-active"
                 >
                   <div className="text-[13px] font-medium text-app-text-primary truncate">{playlist.name}</div>
-                  <div className="mt-1 text-[12px] text-app-text-tertiary">{playlist.trackIds.length} songs</div>
+                  <div className="mt-1 text-[12px] text-app-text-tertiary">
+                    {playlistVisibleTrackCount(playlist)} songs
+                  </div>
                 </button>
               ))}
               {playlists.length === 0 ? (

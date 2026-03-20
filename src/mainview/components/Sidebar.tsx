@@ -14,6 +14,7 @@ import {
   Settings,
 } from "lucide-react";
 import type { NavState, NavView, Playlist } from "../types";
+import { playlistVisibleTrackCount } from "../utils";
 import { usePlayerStore } from "../store/playerStore";
 import { CreatePlaylistModal } from "./CreatePlaylistModal";
 import { EqBars } from "./EqBars";
@@ -125,7 +126,9 @@ export const Sidebar = memo(function Sidebar({ navState, playlists, onNavigate }
                   }`}
                 >
                   <span className="truncate flex-1">{pl.name}</span>
-                  <span className="text-[10px] text-app-text-tertiary tabular-nums shrink-0">{pl.trackIds.length}</span>
+                  <span className="text-[10px] text-app-text-tertiary tabular-nums shrink-0">
+                    {playlistVisibleTrackCount(pl)}
+                  </span>
                 </button>
               );
             })}

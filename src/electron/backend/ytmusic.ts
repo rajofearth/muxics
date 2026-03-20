@@ -20,12 +20,15 @@ import type {
   YTMusicHomeResult,
   YTMusicLibrarySyncResult,
 } from "../../shared/desktop-contract";
-import { ensureAppDataDirs, YTMUSIC_CACHE_PATH, YTMUSIC_DEBUG_DIR } from "./paths";
-import { log } from "./logger";
+import { loadSettings } from "./settings";
 import {
-  getYtDlpPlaylistItems,
-  resolveYtDlpPlayback,
-} from "./ytDlp";
+  ensureAppDataDirs,
+  YTMUSIC_CACHE_PATH,
+  YTMUSIC_DEBUG_DIR,
+  YTMUSIC_HOME_SNAPSHOT_PATH,
+} from "./paths";
+import { bumpYtMusicSearchCacheSession, clearYtMusicSearchCacheFile } from "./ytmusicSearchCache";
+import { log } from "./logger";
 import { getCachedArtworkUrl, getCachedAudioUrl } from "./ytMusicCache";
 import {
   clearStoredYtMusicSession,
@@ -107,7 +110,7 @@ async function ensurePlayerEvaluator(): Promise<void> {
     });
 
     return vm.runInContext(String(data.output ?? ""), context, {
-      timeout: 1000,
+      timeout: 15000,
     });
   };
 
@@ -308,13 +311,52 @@ function sortPlaybackFormats(formats: Format[]): Format[] {
   });
 }
 
+function expiresAtFromStreamUrl(url: string): number | undefined {
+  try {
+    const parsed = new URL(url);
+    const raw = parsed.searchParams.get("expire") ?? parsed.searchParams.get("expires");
+    if (!raw) {
+      return undefined;
+    }
+    const seconds = Number(raw);
+    if (!Number.isFinite(seconds)) {
+      return undefined;
+    }
+    return seconds * 1000;
+  } catch {
+    return undefined;
+  }
+}
+
 async function resolvePlaybackUrlFromFormats(
   client: Innertube,
   videoId: string,
   context: { source: string },
 ): Promise<{ url: string; loudnessDb?: number } | null> {
-  const info = await client.getBasicInfo(videoId);
-  const streamingData = info.streaming_data;
+  const innertubeClient = { client: "YTMUSIC" as const };
+  let streamingData: Awaited<ReturnType<typeof client.getBasicInfo>>["streaming_data"] | undefined;
+
+  try {
+    const full = await client.getInfo(videoId, innertubeClient);
+    streamingData = full.streaming_data;
+  } catch (error) {
+    log("ytmusic", "info", "getInfo failed for playback, falling back to getBasicInfo", {
+      videoId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  if (!streamingData) {
+    try {
+      const basic = await client.getBasicInfo(videoId, innertubeClient);
+      streamingData = basic.streaming_data;
+    } catch (error) {
+      log("ytmusic", "warn", "getBasicInfo failed for playback", {
+        videoId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
 
   if (!streamingData) {
     log("ytmusic", "warn", "Playback info missing streaming data", { videoId });
@@ -486,6 +528,48 @@ function upsertCachedPlaylist(playlist: PlaylistResult): void {
     ...cache,
     playlists,
   });
+}
+
+function readHomeSnapshotFromDisk(): YTMusicHomeResult | null {
+  ensureAppDataDirs();
+  try {
+    const raw = fs.readFileSync(YTMUSIC_HOME_SNAPSHOT_PATH, "utf-8");
+    const parsed = JSON.parse(raw) as { tracks?: TrackResult[] };
+    if (!Array.isArray(parsed.tracks)) {
+      return null;
+    }
+    return { tracks: parsed.tracks };
+  } catch {
+    return null;
+  }
+}
+
+function writeHomeSnapshotToDisk(result: YTMusicHomeResult): void {
+  ensureAppDataDirs();
+  fs.writeFileSync(YTMUSIC_HOME_SNAPSHOT_PATH, JSON.stringify(result, null, 2), "utf-8");
+}
+
+export function getYtMusicHomeSnapshot(): YTMusicHomeResult | null {
+  if (loadSettings().ytmusicHomeSnapshotEnabled === false) {
+    return null;
+  }
+  return readHomeSnapshotFromDisk();
+}
+
+export function clearYtMusicMetadataCache(): { success: boolean } {
+  try {
+    ensureAppDataDirs();
+    if (fs.existsSync(YTMUSIC_CACHE_PATH)) {
+      fs.unlinkSync(YTMUSIC_CACHE_PATH);
+    }
+    if (fs.existsSync(YTMUSIC_HOME_SNAPSHOT_PATH)) {
+      fs.unlinkSync(YTMUSIC_HOME_SNAPSHOT_PATH);
+    }
+    clearYtMusicSearchCacheFile();
+    return { success: true };
+  } catch {
+    return { success: false };
+  }
 }
 
 function writeDebugJson(name: string, payload: unknown): string | null {
@@ -813,6 +897,16 @@ function readChipBrowseEndpoint(chip: RawNode): RawNode | null {
   return readNestedBrowseEndpoint(chip);
 }
 
+function parsePlaylistListedCountFromRenderer(renderer: RawNode): number | undefined {
+  const text = readText(renderer.subtitle);
+  const m = text.match(/([\d,]+)\s*(?:songs?|tracks?)/i);
+  if (!m) {
+    return undefined;
+  }
+  const n = Number.parseInt(m[1].replace(/,/g, ""), 10);
+  return Number.isFinite(n) ? n : undefined;
+}
+
 function toPlaylistFromRaw(renderer: RawNode): PlaylistResult | null {
   const providerId = readRendererPlaylistId(renderer);
   if (!providerId || (!providerId.startsWith("VL") && !providerId.startsWith("PL") && !providerId.startsWith("LM"))) {
@@ -827,6 +921,7 @@ function toPlaylistFromRaw(renderer: RawNode): PlaylistResult | null {
     name,
     editable: true,
     entries: [],
+    listedItemCount: parsePlaylistListedCountFromRenderer(renderer),
   };
 }
 
@@ -834,14 +929,29 @@ function mergePlaylistSummaryWithCachedDetail(
   summary: PlaylistResult,
   cached: PlaylistResult | undefined,
 ): PlaylistResult {
-  if (!cached || cached.entries.length === 0) {
+  if (!cached) {
+    return summary;
+  }
+
+  const cachedEntries =
+    cached.entries.length > 0
+      ? cached.entries
+      : cached.tracks && cached.tracks.length > 0
+        ? toPlaylistEntries(cached.tracks)
+        : [];
+
+  const hasTrackDetail = cachedEntries.length > 0;
+  const hasHint = typeof cached.listedItemCount === "number" && cached.listedItemCount > 0;
+
+  if (!hasTrackDetail && !hasHint) {
     return summary;
   }
 
   return {
     ...summary,
-    entries: cached.entries,
-    tracks: cached.tracks,
+    entries: hasTrackDetail ? cachedEntries : summary.entries,
+    tracks: cached.tracks?.length ? cached.tracks : summary.tracks,
+    listedItemCount: cached.listedItemCount ?? summary.listedItemCount,
   };
 }
 
@@ -889,6 +999,7 @@ async function getYtMusicPlaylistFromRaw(client: Innertube, playlistId: string):
     editable: true,
     entries: toPlaylistEntries(tracks),
     tracks,
+    listedItemCount: tracks.length,
   };
 }
 
@@ -1077,6 +1188,8 @@ export async function getYtMusicAuthStatus(): Promise<AuthStatusResult> {
 }
 
 export async function loginToYtMusic(): Promise<AuthLoginStartResult> {
+  // Embedded OAuth/sign-in windows are disabled; any future BrowserWindow flow must
+  // call loadURL only after `!win.isDestroyed()` to avoid "Object has been destroyed".
   return {
     kind: "error",
     message: "Automatic sign-in is unavailable for YouTube Music. Import your browser cookies instead.",
@@ -1115,11 +1228,6 @@ function normalizeCookieString(cookie: string): string {
     .map((entry) => entry.trim())
     .filter(Boolean)
     .join("; ");
-}
-
-function getStoredCookieHeader(): string | undefined {
-  const stored = loadStoredYtMusicSession();
-  return stored?.auth.kind === "cookie" ? stored.auth.cookie : undefined;
 }
 
 export async function importYtMusicSession(
@@ -1161,6 +1269,7 @@ export async function importYtMusicSession(
     pendingLogin = null;
     cachedClient = client;
     loggedLibraryAuthDebug = false;
+    bumpYtMusicSearchCacheSession();
     const auth = await buildAuthStatus();
     return { success: auth.loggedIn, auth, error: auth.loggedIn ? undefined : auth.error };
   } catch (error) {
@@ -1215,6 +1324,7 @@ export function saveYtMusicCookieSession(
   cachedClient = null;
   cachedAuthStatus = null;
   loggedLibraryAuthDebug = false;
+  bumpYtMusicSearchCacheSession();
   return { success: true };
 }
 
@@ -1222,6 +1332,7 @@ export async function logoutFromYtMusic(): Promise<AuthStatusResult> {
   pendingLogin = null;
   cachedClient = null;
   loggedLibraryAuthDebug = false;
+  bumpYtMusicSearchCacheSession();
   clearStoredYtMusicSession();
   cachedAuthStatus = {
     loggedIn: false,
@@ -1342,11 +1453,17 @@ export async function getYtMusicHome(): Promise<YTMusicHomeResult> {
   const home = await client.music.getHomeFeed();
   const items = await collectShelfItems(home as any);
 
-  return {
+  const result: YTMusicHomeResult = {
     tracks: uniqueById(
       items.map((item) => toTrack(item)).filter((item): item is TrackResult => item != null),
     ).slice(0, 25),
   };
+
+  if (loadSettings().ytmusicHomeSnapshotEnabled !== false) {
+    writeHomeSnapshotToDisk(result);
+  }
+
+  return result;
 }
 
 export async function searchYtMusic(query: string): Promise<TrackResult[]> {
@@ -1360,56 +1477,6 @@ export async function searchYtMusic(query: string): Promise<TrackResult[]> {
 }
 
 export async function getYtMusicPlaylist(playlistId: string): Promise<PlaylistResult | null> {
-  const cookieHeader = getStoredCookieHeader();
-  try {
-    const resolved = await getYtDlpPlaylistItems(playlistId, cookieHeader);
-    if (resolved) {
-      const detailed = {
-        id: `ytmusic-playlist:${playlistId}`,
-        provider: "ytmusic" as const,
-        providerId: playlistId,
-        name: resolved.name,
-        editable: true,
-        entries: toPlaylistEntries(
-          resolved.tracks.map((track) => ({
-            id: `ytmusic:${track.providerId}`,
-            provider: "ytmusic" as const,
-            providerId: track.providerId,
-            title: track.title,
-            artist: track.artist,
-            album: track.album,
-            duration: track.duration,
-            time: track.time,
-            genre: "YouTube Music",
-            picture: track.picture,
-            sourceLabel: "YouTube Music",
-          })),
-        ),
-        tracks: resolved.tracks.map((track) => ({
-          id: `ytmusic:${track.providerId}`,
-          provider: "ytmusic" as const,
-          providerId: track.providerId,
-          title: track.title,
-          artist: track.artist,
-          album: track.album,
-          duration: track.duration,
-          time: track.time,
-          genre: "YouTube Music",
-          picture: track.picture,
-          sourceLabel: "YouTube Music",
-        })),
-      };
-
-      upsertCachedPlaylist(detailed);
-      return detailed;
-    }
-  } catch (error) {
-    log("ytmusic", "warn", "yt-dlp playlist fetch failed, falling back to youtubei.js", {
-      playlistId,
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
-
   const client = await getClient();
   try {
     const playlist = await client.music.getPlaylist(playlistId);
@@ -1433,6 +1500,7 @@ export async function getYtMusicPlaylist(playlistId: string): Promise<PlaylistRe
       editable: true,
       entries: toPlaylistEntries(tracks),
       tracks,
+      listedItemCount: tracks.length,
     };
 
     upsertCachedPlaylist(detailed);
@@ -1453,53 +1521,58 @@ export async function getYtMusicPlaylist(playlistId: string): Promise<PlaylistRe
 
 export async function getYtMusicPlayback(trackId: string, providerId: string): Promise<TrackPlaybackResult> {
   const videoId = providerId || trackId.replace(/^ytmusic:/, "");
-  const cookieHeader = getStoredCookieHeader();
+  const source = trackId.startsWith("ytmusic:") ? "ytmusic" : "unknown";
+  const fallbackExpiresAt = () => Date.now() + 1000 * 60 * 20;
 
   try {
-    const resolved = await resolveYtDlpPlayback(videoId, cookieHeader);
+    const client = await getClient();
+
+    try {
+      const format = await client.getStreamingData(videoId, {
+        type: "audio",
+        quality: "best",
+        client: "YTMUSIC",
+      });
+      if (format.url) {
+        return {
+          mode: "direct",
+          targetId: videoId,
+          url: getCachedAudioUrl(videoId, format.url),
+          expiresAt: expiresAtFromStreamUrl(format.url) ?? fallbackExpiresAt(),
+          loudnessDb: format.loudness_db,
+        };
+      }
+    } catch (error) {
+      log("ytmusic", "info", "getStreamingData failed, trying format scan", {
+        videoId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    const resolved = await resolvePlaybackUrlFromFormats(client, videoId, { source });
     if (resolved?.url) {
       return {
         mode: "direct",
         targetId: videoId,
         url: getCachedAudioUrl(videoId, resolved.url),
-        expiresAt: resolved.expiresAt,
+        expiresAt: expiresAtFromStreamUrl(resolved.url) ?? fallbackExpiresAt(),
+        loudnessDb: resolved.loudnessDb,
       };
     }
+
+    log("ytmusic", "info", "Innertube playback had no usable URL", { videoId });
   } catch (error) {
-    log("ytmusic", "warn", "yt-dlp playback resolution failed, falling back to youtubei.js", {
+    log("ytmusic", "warn", "Innertube playback resolution failed", {
       videoId,
       error: error instanceof Error ? error.message : String(error),
     });
   }
 
-  try {
-    const client = await getClient();
-    const resolved = await resolvePlaybackUrlFromFormats(client, videoId, {
-      source: trackId.startsWith("ytmusic:") ? "ytmusic" : "unknown",
-    });
-    if (!resolved?.url) {
-      return {
-        mode: "unavailable",
-        targetId: videoId,
-        error: "No direct audio stream is available for this track.",
-      };
-    }
-
-    return {
-      mode: "direct",
-      targetId: videoId,
-      url: getCachedAudioUrl(videoId, resolved.url),
-      expiresAt: Date.now() + 1000 * 60 * 20,
-      loudnessDb: resolved.loudnessDb,
-    };
-  } catch (error) {
-    log("ytmusic", "warn", "Failed to resolve playback", error);
-    return {
-      mode: "unavailable",
-      targetId: videoId,
-      error: error instanceof Error ? error.message : "Playback is unavailable.",
-    };
-  }
+  return {
+    mode: "unavailable",
+    targetId: videoId,
+    error: "No direct audio stream is available for this track.",
+  };
 }
 
 export async function likeYtMusicTrack(videoId: string): Promise<{ success: boolean }> {

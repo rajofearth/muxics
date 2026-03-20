@@ -64,6 +64,8 @@ export interface PlaylistResult {
   editable?: boolean;
   entries: PlaylistEntryResult[];
   tracks?: TrackResult[];
+  /** From YT Music subtitle (e.g. "48 songs") when full track list is not loaded yet */
+  listedItemCount?: number;
 }
 
 export interface AuthStatusResult {
@@ -146,19 +148,29 @@ export interface YTMusicHomeResult {
   tracks: TrackResult[];
 }
 
+export interface DesktopSettings {
+  ytmusicCacheLimitBytes: number;
+  ytmusicUseLibraryDiskCache: boolean;
+  ytmusicHomeSnapshotEnabled: boolean;
+  ytmusicSearchCacheEnabled: boolean;
+  ytmusicSearchCacheTtlMinutes: number;
+  ytmusicSearchCacheMaxEntries: number;
+}
+
 export interface DesktopRequestMap {
   getDefaultMusicPath: { params: void; response: string };
   scanFolders: { params: { paths: string[] }; response: { files: ScannedFileResult[] } };
   getTrackMetadata: { params: { path: string }; response: TrackMetadataResult | null };
   getPlaybackUrl: { params: { path: string }; response: string };
   getWatchFolders: { params: void; response: string[] };
-  getSettings: { params: void; response: { ytmusicCacheLimitBytes: number } };
+  getSettings: { params: void; response: DesktopSettings };
   saveSettings: {
-    params: { ytmusicCacheLimitBytes: number };
+    params: Partial<DesktopSettings>;
     response: { success: boolean };
   };
   getYtMusicCacheStats: { params: void; response: CacheStatsResult };
   clearYtMusicCache: { params: void; response: { success: boolean } };
+  clearYtMusicMetadataCache: { params: void; response: { success: boolean } };
   addFolder: { params: { path: string }; response: { success: boolean; error?: string } };
   validateFolder: {
     params: { path: string };
@@ -188,7 +200,9 @@ export interface DesktopRequestMap {
   installBrowserBridgeHost: { params: void; response: BrowserBridgeHostInstallResult };
   openPath: { params: { path: string }; response: { success: boolean } };
   ytmusicSyncLibrary: { params: void; response: YTMusicLibrarySyncResult };
+  ytmusicLoadCachedLibrary: { params: void; response: YTMusicLibrarySyncResult | null };
   ytmusicGetHome: { params: void; response: YTMusicHomeResult };
+  ytmusicGetHomeSnapshot: { params: void; response: YTMusicHomeResult | null };
   ytmusicSearch: { params: { query: string }; response: TrackResult[] };
   ytmusicGetPlaylist: { params: { playlistId: string }; response: PlaylistResult | null };
   ytmusicGetPlayback: { params: { trackId: string; providerId: string }; response: TrackPlaybackResult };
@@ -230,6 +244,7 @@ export interface DesktopMessageMap {
 export interface DesktopEventMap {
   contextMenuAction: { action: string };
   menuAction: { action: string };
+  ytmusicCacheStatsUpdated: CacheStatsResult;
 }
 
 type RequestMethods = {

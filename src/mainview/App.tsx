@@ -23,7 +23,15 @@ export default function App({ desktop }: AppProps) {
   const [windowMode, setWindowMode] = useState<"main" | "mini">("main");
   const initRef = useRef(false);
 
-  const { setRpc, loadLibrary, loadPlaylists, loadAuthStatus, syncYtMusicLibrary, player } = usePlayerStore();
+  const {
+    setRpc,
+    loadLibrary,
+    loadPlaylists,
+    loadAuthStatus,
+    hydrateYtMusicFromCache,
+    syncYtMusicLibrary,
+    player,
+  } = usePlayerStore();
   const playTrack = usePlayerStore((s) => s.playTrack);
   const togglePlay = usePlayerStore((s) => s.togglePlay);
   const setVolume = usePlayerStore((s) => s.setVolume);
@@ -47,12 +55,18 @@ export default function App({ desktop }: AppProps) {
       initRef.current = true;
       void (async () => {
         await loadAuthStatus();
-        await loadLibrary();
-        await loadPlaylists();
-        await syncYtMusicLibrary();
+        const loggedIn = usePlayerStore.getState().auth.loggedIn;
+        await Promise.all([
+          loadLibrary(),
+          loadPlaylists(),
+          ...(loggedIn ? [hydrateYtMusicFromCache()] : []),
+        ]);
+        if (loggedIn) {
+          void syncYtMusicLibrary();
+        }
       })();
     }
-  }, [rpcReady, loadAuthStatus, loadLibrary, loadPlaylists, syncYtMusicLibrary]);
+  }, [rpcReady, loadAuthStatus, loadLibrary, loadPlaylists, hydrateYtMusicFromCache, syncYtMusicLibrary]);
 
   useEffect(() => {
     if (player.currentTrack) {

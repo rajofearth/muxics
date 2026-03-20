@@ -10,13 +10,20 @@ import {
   shell,
   type MenuItemConstructorOptions,
 } from "electron";
-import type { DesktopEventMap, DesktopMessageMap, DesktopRequestMap } from "../shared/desktop-contract";
+import type {
+  DesktopEventMap,
+  DesktopMessageMap,
+  DesktopRequestMap,
+  DesktopSettings,
+} from "../shared/desktop-contract";
 import { APP_ID, APP_NAME } from "../shared/constants";
 import { getDefaultMusicPath, PLAYLISTS_DIR } from "./backend/paths";
 import { scanFolders } from "./backend/scanner";
 import { formatMetadataTime, getTrackMetadata } from "./backend/metadata";
 import { getAudioServerPort, setAllowedPaths, startAudioServer } from "./backend/audioServer";
 import { clearYtMusicCache, getYtMusicCacheStats } from "./backend/ytMusicCache";
+import { setYtMusicCacheStatsListener } from "./backend/rendererNotify";
+import { getCachedYtMusicSearch, setCachedYtMusicSearch } from "./backend/ytmusicSearchCache";
 import { listPlaylists, loadPlaylist, savePlaylist } from "./backend/playlists";
 import { loadSettings, saveSettings } from "./backend/settings";
 import { installBrowserBridgeHost, prepareBrowserBridgeBundle } from "./backend/browserBridge";
@@ -25,9 +32,11 @@ import {
   addTrackToYtMusicPlaylist,
   createYtMusicPlaylist,
   deleteYtMusicPlaylist,
+  clearYtMusicMetadataCache,
   getCachedYtMusicLibrary,
   getYtMusicAuthStatus,
   getYtMusicHome,
+  getYtMusicHomeSnapshot,
   getYtMusicPlayback,
   getYtMusicPlaylist,
   importYtMusicSession,
@@ -122,6 +131,18 @@ function sendRendererEvent<K extends keyof DesktopEventMap>(channel: K, payload:
   }
 
   mainWindow.webContents.send("desktop:event", { channel, payload });
+}
+
+function buildDesktopSettings(): DesktopSettings {
+  const settings = loadSettings();
+  return {
+    ytmusicCacheLimitBytes: settings.ytmusicCacheLimitBytes ?? 1024 * 1024 * 1024,
+    ytmusicUseLibraryDiskCache: settings.ytmusicUseLibraryDiskCache !== false,
+    ytmusicHomeSnapshotEnabled: settings.ytmusicHomeSnapshotEnabled !== false,
+    ytmusicSearchCacheEnabled: settings.ytmusicSearchCacheEnabled !== false,
+    ytmusicSearchCacheTtlMinutes: settings.ytmusicSearchCacheTtlMinutes ?? 30,
+    ytmusicSearchCacheMaxEntries: settings.ytmusicSearchCacheMaxEntries ?? 100,
+  };
 }
 
 function updateWindowTitle() {
@@ -369,22 +390,18 @@ const requestHandlers: RequestHandlerMap = {
     return `http://127.0.0.1:${port}/play?path=${encodeURIComponent(filePath)}`;
   },
   getWatchFolders: () => loadSettings().watchFolders,
-  getSettings: () => {
-    const settings = loadSettings();
-    return {
-      ytmusicCacheLimitBytes: settings.ytmusicCacheLimitBytes ?? 1024 * 1024 * 1024,
-    };
-  },
-  saveSettings: ({ ytmusicCacheLimitBytes }) => {
+  getSettings: () => buildDesktopSettings(),
+  saveSettings: (partial) => {
     const settings = loadSettings();
     saveSettings({
       ...settings,
-      ytmusicCacheLimitBytes,
+      ...partial,
     });
     return { success: true };
   },
   getYtMusicCacheStats: () => getYtMusicCacheStats(),
   clearYtMusicCache: () => clearYtMusicCache(),
+  clearYtMusicMetadataCache: () => clearYtMusicMetadataCache(),
   addFolder: ({ path: folderPath }) => {
     const resolved = path.resolve(folderPath.trim());
 
@@ -523,14 +540,46 @@ const requestHandlers: RequestHandlerMap = {
     return { success: true };
   },
   ytmusicSyncLibrary: () => syncYtMusicLibrary(),
+  ytmusicLoadCachedLibrary: () => {
+    if (loadSettings().ytmusicUseLibraryDiskCache === false) {
+      return null;
+    }
+    const cached = getCachedYtMusicLibrary();
+    return {
+      tracks: cached.tracks,
+      playlists: cached.playlists,
+      lastSyncedAt: cached.lastSyncedAt ?? 0,
+    };
+  },
   ytmusicGetHome: async () => {
     try {
       return await getYtMusicHome();
     } catch {
+      const snap = getYtMusicHomeSnapshot();
+      if (snap?.tracks?.length) {
+        return snap;
+      }
       return { tracks: getCachedYtMusicLibrary().tracks.slice(0, 25) };
     }
   },
-  ytmusicSearch: ({ query }) => searchYtMusic(query),
+  ytmusicGetHomeSnapshot: () => getYtMusicHomeSnapshot(),
+  ytmusicSearch: async ({ query }) => {
+    const s = loadSettings();
+    const cacheOn = s.ytmusicSearchCacheEnabled !== false;
+    const ttlMs = (s.ytmusicSearchCacheTtlMinutes ?? 30) * 60_000;
+    const maxEntries = s.ytmusicSearchCacheMaxEntries ?? 100;
+    if (cacheOn) {
+      const hit = getCachedYtMusicSearch(query, ttlMs);
+      if (hit) {
+        return hit;
+      }
+    }
+    const results = await searchYtMusic(query);
+    if (cacheOn) {
+      setCachedYtMusicSearch(query, results, maxEntries);
+    }
+    return results;
+  },
   ytmusicGetPlaylist: ({ playlistId }) => getYtMusicPlaylist(playlistId),
   ytmusicGetPlayback: ({ trackId, providerId }) => getYtMusicPlayback(trackId, providerId),
   ytmusicLike: ({ videoId }) => likeYtMusicTrack(videoId),
@@ -643,6 +692,7 @@ async function createMainWindow() {
 
   mainWindow.on("closed", () => {
     mainWindow = null;
+    setYtMusicCacheStatsListener(null);
   });
 
   mainWindow.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL) => {
@@ -660,6 +710,10 @@ async function createMainWindow() {
   setupTray();
   createApplicationMenu();
   updateWindowTitle();
+
+  setYtMusicCacheStatsListener(() => {
+    sendRendererEvent("ytmusicCacheStatsUpdated", getYtMusicCacheStats());
+  });
 }
 
 app.whenReady().then(async () => {
