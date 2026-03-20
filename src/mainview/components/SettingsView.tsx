@@ -14,8 +14,6 @@ function formatBytes(value: number): string {
   return `${Math.round(value / (1024 * 1024))} MB`;
 }
 
-const POLL_MS = 2000;
-
 export function SettingsView({ desktop }: SettingsViewProps) {
   const [settings, setSettings] = useState<DesktopSettings | null>(null);
   const [usageBytes, setUsageBytes] = useState(0);
@@ -63,16 +61,8 @@ export function SettingsView({ desktop }: SettingsViewProps) {
     };
     document.addEventListener("muxics-yt-cache-stats", onStats);
 
-    const id = setInterval(() => {
-      void (async () => {
-        const stats = await desktop.request.getYtMusicCacheStats();
-        setUsageBytes(stats.usageBytes);
-      })();
-    }, POLL_MS);
-
     return () => {
       document.removeEventListener("muxics-yt-cache-stats", onStats);
-      clearInterval(id);
     };
   }, [desktop]);
 
@@ -202,6 +192,23 @@ export function SettingsView({ desktop }: SettingsViewProps) {
                 <span className="font-medium text-app-text-primary block">Save home feed snapshot</span>
                 <span className="text-[12px] text-app-text-tertiary">
                   After each successful library sync, refresh a small on-disk copy of the YT Music home feed.
+                </span>
+              </span>
+            </label>
+
+            <label className="flex cursor-pointer items-start gap-3 px-4 py-3 bg-app-surface rounded-xl border border-app-border text-[13px] text-app-text-secondary">
+              <input
+                type="checkbox"
+                className="mt-0.5 accent-app-accent"
+                checked={settings?.ytmusicLibrarySyncDebug === true}
+                disabled={loading || !settings}
+                onChange={(e) => void persistPartial({ ytmusicLibrarySyncDebug: e.target.checked })}
+              />
+              <span>
+                <span className="font-medium text-app-text-primary block">Verbose library sync debug</span>
+                <span className="text-[12px] text-app-text-tertiary">
+                  Writes large JSON dumps under app data and logs extraction stats (slower sync). Or set env{" "}
+                  <code className="text-app-text-secondary">MUXICS_YTMUSIC_SYNC_DEBUG=1</code>.
                 </span>
               </span>
             </label>

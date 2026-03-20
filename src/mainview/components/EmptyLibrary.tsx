@@ -1,9 +1,16 @@
 import { useState, useEffect } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { FolderPlus, Music, Loader2, AlertCircle, ChevronDown } from "lucide-react";
 import { usePlayerStore } from "../store/playerStore";
 
 export function EmptyLibrary() {
-  const { rpc, addFolder, library } = usePlayerStore();
+  const { rpc, addFolder, library } = usePlayerStore(
+    useShallow((s) => ({
+      rpc: s.rpc,
+      addFolder: s.addFolder,
+      library: s.library,
+    })),
+  );
   const [pathInput, setPathInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [showCustom, setShowCustom] = useState(false);

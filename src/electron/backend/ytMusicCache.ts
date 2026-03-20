@@ -24,12 +24,60 @@ type MediaIndex = {
   audio: Record<string, CacheEntry>;
 };
 
-const EMPTY_INDEX: MediaIndex = {
-  artwork: {},
-  audio: {},
-};
-
 const audioWarmups = new Map<string, Promise<void>>();
+
+/** In-memory index + batched disk writes (avoids rewriting JSON on every cache hit / LRU touch). */
+let indexCache: MediaIndex | null = null;
+let indexDirty = false;
+let indexFlushTimer: ReturnType<typeof setTimeout> | null = null;
+
+function readIndexFromDisk(): MediaIndex {
+  ensureAppDataDirs();
+  try {
+    const raw = fs.readFileSync(YTMUSIC_MEDIA_INDEX_PATH, "utf8");
+    const parsed = JSON.parse(raw) as Partial<MediaIndex>;
+    return {
+      artwork: parsed.artwork ?? {},
+      audio: parsed.audio ?? {},
+    };
+  } catch {
+    return { artwork: {}, audio: {} };
+  }
+}
+
+function getIndex(): MediaIndex {
+  if (!indexCache) {
+    indexCache = readIndexFromDisk();
+  }
+  return indexCache;
+}
+
+function flushIndexSync(): void {
+  if (indexFlushTimer !== null) {
+    clearTimeout(indexFlushTimer);
+    indexFlushTimer = null;
+  }
+  if (!indexCache || !indexDirty) {
+    return;
+  }
+  ensureAppDataDirs();
+  fs.writeFileSync(YTMUSIC_MEDIA_INDEX_PATH, JSON.stringify(indexCache, null, 2), "utf8");
+  indexDirty = false;
+}
+
+function scheduleIndexFlush(): void {
+  if (indexFlushTimer !== null) {
+    return;
+  }
+  indexFlushTimer = setTimeout(() => {
+    indexFlushTimer = null;
+    flushIndexSync();
+  }, 450);
+}
+
+process.once("beforeExit", () => {
+  flushIndexSync();
+});
 
 function hash(value: string): string {
   return crypto.createHash("sha1").update(value).digest("hex");
@@ -64,34 +112,15 @@ function extensionFromContentType(contentType: string | null, fallback: string):
   return fallback;
 }
 
-function loadIndex(): MediaIndex {
-  ensureAppDataDirs();
-
-  try {
-    const raw = fs.readFileSync(YTMUSIC_MEDIA_INDEX_PATH, "utf8");
-    const parsed = JSON.parse(raw) as Partial<MediaIndex>;
-    return {
-      artwork: parsed.artwork ?? {},
-      audio: parsed.audio ?? {},
-    };
-  } catch {
-    return { ...EMPTY_INDEX };
-  }
-}
-
-function saveIndex(index: MediaIndex): void {
-  ensureAppDataDirs();
-  fs.writeFileSync(YTMUSIC_MEDIA_INDEX_PATH, JSON.stringify(index, null, 2), "utf8");
-}
-
 function getEntryPath(kind: "artwork" | "audio", entry: CacheEntry): string {
   return path.join(kind === "artwork" ? YTMUSIC_ARTWORK_CACHE_DIR : YTMUSIC_AUDIO_CACHE_DIR, entry.fileName);
 }
 
 function upsertEntry(kind: "artwork" | "audio", key: string, entry: CacheEntry): void {
-  const index = loadIndex();
+  const index = getIndex();
   index[kind][key] = entry;
-  saveIndex(index);
+  indexDirty = true;
+  scheduleIndexFlush();
 }
 
 function totalAudioUsage(index: MediaIndex): number {
@@ -103,7 +132,7 @@ function totalArtworkUsage(index: MediaIndex): number {
 }
 
 function enforceMediaCacheLimit(): void {
-  const index = loadIndex();
+  const index = getIndex();
   const limit = loadSettings().ytmusicCacheLimitBytes ?? 1024 * 1024 * 1024;
   let usage = totalAudioUsage(index) + totalArtworkUsage(index);
   if (usage <= limit) {
@@ -141,7 +170,8 @@ function enforceMediaCacheLimit(): void {
     delete index.artwork[key];
   }
 
-  saveIndex(index);
+  indexDirty = true;
+  flushIndexSync();
   notifyYtMusicCacheStatsChanged();
 }
 
@@ -168,7 +198,7 @@ export function getCachedAudioUrl(trackId: string, sourceUrl: string): string {
 }
 
 export function getArtworkPathByKey(key: string): string | null {
-  const entry = loadIndex().artwork[key];
+  const entry = getIndex().artwork[key];
   if (!entry) {
     return null;
   }
@@ -178,7 +208,7 @@ export function getArtworkPathByKey(key: string): string | null {
 }
 
 export function getAudioPathByKey(key: string): string | null {
-  const entry = loadIndex().audio[key];
+  const entry = getIndex().audio[key];
   if (!entry) {
     return null;
   }
@@ -188,14 +218,15 @@ export function getAudioPathByKey(key: string): string | null {
 }
 
 export function touchAudioEntry(key: string): void {
-  const index = loadIndex();
+  const index = getIndex();
   const entry = index.audio[key];
   if (!entry) {
     return;
   }
 
   entry.updatedAt = Date.now();
-  saveIndex(index);
+  indexDirty = true;
+  scheduleIndexFlush();
 }
 
 export async function ensureArtworkCached(key: string, sourceUrl: string): Promise<string | null> {
@@ -272,15 +303,15 @@ export function warmAudioCache(key: string, sourceUrl: string): Promise<void> {
 }
 
 export function getYtMusicCacheStats(): { usageBytes: number; limitBytes: number } {
-  const index = loadIndex();
+  const index = getIndex();
   return {
-    usageBytes: totalAudioUsage(index) + Object.values(index.artwork).reduce((sum, entry) => sum + entry.size, 0),
+    usageBytes: totalAudioUsage(index) + totalArtworkUsage(index),
     limitBytes: loadSettings().ytmusicCacheLimitBytes ?? 1024 * 1024 * 1024,
   };
 }
 
 export function clearYtMusicCache(): { success: boolean } {
-  const index = loadIndex();
+  const index = getIndex();
 
   for (const entry of Object.values(index.audio)) {
     try {
@@ -294,7 +325,10 @@ export function clearYtMusicCache(): { success: boolean } {
     } catch {}
   }
 
-  saveIndex({ ...EMPTY_INDEX });
+  index.audio = {};
+  index.artwork = {};
+  indexDirty = true;
+  flushIndexSync();
   notifyYtMusicCacheStatsChanged();
   return { success: true };
 }

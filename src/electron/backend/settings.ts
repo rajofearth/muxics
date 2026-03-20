@@ -12,6 +12,8 @@ export interface Settings {
   ytmusicSearchCacheEnabled?: boolean;
   ytmusicSearchCacheTtlMinutes?: number;
   ytmusicSearchCacheMaxEntries?: number;
+  /** When true, library sync writes large JSON debug dumps and verbose extraction logs. */
+  ytmusicLibrarySyncDebug?: boolean;
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -23,6 +25,7 @@ const DEFAULT_SETTINGS: Settings = {
   ytmusicSearchCacheEnabled: true,
   ytmusicSearchCacheTtlMinutes: 30,
   ytmusicSearchCacheMaxEntries: 100,
+  ytmusicLibrarySyncDebug: false,
 };
 
 export function loadSettings(): Settings {
@@ -66,6 +69,10 @@ export function loadSettings(): Settings {
         parsed.ytmusicSearchCacheMaxEntries > 0
           ? parsed.ytmusicSearchCacheMaxEntries
           : DEFAULT_SETTINGS.ytmusicSearchCacheMaxEntries,
+      ytmusicLibrarySyncDebug:
+        typeof parsed.ytmusicLibrarySyncDebug === "boolean"
+          ? parsed.ytmusicLibrarySyncDebug
+          : DEFAULT_SETTINGS.ytmusicLibrarySyncDebug,
     };
   } catch {
     return { ...DEFAULT_SETTINGS };

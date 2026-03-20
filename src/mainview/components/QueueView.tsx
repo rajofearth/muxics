@@ -1,8 +1,12 @@
-import { useMemo, useRef, useEffect } from "react";
+import { useMemo, useRef, useEffect, useCallback } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { ListMusic, Music } from "lucide-react";
 import type { Track } from "../types";
 import { TrackRow } from "./TrackRow";
 import { formatTotalDuration } from "../utils";
+
+const QUEUE_ROW_HEIGHT = 52;
+const QUEUE_VIRTUAL_THRESHOLD = 36;
 
 type QueueViewProps = {
   queue: Track[];
@@ -22,6 +26,27 @@ export function QueueView({ queue, currentTrack, onPlayTrack }: QueueViewProps) 
   );
 
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const queueRef = useRef(queue);
+  queueRef.current = queue;
+  const onPlayRef = useRef(onPlayTrack);
+  onPlayRef.current = onPlayTrack;
+
+  const handleQueueRowClick = useCallback((trackId: string) => {
+    const q = queueRef.current;
+    const track = q.find((t) => t.id === trackId);
+    if (track) {
+      onPlayRef.current(track, q);
+    }
+  }, []);
+
+  const useVirt = upNext.length >= QUEUE_VIRTUAL_THRESHOLD;
+  const virtualizer = useVirtualizer({
+    count: useVirt ? upNext.length : 0,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => QUEUE_ROW_HEIGHT,
+    overscan: 10,
+  });
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
@@ -78,18 +103,45 @@ export function QueueView({ queue, currentTrack, onPlayTrack }: QueueViewProps) 
                 Next · {upNext.length} songs
               </div>
             </div>
-            <div className="pb-4">
-              {upNext.map((track, i) => (
-                <TrackRow
-                  key={`${track.id}-q-${currentIdx + 1 + i}`}
-                  track={track}
-                  index={currentIdx + 1 + i}
-                  isActive={false}
-                  isPlaying={false}
-                  onClick={() => onPlayTrack(track, queue)}
-                  compact
-                />
-              ))}
+            <div className="pb-4 relative min-h-0">
+              {useVirt ? (
+                <div
+                  className="relative w-full"
+                  style={{ height: `${virtualizer.getTotalSize()}px` }}
+                >
+                  {virtualizer.getVirtualItems().map((vi) => {
+                    const track = upNext[vi.index];
+                    return (
+                      <div
+                        key={`${track.id}-q-${currentIdx + 1 + vi.index}`}
+                        className="absolute top-0 left-0 w-full"
+                        style={{ transform: `translateY(${vi.start}px)` }}
+                      >
+                        <TrackRow
+                          track={track}
+                          index={currentIdx + 1 + vi.index}
+                          isActive={false}
+                          isPlaying={false}
+                          onClick={() => handleQueueRowClick(track.id)}
+                          compact
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                upNext.map((track, i) => (
+                  <TrackRow
+                    key={`${track.id}-q-${currentIdx + 1 + i}`}
+                    track={track}
+                    index={currentIdx + 1 + i}
+                    isActive={false}
+                    isPlaying={false}
+                    onClick={() => handleQueueRowClick(track.id)}
+                    compact
+                  />
+                ))
+              )}
             </div>
           </div>
         ) : currentTrack ? (

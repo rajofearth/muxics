@@ -140,6 +140,7 @@ function buildDesktopSettings(): DesktopSettings {
     ytmusicSearchCacheEnabled: settings.ytmusicSearchCacheEnabled !== false,
     ytmusicSearchCacheTtlMinutes: settings.ytmusicSearchCacheTtlMinutes ?? 30,
     ytmusicSearchCacheMaxEntries: settings.ytmusicSearchCacheMaxEntries ?? 100,
+    ytmusicLibrarySyncDebug: settings.ytmusicLibrarySyncDebug === true,
   };
 }
 

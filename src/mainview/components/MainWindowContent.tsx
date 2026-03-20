@@ -50,7 +50,6 @@ export type MainWindowContentProps = {
   currentTrack: Track | null;
   isPlaying: boolean;
   playQueue: Track[];
-  currentTime: number;
   volume: number;
   shuffle: boolean;
   repeat: "off" | "all" | "one";
@@ -88,7 +87,6 @@ export function MainWindowContent({
   currentTrack,
   isPlaying,
   playQueue,
-  currentTime,
   volume,
   shuffle,
   repeat,
@@ -283,7 +281,6 @@ export function MainWindowContent({
           <NowPlayingView
             currentTrack={currentTrack}
             isPlaying={isPlaying}
-            currentTime={currentTime}
             volume={volume}
             shuffle={shuffle}
             repeat={repeat}

@@ -1,4 +1,5 @@
-import { memo, useMemo, useState, useCallback } from "react";
+import { memo, useMemo, useState, useCallback, useRef } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { ChevronUp, ChevronDown } from "lucide-react";
 import type { Track } from "../types";
 import { TrackRow } from "./TrackRow";
@@ -17,6 +18,12 @@ type TrackTableProps = {
   playlistId?: string;
 };
 
+/** Estimated row height (px) — keep in sync with TrackRow padding + thumb */
+const ROW_HEIGHT_COMPACT = 52;
+const ROW_HEIGHT_FULL = 62;
+/** Below this count, render all rows (avoids virtualizer overhead for tiny lists). */
+const VIRTUALIZE_THRESHOLD = 32;
+
 function compareStrings(a: string, b: string, dir: SortDir): number {
   const cmp = a.localeCompare(b, undefined, { sensitivity: "base" });
   return dir === "asc" ? cmp : -cmp;
@@ -33,35 +40,70 @@ export const TrackTable = memo(function TrackTable({
 }: TrackTableProps) {
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const parentRef = useRef<HTMLDivElement>(null);
+
+  const sortedTracks = useMemo(() => {
+    if (!sortKey) return tracks;
+    if (sortKey === "time") {
+      const decorated = tracks.map((t) => ({ t, sec: parseTime(t.time) }));
+      decorated.sort((a, b) => {
+        const diff = a.sec - b.sec;
+        return sortDir === "asc" ? diff : -diff;
+      });
+      return decorated.map((d) => d.t);
+    }
+    return [...tracks].sort((a, b) => {
+      switch (sortKey) {
+        case "title":
+          return compareStrings(a.title, b.title, sortDir);
+        case "artist":
+          return compareStrings(a.artist, b.artist, sortDir);
+        case "album":
+          return compareStrings(a.album, b.album, sortDir);
+        default:
+          return 0;
+      }
+    });
+  }, [tracks, sortKey, sortDir]);
+
+  const sortedRef = useRef(sortedTracks);
+  sortedRef.current = sortedTracks;
+  const onTrackClickRef = useRef(onTrackClick);
+  onTrackClickRef.current = onTrackClick;
+
+  const handleRowActivate = useCallback((trackId: string) => {
+    const list = sortedRef.current;
+    const track = list.find((t) => t.id === trackId);
+    if (track) {
+      onTrackClickRef.current(track, list);
+    }
+  }, []);
+
+  const rowHeight = compact ? ROW_HEIGHT_COMPACT : ROW_HEIGHT_FULL;
+  const useVirtual = sortedTracks.length >= VIRTUALIZE_THRESHOLD;
+
+  const virtualizer = useVirtualizer({
+    count: useVirtual ? sortedTracks.length : 0,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => rowHeight,
+    overscan: 12,
+  });
 
   const handleSort = useCallback(
     (key: SortKey) => {
       if (sortKey === key) {
         if (sortDir === "asc") setSortDir("desc");
-        else { setSortKey(null); setSortDir("asc"); }
+        else {
+          setSortKey(null);
+          setSortDir("asc");
+        }
       } else {
         setSortKey(key);
         setSortDir("asc");
       }
     },
-    [sortKey, sortDir]
+    [sortKey, sortDir],
   );
-
-  const sortedTracks = useMemo(() => {
-    if (!sortKey) return tracks;
-    return [...tracks].sort((a, b) => {
-      switch (sortKey) {
-        case "title": return compareStrings(a.title, b.title, sortDir);
-        case "artist": return compareStrings(a.artist, b.artist, sortDir);
-        case "album": return compareStrings(a.album, b.album, sortDir);
-        case "time": {
-          const diff = parseTime(a.time) - parseTime(b.time);
-          return sortDir === "asc" ? diff : -diff;
-        }
-        default: return 0;
-      }
-    });
-  }, [tracks, sortKey, sortDir]);
 
   const SortIcon = ({ column }: { column: SortKey }) => {
     if (sortKey !== column) return null;
@@ -75,6 +117,7 @@ export const TrackTable = memo(function TrackTable({
   const headerButton = (key: SortKey, label: string, className: string) =>
     sortable ? (
       <button
+        type="button"
         onClick={() => handleSort(key)}
         className={`${className} hover:text-app-text-secondary cursor-pointer select-none ${sortKey === key ? "text-app-text-secondary" : ""}`}
       >
@@ -96,25 +139,52 @@ export const TrackTable = memo(function TrackTable({
   ) : null;
 
   return (
-    <div className="flex-1 overflow-y-auto">
+    <div ref={parentRef} className="flex-1 overflow-y-auto min-h-0">
       {header}
-      <div className="py-1">
-        {sortedTracks.map((track, i) => (
-          <TrackRow
-            key={track.id}
-            track={track}
-            index={i}
-            isActive={track.id === currentTrack?.id}
-            isPlaying={isPlaying}
-            onClick={() => onTrackClick(track, sortedTracks)}
-            compact={compact}
-            playlistId={playlistId}
-          />
-        ))}
-        {sortedTracks.length === 0 && (
+      <div className="py-1 relative w-full">
+        {sortedTracks.length === 0 ? (
           <div className="px-8 py-16 text-center text-app-text-tertiary text-sm">
             No tracks found
           </div>
+        ) : useVirtual ? (
+          <div
+            className="relative w-full"
+            style={{ height: `${virtualizer.getTotalSize()}px` }}
+          >
+            {virtualizer.getVirtualItems().map((vi) => {
+              const track = sortedTracks[vi.index];
+              return (
+                <div
+                  key={track.id}
+                  className="absolute top-0 left-0 w-full"
+                  style={{ transform: `translateY(${vi.start}px)` }}
+                >
+                  <TrackRow
+                    track={track}
+                    index={vi.index}
+                    isActive={track.id === currentTrack?.id}
+                    isPlaying={isPlaying}
+                    onClick={() => handleRowActivate(track.id)}
+                    compact={compact}
+                    playlistId={playlistId}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          sortedTracks.map((track, i) => (
+            <TrackRow
+              key={track.id}
+              track={track}
+              index={i}
+              isActive={track.id === currentTrack?.id}
+              isPlaying={isPlaying}
+              onClick={() => handleRowActivate(track.id)}
+              compact={compact}
+              playlistId={playlistId}
+            />
+          ))
         )}
       </div>
     </div>

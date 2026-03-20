@@ -155,6 +155,8 @@ export interface DesktopSettings {
   ytmusicSearchCacheEnabled: boolean;
   ytmusicSearchCacheTtlMinutes: number;
   ytmusicSearchCacheMaxEntries: number;
+  /** Verbose YT library sync: on-disk JSON dumps + extraction stats (dev / troubleshooting). */
+  ytmusicLibrarySyncDebug: boolean;
 }
 
 export interface DesktopRequestMap {

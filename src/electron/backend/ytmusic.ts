@@ -509,6 +509,13 @@ export function clearYtMusicMetadataCache(): { success: boolean } {
   }
 }
 
+function isYtMusicLibrarySyncDebugEnabled(): boolean {
+  if (process.env.MUXICS_YTMUSIC_SYNC_DEBUG === "1") {
+    return true;
+  }
+  return loadSettings().ytmusicLibrarySyncDebug === true;
+}
+
 function writeDebugJson(name: string, payload: unknown): string | null {
   ensureAppDataDirs();
 
@@ -1277,11 +1284,14 @@ export async function syncYtMusicLibrary(): Promise<YTMusicLibrarySyncResult> {
   const availableFilters = collectRenderers(libraryPage, "chipCloudChipRenderer").map((entry) => readText(entry.text));
   const tracksPage = availableFilters.includes("Songs") ? await getLibraryPageData(client, "Songs") : libraryPage;
   const playlistPage = availableFilters.includes("Playlists") ? await getLibraryPageData(client, "Playlists") : libraryPage;
-  const rawDumpPaths = {
-    library: writeDebugJson("library-landing.json", libraryPage),
-    tracks: writeDebugJson("library-songs.json", tracksPage),
-    playlists: writeDebugJson("library-playlists.json", playlistPage),
-  };
+  const debugSync = isYtMusicLibrarySyncDebugEnabled();
+  const rawDumpPaths = debugSync
+    ? {
+        library: writeDebugJson("library-landing.json", libraryPage),
+        tracks: writeDebugJson("library-songs.json", tracksPage),
+        playlists: writeDebugJson("library-playlists.json", playlistPage),
+      }
+    : { library: null, tracks: null, playlists: null };
   const trackAuthState = classifyLibraryAuthState(tracksPage);
   if (!trackAuthState.authenticated) {
     throw new Error(trackAuthState.message);
@@ -1321,24 +1331,26 @@ export async function syncYtMusicLibrary(): Promise<YTMusicLibrarySyncResult> {
       .map((renderer) => summarizeFailedTrackRenderer(renderer))
     : [];
 
-  log("ytmusic", "info", "Library extraction stats", {
-    availableFilters,
-    trackRendererCount: trackRenderers.length,
-    playlistRendererCount: playlistRenderers.length,
-    extractedTracks: tracks.length,
-    extractedPlaylists: playlistSummaries.length,
-    sampleTrackKeys: trackRenderers[0] ? Object.keys(trackRenderers[0]).slice(0, 10) : [],
-    samplePlaylistKeys: playlistRenderers[0] ? Object.keys(playlistRenderers[0]).slice(0, 10) : [],
-    topTrackRenderers: getTopRendererKeys(tracksPage, 15),
-    topPlaylistRenderers: getTopRendererKeys(playlistPage, 15),
-    trackMessage: getLibraryMessageSummary(tracksPage),
-    playlistMessage: getLibraryMessageSummary(playlistPage),
-    trackFilterEndpointKeys: availableFilters.includes("Songs")
-      ? Object.keys(readChipBrowseEndpoint(collectRenderers(libraryPage, "chipCloudChipRenderer").find((entry) => readText(entry.text) === "Songs")) ?? {})
-      : [],
-    failedTrackCandidates,
-    rawDumpPaths,
-  });
+  if (debugSync) {
+    log("ytmusic", "info", "Library extraction stats", {
+      availableFilters,
+      trackRendererCount: trackRenderers.length,
+      playlistRendererCount: playlistRenderers.length,
+      extractedTracks: tracks.length,
+      extractedPlaylists: playlistSummaries.length,
+      sampleTrackKeys: trackRenderers[0] ? Object.keys(trackRenderers[0]).slice(0, 10) : [],
+      samplePlaylistKeys: playlistRenderers[0] ? Object.keys(playlistRenderers[0]).slice(0, 10) : [],
+      topTrackRenderers: getTopRendererKeys(tracksPage, 15),
+      topPlaylistRenderers: getTopRendererKeys(playlistPage, 15),
+      trackMessage: getLibraryMessageSummary(tracksPage),
+      playlistMessage: getLibraryMessageSummary(playlistPage),
+      trackFilterEndpointKeys: availableFilters.includes("Songs")
+        ? Object.keys(readChipBrowseEndpoint(collectRenderers(libraryPage, "chipCloudChipRenderer").find((entry) => readText(entry.text) === "Songs")) ?? {})
+        : [],
+      failedTrackCandidates,
+      rawDumpPaths,
+    });
+  }
 
   const playlists = playlistSummaries.map((playlist) =>
     mergePlaylistSummaryWithCachedDetail(playlist, cachedPlaylists.get(playlist.id)),

@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, startTransition } from "react";
+import { useShallow } from "zustand/react/shallow";
 import type { NavState, NavView, Track } from "./types";
 import { usePlayerStore } from "./store/playerStore";
 import { shuffleArray } from "./utils";
@@ -16,7 +17,6 @@ type MainWindowProps = {
   currentTrack: Track | null;
   isPlaying: boolean;
   playQueue: Track[];
-  currentTime: number;
   volume: number;
   shuffle: boolean;
   repeat: "off" | "all" | "one";
@@ -36,7 +36,6 @@ export function MainWindow({
   currentTrack,
   isPlaying,
   playQueue,
-  currentTime,
   volume,
   shuffle,
   repeat,
@@ -74,7 +73,24 @@ export function MainWindow({
     logoutFromYtMusic,
     syncYtMusicLibrary,
     loadPlaylistTracks,
-  } = usePlayerStore();
+  } = usePlayerStore(
+    useShallow((s) => ({
+      library: s.library,
+      playlists: s.playlists,
+      ensurePlaylistHydrated: s.ensurePlaylistHydrated,
+      settings: s.settings,
+      recentlyPlayed: s.recentlyPlayed,
+      getFavoriteTracks: s.getFavoriteTracks,
+      auth: s.auth,
+      authLogin: s.authLogin,
+      loadAuthStatus: s.loadAuthStatus,
+      setLibrarySource: s.setLibrarySource,
+      clearAuthLoginError: s.clearAuthLoginError,
+      logoutFromYtMusic: s.logoutFromYtMusic,
+      syncYtMusicLibrary: s.syncYtMusicLibrary,
+      loadPlaylistTracks: s.loadPlaylistTracks,
+    })),
+  );
 
   const libraryScopeLabel = library.source === "ytmusic" ? "YouTube Music" : "Library";
 
@@ -237,35 +253,41 @@ export function MainWindow({
     volume,
   ]);
 
-  const artists = useMemo(
-    () =>
-      [...new Set(library.tracks.map((t) => t.artist))].map((name) => {
-        const tracks = library.tracks.filter((t) => t.artist === name);
-        return {
-          id: name,
-          name,
-          desc: `${tracks.length} songs`,
-          picture: tracks.find((t) => t.picture)?.picture,
-        };
-      }),
-    [library.tracks],
-  );
-
-  const albums = useMemo(
-    () =>
-      [...new Set(library.tracks.map((t) => t.album))]
-        .filter(Boolean)
-        .map((name) => {
-          const tracks = library.tracks.filter((t) => t.album === name);
-          return {
-            id: name,
-            name,
-            desc: tracks[0]?.artist ?? "",
-            picture: tracks.find((t) => t.picture)?.picture,
-          };
-        }),
-    [library.tracks],
-  );
+  const { artists, albums } = useMemo(() => {
+    const byArtist = new Map<string, Track[]>();
+    const byAlbum = new Map<string, Track[]>();
+    for (const t of library.tracks) {
+      const a = t.artist || "Unknown Artist";
+      let listA = byArtist.get(a);
+      if (!listA) {
+        listA = [];
+        byArtist.set(a, listA);
+      }
+      listA.push(t);
+      const alb = t.album?.trim();
+      if (alb) {
+        let listAl = byAlbum.get(alb);
+        if (!listAl) {
+          listAl = [];
+          byAlbum.set(alb, listAl);
+        }
+        listAl.push(t);
+      }
+    }
+    const artists = [...byArtist.entries()].map(([name, tracks]) => ({
+      id: name,
+      name,
+      desc: `${tracks.length} songs`,
+      picture: tracks.find((t) => t.picture)?.picture,
+    }));
+    const albums = [...byAlbum.entries()].map(([name, tracks]) => ({
+      id: name,
+      name,
+      desc: tracks[0]?.artist ?? "",
+      picture: tracks.find((t) => t.picture)?.picture,
+    }));
+    return { artists, albums };
+  }, [library.tracks]);
 
   const handlePlayAll = useCallback(
     (tracks: Track[]) => {
@@ -300,10 +322,7 @@ export function MainWindow({
 
       <div className="flex flex-1 overflow-hidden">
         <Sidebar navState={navState} playlists={playlists.items} onNavigate={handleNavigate} />
-        <main
-          key={`${navState.view}-${navState.id ?? ""}`}
-          className="flex-1 flex flex-col overflow-hidden animate-fade-in"
-        >
+        <main className="flex-1 flex flex-col overflow-hidden animate-fade-in">
           <MainWindowContent
             desktop={desktop}
             navState={navState}
@@ -326,7 +345,6 @@ export function MainWindow({
             currentTrack={currentTrack}
             isPlaying={isPlaying}
             playQueue={playQueue}
-            currentTime={currentTime}
             volume={volume}
             shuffle={shuffle}
             repeat={repeat}
@@ -347,7 +365,6 @@ export function MainWindow({
       <PlayerBar
         currentTrack={currentTrack}
         isPlaying={isPlaying}
-        currentTime={currentTime}
         volume={volume}
         shuffle={shuffle}
         repeat={repeat}

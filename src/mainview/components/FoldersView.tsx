@@ -1,9 +1,18 @@
 import { useState, useEffect } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { FolderPlus, Trash2, Loader2, AlertCircle, ChevronDown, FolderOpen } from "lucide-react";
 import { usePlayerStore } from "../store/playerStore";
 
 export function FoldersView() {
-  const { settings, addFolder, removeFolder, library, rpc } = usePlayerStore();
+  const { settings, addFolder, removeFolder, library, rpc } = usePlayerStore(
+    useShallow((s) => ({
+      settings: s.settings,
+      addFolder: s.addFolder,
+      removeFolder: s.removeFolder,
+      library: s.library,
+      rpc: s.rpc,
+    })),
+  );
   const [pathInput, setPathInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
