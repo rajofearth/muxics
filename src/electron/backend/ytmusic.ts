@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import crypto from "node:crypto";
 import path from "node:path";
-import vm from "node:vm";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { Innertube } from "youtubei.js";
@@ -92,26 +91,15 @@ async function ensurePlayerEvaluator(): Promise<void> {
   const utilsPath = path.join(path.dirname(packageJsonPath), "dist", "src", "utils", "Utils.js");
   const { Platform } = await import(pathToFileURL(utilsPath).href);
 
+  // youtubei.js appends `return process(...)` to the extracted player script (see getNsigProcessorFn).
+  // vm.runInContext treats that as script code, where top-level `return` is a SyntaxError.
+  // Match https://ytjs.dev/guide/getting-started.html — run as a function body via `Function`.
   Platform.shim.eval = async (data: { output?: string }, env: Record<string, unknown>) => {
-    const context = vm.createContext({
-      ...env,
-      globalThis: {},
-      console,
-      URL,
-      URLSearchParams,
-      TextEncoder,
-      TextDecoder,
-      encodeURIComponent,
-      decodeURIComponent,
-      atob,
-      btoa,
-      setTimeout,
-      clearTimeout,
-    });
-
-    return vm.runInContext(String(data.output ?? ""), context, {
-      timeout: 15000,
-    });
+    const names = Object.keys(env);
+    const values = names.map((key) => env[key]);
+    const body = String(data.output ?? "");
+    const runner = new Function(...names, body);
+    return runner(...values);
   };
 
   installedPlayerEvaluator = true;
