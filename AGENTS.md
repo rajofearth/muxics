@@ -3,8 +3,7 @@
 ## What We Learned
 - Electron embedded sign-in was unreliable, so YT Music auth moved to browser-session import through the localhost bridge.
 - Private YT Music requests only work when they are sent to `music.youtube.com` with the right origin headers and SAPISID-style auth.
-- `youtubei.js` is still useful for library/session flow, but it is brittle for playback and playlist parsing.
-- `yt-dlp` is the stable path for playback URL extraction and playlist hydration.
+- `youtubei.js` (authenticated InnerTube against `music.youtube.com`) drives library sync, playlist hydration, and playback URL resolution.
 - YT playback must use a single clean handoff path; stale async loads and direct renderer URL handling caused most of the playback bugs.
 
 ## Problems And Fixes
@@ -13,7 +12,7 @@
 - Library sync returned empty or wrong data.
   - Fixed by using `music.youtube.com`, unwrapping nested chip commands, and extracting from raw browse data when needed.
 - Playback failed on some YT tracks.
-  - Fixed by using `yt-dlp` first, preferring audio-only formats, and routing playback through the local audio server/cache.
+  - Fixed by resolving streams via InnerTube (`getStreamingData` / format deciphering), preferring audio, and routing through the local audio server/cache.
 - YT playlists opened without tracks.
   - Fixed by hydrating playlists on first open and persisting the hydrated track list in cache.
 - Track switching could keep the old song playing too long.
@@ -30,9 +29,8 @@
 1. Keep YT auth aligned with the browser bridge.
    - Verify cookies are imported from a logged-in `music.youtube.com` session.
    - Keep requests on `music.youtube.com` with `SAPISIDHASH` headers.
-2. Keep `yt-dlp` as the primary playback and playlist resolver.
-   - Prefer audio-only streams.
-   - Keep playlist hydration and playback URL resolution on the same backend path.
+2. Keep playlist hydration and playback URL resolution on the same `youtubei.js` backend path (`ytmusic.ts`).
+   - Prefer audio-only streams when choosing formats.
 3. Keep playback routed through the local audio server and cache.
    - Use localhost URLs for YT audio/artwork.
    - Cache recent audio, artwork, and hydrated playlist data in app data.
@@ -51,7 +49,6 @@
 ## Useful Files
 - `src/electron/backend/ytmusic.ts`
 - `src/electron/backend/ytmusicHomeSnapshot.ts`
-- `src/electron/backend/ytDlp.ts`
 - `src/electron/backend/ytMusicCache.ts`
 - `src/electron/backend/audioServer.ts`
 - `src/mainview/MainWindow.tsx`
