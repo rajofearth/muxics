@@ -46,6 +46,22 @@
    - Playlist create/rename/delete/add/remove
    - Track switching
 
+## Future Plans
+- **Enhanced Search/Home Page**: Incorporate YT Music's home sections into the UI, including:
+  - Listen again
+  - Fresh finding and favs
+  - Shows for you
+  - From community
+  - Quick picks
+  - Long listens
+  - From your library
+  - "Similar to __" sections
+- **Offline Downloads**:
+  - Implement a download feature for individual tracks and full playlists to save them permanently.
+  - Modify the playback engine to always prefer playing from locally downloaded files instead of streaming. if the track is downloaded.
+- **Settings Redesign**:
+  - Update the settings page to be minimal and clean, reducing "options hell" and simplifying configuration.
+
 ## Useful Files
 - `src/electron/backend/ytmusic.ts`
 - `src/electron/backend/ytmusicHomeSnapshot.ts`
