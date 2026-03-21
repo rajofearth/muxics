@@ -46,7 +46,6 @@ export const Sidebar = memo(function Sidebar({ navState, playlists, onNavigate }
 
   const MANAGE_ITEMS: { id: NavView; icon: typeof FolderOpen; label: string }[] = [
     { id: "playlists", icon: ListMusic, label: "All Playlists" },
-    { id: "folders", icon: FolderOpen, label: "Folders" },
     { id: "settings", icon: Settings, label: "Settings" },
   ];
 

@@ -19,7 +19,6 @@ import { HeroHeader } from "./HeroHeader";
 import { TabNav } from "./TabNav";
 import { TrackTable } from "./TrackTable";
 import { GridView } from "./GridView";
-import { FoldersView } from "./FoldersView";
 import { EmptyLibrary } from "./EmptyLibrary";
 import { PlaylistHeaderActions } from "./PlaylistHeaderActions";
 import { SearchView } from "./SearchView";
@@ -498,8 +497,6 @@ export function MainWindowContent({
       );
     }
 
-    case "folders":
-      return <FoldersView />;
 
     case "queue":
       return (

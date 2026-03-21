@@ -1,102 +1,202 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CacheStatsResult, DesktopBridge, DesktopSettings } from "../../shared/desktop-contract";
 import { showToast } from "./Toast";
+import { usePlayerStore } from "../store/playerStore";
+import { useShallow } from "zustand/react/shallow";
+import { FolderPlus, Trash2, Loader2, AlertCircle, ChevronDown, FolderOpen, Palette, HardDrive, Library } from "lucide-react";
 
-type SettingsViewProps = {
-  desktop?: DesktopBridge;
-};
+function useDropdown() {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
 
-function formatBytes(value: number): string {
-  if (value >= 1024 * 1024 * 1024) {
-    return `${(value / (1024 * 1024 * 1024)).toFixed(1)} GB`;
-  }
+  const toggle = useCallback(() => setOpen((o) => !o), []);
+  const close = useCallback(() => setOpen(false), []);
 
-  return `${Math.round(value / (1024 * 1024))} MB`;
+  useEffect(() => {
+    if (!open) return undefined;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  return { open, toggle, close, ref };
 }
 
-export function SettingsView({ desktop }: SettingsViewProps) {
+const THEME_OPTIONS = [
+  {
+    id: "default",
+    label: "Default Dark",
+    desc: "Elegant charcoal background with subtle contrast",
+    swatches: ["#0a0a0a", "#141414", "#1a1a1a"],
+  },
+  {
+    id: "darker",
+    label: "Pitch Black",
+    desc: "Pure black OLED background with high contrast",
+    swatches: ["#000000", "#121212", "#1a1a1a"],
+  },
+] as const;
+
+const CACHE_LIMIT_OPTIONS = [1, 2, 3, 5, 10]; // GB
+
+function ThemeDropdown({ themeName, setThemeName }: { themeName: string; setThemeName: (id: string) => void }) {
+  const { open, toggle, close, ref } = useDropdown();
+  const activeOpt = THEME_OPTIONS.find((o) => o.id === themeName) || THEME_OPTIONS[0];
+
+  return (
+    <div ref={ref} className="relative w-full max-w-sm">
+      <button
+        type="button"
+        onClick={toggle}
+        className="w-full flex items-center justify-between p-3.5 rounded-xl border border-app-border bg-app-bg hover:border-app-border-strong transition-all focus:outline-none focus:ring-2 focus:ring-app-accent/50 group"
+      >
+        <div className="flex items-center gap-3">
+          <div className="flex gap-0.5 shrink-0 rounded overflow-hidden border border-white/10 shadow-sm">
+            {activeOpt.swatches.map((c) => (
+              <div key={c} className="w-3.5 h-3.5" style={{ backgroundColor: c }} />
+            ))}
+          </div>
+          <span className="text-[13px] font-medium text-app-text-primary">{activeOpt.label}</span>
+        </div>
+        <ChevronDown size={16} className={`text-app-text-tertiary transition-transform duration-200 ${open ? "rotate-180" : "group-hover:text-app-text-secondary"}`} />
+      </button>
+
+      {open && (
+        <div className="absolute top-full left-0 right-0 mt-2 p-1.5 bg-app-elevated border border-app-border-strong rounded-xl shadow-2xl z-50 max-h-64 overflow-y-auto animate-fade-in ring-1 ring-black/50">
+          {THEME_OPTIONS.map((opt) => {
+            const isActive = themeName === opt.id;
+            return (
+              <button
+                key={opt.id}
+                onClick={() => {
+                  setThemeName(opt.id);
+                  close();
+                }}
+                className={`w-full flex items-center justify-between p-2.5 rounded-lg text-left transition-colors ${
+                  isActive ? "bg-app-active" : "hover:bg-app-hover"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="flex gap-0.5 shrink-0 rounded overflow-hidden border border-white/10 shadow-sm">
+                    {opt.swatches.map((c) => (
+                      <div key={c} className="w-3.5 h-3.5" style={{ backgroundColor: c }} />
+                    ))}
+                  </div>
+                  <div>
+                    <div className="text-[13px] font-medium text-app-text-primary">{opt.label}</div>
+                    <div className="text-[11px] text-app-text-tertiary mt-0.5">{opt.desc}</div>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SectionHeader({ icon: Icon, title, desc }: { icon: typeof Palette; title: string; desc: string }) {
+  return (
+    <div className="flex items-start gap-3 mb-4">
+      <div className="p-2 bg-app-surface border border-app-border rounded-lg text-app-accent mt-0.5">
+        <Icon size={16} />
+      </div>
+      <div>
+        <h2 className="text-[15px] font-semibold text-app-text-primary tracking-tight leading-tight">{title}</h2>
+        <p className="text-[12px] text-app-text-tertiary mt-1">{desc}</p>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Main Component                                                      */
+/* ------------------------------------------------------------------ */
+
+export function SettingsView({ desktop }: { desktop?: DesktopBridge }) {
+  const themeName = usePlayerStore((s) => s.themeName);
+  const setThemeName = usePlayerStore((s) => s.setThemeName);
+
   const [settings, setSettings] = useState<DesktopSettings | null>(null);
   const [usageBytes, setUsageBytes] = useState(0);
   const [loading, setLoading] = useState(true);
+
+  // Compute current GB limit from settings
   const limitGb = useMemo(
     () => Math.max(1, Math.round((settings?.ytmusicCacheLimitBytes ?? 1024 ** 3) / (1024 * 1024 * 1024))),
     [settings?.ytmusicCacheLimitBytes],
   );
 
+  const { playerSettings, addFolder, removeFolder, library, rpc } = usePlayerStore(
+    useShallow((s) => ({
+      playerSettings: s.settings,
+      addFolder: s.addFolder,
+      removeFolder: s.removeFolder,
+      library: s.library,
+      rpc: s.rpc,
+    })),
+  );
+
+  const [pathInput, setPathInput] = useState("");
+  const [foldersLoading, setFoldersLoading] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
+  const [showAdd, setShowAdd] = useState(false);
+  const [defaultPath, setDefaultPath] = useState<string | null>(null);
+
   useEffect(() => {
     let cancelled = false;
-
     void (async () => {
-      if (!desktop) {
-        return;
-      }
-
+      if (!desktop) return;
       const [nextSettings, stats] = await Promise.all([
         desktop.request.getSettings(),
         desktop.request.getYtMusicCacheStats(),
       ]);
-
-      if (cancelled) {
-        return;
-      }
-
+      if (cancelled) return;
       setSettings(nextSettings);
       setUsageBytes(stats.usageBytes);
       setLoading(false);
     })();
-
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [desktop]);
 
   useEffect(() => {
     if (!desktop) return undefined;
-
     const onStats = (e: Event) => {
       const detail = (e as CustomEvent<CacheStatsResult>).detail;
-      if (detail?.usageBytes != null) {
-        setUsageBytes(detail.usageBytes);
-      }
+      if (detail?.usageBytes != null) setUsageBytes(detail.usageBytes);
     };
     document.addEventListener("muxics-yt-cache-stats", onStats);
-
-    return () => {
-      document.removeEventListener("muxics-yt-cache-stats", onStats);
-    };
+    return () => document.removeEventListener("muxics-yt-cache-stats", onStats);
   }, [desktop]);
 
-  const [sliderValue, setSliderValue] = useState<number | null>(null);
-  const displayLimitGb = sliderValue ?? limitGb;
-
   useEffect(() => {
-    if (sliderValue === null || !desktop || !settings) return;
-    const timer = setTimeout(() => {
-      const nextBytes = sliderValue * 1024 * 1024 * 1024;
-      void persistPartial({ ytmusicCacheLimitBytes: nextBytes }).then(() => {
-        showToast("Cache size updated.");
-      });
-      setSliderValue(null);
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [sliderValue, desktop, settings]);
+    if (rpc) {
+      rpc.request.getDefaultMusicPath().then(setDefaultPath);
+    }
+  }, [rpc]);
 
-  const persistPartial = async (partial: Partial<DesktopSettings>) => {
+  const persistLimit = async (gb: number) => {
     if (!desktop || !settings) return;
+    const nextBytes = gb * 1024 * 1024 * 1024;
     const prev = settings;
-    const next = { ...settings, ...partial };
+    const next = { ...settings, ytmusicCacheLimitBytes: nextBytes };
     setSettings(next);
     try {
-      await desktop.request.saveSettings(partial);
+      await desktop.request.saveSettings({ ytmusicCacheLimitBytes: nextBytes });
+      showToast(`Cache limit updated to ${gb} GB`);
       const stats = await desktop.request.getYtMusicCacheStats();
       setUsageBytes(stats.usageBytes);
     } catch (error) {
       setSettings(prev);
       console.error("Failed to save settings:", error);
-      showToast("Failed to save settings.", "error");
+      showToast("Failed to save limit.", "error");
     }
   };
-
 
   const clearMediaCache = async () => {
     if (!desktop) return;
@@ -115,197 +215,274 @@ export function SettingsView({ desktop }: SettingsViewProps) {
     if (!desktop) return;
     try {
       await desktop.request.clearYtMusicMetadataCache();
-      showToast("Library and search cache cleared.");
+      showToast("Library metadata cleared.");
     } catch (error) {
       console.error("Failed to clear metadata cache:", error);
-      showToast("Failed to clear metadata cache.", "error");
+      showToast("Failed to clear metadata.", "error");
     }
   };
 
+  const clearFolderError = () => {
+    setLocalError(null);
+    usePlayerStore.setState((s) => ({ library: { ...s.library, error: null } }));
+  };
+
+  const handleAddDefault = async () => {
+    if (!rpc || !defaultPath) return;
+    setFoldersLoading(true);
+    setLocalError(null);
+    try {
+      await addFolder(defaultPath);
+      setShowAdd(false);
+    } finally {
+      setFoldersLoading(false);
+    }
+  };
+
+  const handleAddCustom = async () => {
+    if (!pathInput.trim()) return;
+    setFoldersLoading(true);
+    setLocalError(null);
+    try {
+      await addFolder(pathInput.trim());
+      setPathInput("");
+      setShowAdd(false);
+    } finally {
+      setFoldersLoading(false);
+    }
+  };
+
+  const handleValidate = async () => {
+    if (!rpc || !pathInput.trim()) return;
+    const result = await rpc.request.validateFolder({ path: pathInput.trim() });
+    if (result.valid && result.resolvedPath) {
+      setPathInput(result.resolvedPath);
+      setLocalError(null);
+    } else {
+      setLocalError(result.error ?? "Invalid path");
+    }
+  };
+
+  const handlePaste = () => {
+    navigator.clipboard.readText().then((text) => {
+      const trimmed = text.trim().replace(/^["']|["']$/g, "");
+      if (trimmed) setPathInput(trimmed);
+    });
+  };
+
+  const folderError = localError ?? library.error;
+  
+  function formattedUsage(): string {
+    if (usageBytes >= 1024 * 1024 * 1024) {
+      return `${(usageBytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+    }
+    return `${Math.round(usageBytes / (1024 * 1024))} MB`;
+  }
+
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
-      <div className="px-8 pt-8 pb-4 shrink-0">
-        <div className="text-[11px] font-medium text-app-text-tertiary uppercase tracking-wider mb-1">Settings</div>
-        <h1 className="text-3xl font-bold text-app-text-primary tracking-tight mb-1">Playback &amp; cache</h1>
-        <p className="text-[13px] text-app-text-secondary">
-          Disk usage for YouTube Music streams and optional metadata caches.
-        </p>
+    <div className="flex-1 flex flex-col overflow-hidden bg-app-bg">
+      <div className="px-8 pt-10 pb-6 shrink-0">
+        <h1 className="text-[28px] font-bold text-app-text-primary tracking-tight">Settings</h1>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-8 pb-8 space-y-8">
-        <section>
-          <div className="text-[11px] text-app-text-tertiary font-medium uppercase tracking-wider mb-3">
-            Media cache
-          </div>
-          <div className="p-5 bg-app-surface rounded-xl border border-app-border space-y-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex-1 overflow-y-auto px-8 pb-12">
+        <div className="max-w-2xl space-y-10">
+          
+          {/* ── Appearance ── */}
+          <section>
+            <SectionHeader 
+              icon={Palette} 
+              title="Appearance" 
+              desc="Customize the visual style and colors" 
+            />
+            <div className="pl-11">
+              <ThemeDropdown themeName={themeName} setThemeName={setThemeName} />
+            </div>
+          </section>
+
+          <div className="h-px bg-app-border" />
+
+          {/* ── Storage & Cache ── */}
+          <section>
+            <SectionHeader 
+              icon={HardDrive} 
+              title="Storage & Cache" 
+              desc="Manage disk usage for YouTube Music streams and artwork" 
+            />
+            <div className="pl-11 space-y-6">
+              
               <div>
-                <div className="text-[13px] font-medium text-app-text-primary">Size limit</div>
-                <p className="mt-1 text-[12px] text-app-text-tertiary max-w-xl">
-                  Oldest cached audio and artwork are removed when usage exceeds this budget.
-                </p>
+                <div className="flex items-center justify-between mb-3">
+                  <label className="text-[13px] font-medium text-app-text-primary">Cache Limit</label>
+                  <div className="text-[12px] font-medium text-app-text-secondary bg-app-surface border border-app-border px-2 py-0.5 rounded shadow-sm tabular-nums">
+                    {loading ? "…" : `${formattedUsage()} used`}
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {CACHE_LIMIT_OPTIONS.map((gb) => {
+                    const isActive = limitGb === gb;
+                    return (
+                      <button
+                        key={gb}
+                        type="button"
+                        onClick={() => persistLimit(gb)}
+                        disabled={loading || !settings}
+                        className={`px-4 py-2 rounded-lg text-[13px] font-medium transition-colors border shadow-sm ${
+                          isActive
+                            ? "bg-app-accent border-app-accent text-white"
+                            : "bg-app-surface border-app-border text-app-text-primary hover:bg-app-hover hover:border-app-border-strong disabled:opacity-50"
+                        }`}
+                      >
+                        {gb} GB
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-              <div className="text-[12px] text-app-text-secondary tabular-nums shrink-0">
-                {loading ? "…" : `${formatBytes(usageBytes)} used`}
+
+              <div className="p-4 bg-app-surface rounded-xl border border-app-border">
+                <div className="mb-4">
+                  <div className="text-[13px] font-medium text-app-text-primary">Free up space</div>
+                  <div className="text-[12px] text-app-text-tertiary mt-0.5">Clearing won't remove your settings or account</div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={loading || !settings}
+                    onClick={() => void clearMediaCache()}
+                    className="px-4 py-2 bg-app-bg hover:bg-app-hover rounded-lg text-[13px] text-app-text-primary font-medium border border-app-border shadow-sm transition-colors"
+                  >
+                    Clear media cache
+                  </button>
+                  <button
+                    type="button"
+                    disabled={loading || !settings}
+                    onClick={() => void clearMetadataCache()}
+                    className="px-4 py-2 bg-app-bg hover:bg-app-hover rounded-lg text-[13px] text-app-text-primary font-medium border border-app-border shadow-sm transition-colors"
+                  >
+                    Clear library metadata
+                  </button>
+                </div>
               </div>
-            </div>
 
-            <div>
-              <input
-                type="range"
-                min={1}
-                max={10}
-                step={1}
-                value={displayLimitGb}
-                onChange={(event) => setSliderValue(Number(event.target.value))}
-                disabled={loading || !settings}
-                className="w-full accent-app-accent"
-              />
-              <div className="mt-2 flex items-center justify-between text-[11px] text-app-text-tertiary">
-                <span>1 GB</span>
-                <span>{displayLimitGb} GB limit</span>
-                <span>10 GB</span>
+            </div>
+          </section>
+
+          <div className="h-px bg-app-border" />
+
+          {/* ── Local Library Folders ── */}
+          <section>
+            <SectionHeader 
+              icon={Library} 
+              title="Local Library" 
+              desc="Folders scanned recursively for local audio files" 
+            />
+            <div className="pl-11">
+              
+              {folderError && (
+                <div className="flex items-center justify-between gap-3 px-4 py-3 mb-4 bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg text-[13px]">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <AlertCircle size={16} className="shrink-0" />
+                    <span className="truncate">{folderError}</span>
+                  </div>
+                  <button onClick={clearFolderError} className="text-red-400 hover:text-red-300 shrink-0 text-xs">
+                    Dismiss
+                  </button>
+                </div>
+              )}
+
+              <div className="mb-4">
+                <button
+                  onClick={() => setShowAdd(!showAdd)}
+                  className="flex items-center gap-2 px-4 py-2 bg-app-surface hover:bg-app-hover border border-app-border rounded-lg text-[13px] text-app-text-primary font-medium shadow-sm transition-colors"
+                >
+                  <FolderPlus size={16} className="text-app-text-secondary" />
+                  Add Folder
+                  <ChevronDown size={14} className={`text-app-text-tertiary ml-1 transition-transform ${showAdd ? "rotate-180" : ""}`} />
+                </button>
+
+                {showAdd && (
+                  <div className="mt-3 p-5 rounded-xl border bg-app-surface border-app-border space-y-5 animate-fade-in shadow-sm">
+                    <div>
+                      <label className="text-[12px] font-medium text-app-text-primary mb-2 block">
+                        Quick Add
+                      </label>
+                      <button
+                        onClick={handleAddDefault}
+                        disabled={foldersLoading || !defaultPath}
+                        className="flex items-center gap-2 px-4 py-2 bg-app-bg hover:bg-app-hover disabled:opacity-50 rounded-lg text-[13px] text-app-text-primary border border-app-border transition-colors shadow-sm"
+                      >
+                        {foldersLoading ? <Loader2 size={16} className="animate-spin" /> : <FolderOpen size={16} className="text-app-text-secondary" />}
+                        {foldersLoading ? "Adding..." : "Add default Music folder"}
+                      </button>
+                      {defaultPath && (
+                        <p className="text-[11px] text-app-text-tertiary mt-2 break-all pl-1">{defaultPath}</p>
+                      )}
+                    </div>
+
+                    <div className="h-px bg-app-border" />
+
+                    <div>
+                      <label className="text-[12px] font-medium text-app-text-primary mb-2 block">
+                        Custom Path
+                      </label>
+                      <div className="flex flex-wrap gap-2">
+                        <input
+                          type="text"
+                          value={pathInput}
+                          onChange={(e) => { setPathInput(e.target.value); setLocalError(null); }}
+                          placeholder="/path/to/music"
+                          className="flex-1 min-w-[200px] px-3 py-2 bg-app-bg border border-app-border rounded-lg text-[13px] text-app-text-primary placeholder-app-text-tertiary focus:border-app-text-secondary focus:ring-1 focus:ring-app-text-secondary outline-none shadow-sm"
+                        />
+                        <button onClick={handlePaste} className="px-3 py-2 bg-app-bg hover:bg-app-hover border border-app-border rounded-lg text-app-text-secondary hover:text-app-text-primary text-[12px] shadow-sm font-medium transition-colors">
+                          Paste
+                        </button>
+                        <button onClick={handleValidate} className="px-3 py-2 bg-app-bg hover:bg-app-hover border border-app-border rounded-lg text-app-text-secondary hover:text-app-text-primary text-[12px] shadow-sm font-medium transition-colors">
+                          Validate
+                        </button>
+                        <button
+                          onClick={handleAddCustom}
+                          disabled={!pathInput.trim() || foldersLoading}
+                          className="px-5 py-2 bg-app-text-primary text-app-bg rounded-lg text-[13px] font-medium hover:opacity-90 disabled:opacity-50 shadow-sm"
+                        >
+                          Add
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-app-border">
-              <p className="text-[12px] text-app-text-tertiary">Signed-in account is not affected.</p>
-              <button
-                type="button"
-                onClick={() => void clearMediaCache()}
-                className="px-4 py-2 bg-app-elevated hover:bg-app-active rounded-lg text-[13px] text-app-text-primary font-medium border border-app-border"
-              >
-                Clear media
-              </button>
-            </div>
-          </div>
-        </section>
-
-        <section>
-          <div className="text-[11px] text-app-text-tertiary font-medium uppercase tracking-wider mb-3">
-            Library &amp; search data
-          </div>
-          <p className="text-[12px] text-app-text-secondary mb-4 max-w-2xl">
-            Stored separately from media. Turning these off forces fresh fetches (slower cold start).
-          </p>
-
-          <div className="space-y-2">
-            <label className="flex cursor-pointer items-start gap-3 px-4 py-3 bg-app-surface rounded-xl border border-app-border text-[13px] text-app-text-secondary">
-              <input
-                type="checkbox"
-                className="mt-0.5 accent-app-accent"
-                checked={settings?.ytmusicUseLibraryDiskCache !== false}
-                disabled={loading || !settings}
-                onChange={(e) => void persistPartial({ ytmusicUseLibraryDiskCache: e.target.checked })}
-              />
-              <span>
-                <span className="font-medium text-app-text-primary block">Load library from disk on startup</span>
-                <span className="text-[12px] text-app-text-tertiary">
-                  Show playlists and last-synced tracks immediately, then refresh in the background.
-                </span>
-              </span>
-            </label>
-
-            <label className="flex cursor-pointer items-start gap-3 px-4 py-3 bg-app-surface rounded-xl border border-app-border text-[13px] text-app-text-secondary">
-              <input
-                type="checkbox"
-                className="mt-0.5 accent-app-accent"
-                checked={settings?.ytmusicHomeSnapshotEnabled !== false}
-                disabled={loading || !settings}
-                onChange={(e) => void persistPartial({ ytmusicHomeSnapshotEnabled: e.target.checked })}
-              />
-              <span>
-                <span className="font-medium text-app-text-primary block">Save home feed snapshot</span>
-                <span className="text-[12px] text-app-text-tertiary">
-                  After each successful library sync, refresh a small on-disk copy of the YT Music home feed.
-                </span>
-              </span>
-            </label>
-
-            <label className="flex cursor-pointer items-start gap-3 px-4 py-3 bg-app-surface rounded-xl border border-app-border text-[13px] text-app-text-secondary">
-              <input
-                type="checkbox"
-                className="mt-0.5 accent-app-accent"
-                checked={settings?.ytmusicLibrarySyncDebug === true}
-                disabled={loading || !settings}
-                onChange={(e) => void persistPartial({ ytmusicLibrarySyncDebug: e.target.checked })}
-              />
-              <span>
-                <span className="font-medium text-app-text-primary block">Verbose library sync debug</span>
-                <span className="text-[12px] text-app-text-tertiary">
-                  Writes large JSON dumps under app data and logs extraction stats (slower sync). Or set env{" "}
-                  <code className="text-app-text-secondary">MUXICS_YTMUSIC_SYNC_DEBUG=1</code>.
-                </span>
-              </span>
-            </label>
-
-            <label className="flex cursor-pointer items-start gap-3 px-4 py-3 bg-app-surface rounded-xl border border-app-border text-[13px] text-app-text-secondary">
-              <input
-                type="checkbox"
-                className="mt-0.5 accent-app-accent"
-                checked={settings?.ytmusicSearchCacheEnabled !== false}
-                disabled={loading || !settings}
-                onChange={(e) => void persistPartial({ ytmusicSearchCacheEnabled: e.target.checked })}
-              />
-              <span>
-                <span className="font-medium text-app-text-primary block">Cache search results</span>
-                <span className="text-[12px] text-app-text-tertiary">
-                  Reuse recent queries within the TTL below. Cleared on sign-out or new session import.
-                </span>
-              </span>
-            </label>
-          </div>
-
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <div className="px-4 py-3 bg-app-surface rounded-xl border border-app-border">
-              <label className="text-[11px] text-app-text-tertiary font-medium uppercase tracking-wider block mb-2">
-                Search cache TTL
-              </label>
-              <select
-                className="w-full px-3 py-2 bg-app-bg border border-app-border rounded-lg text-[13px] text-app-text-primary outline-none focus:border-app-text-tertiary"
-                value={settings?.ytmusicSearchCacheTtlMinutes ?? 30}
-                disabled={loading || !settings}
-                onChange={(e) => void persistPartial({ ytmusicSearchCacheTtlMinutes: Number(e.target.value) })}
-              >
-                {[15, 30, 60, 120, 240, 720, 1440].map((m) => (
-                  <option key={m} value={m}>
-                    {m} minutes
-                  </option>
+              <div className="space-y-2">
+                {playerSettings.watchFolders.map((folder) => (
+                  <div
+                    key={folder}
+                    className="flex items-center gap-3 px-4 py-3 rounded-xl border bg-app-surface border-app-border group shadow-sm"
+                  >
+                    <FolderOpen size={16} className="text-app-text-tertiary shrink-0" />
+                    <span className="text-[13px] text-app-text-primary truncate flex-1">{folder}</span>
+                    <button
+                      onClick={() => removeFolder(folder)}
+                      className="p-1.5 rounded-lg text-app-text-tertiary hover:text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all"
+                      aria-label="Remove folder"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 ))}
-              </select>
-            </div>
-            <div className="px-4 py-3 bg-app-surface rounded-xl border border-app-border">
-              <label className="text-[11px] text-app-text-tertiary font-medium uppercase tracking-wider block mb-2">
-                Search cache max entries
-              </label>
-              <select
-                className="w-full px-3 py-2 bg-app-bg border border-app-border rounded-lg text-[13px] text-app-text-primary outline-none focus:border-app-text-tertiary"
-                value={settings?.ytmusicSearchCacheMaxEntries ?? 100}
-                disabled={loading || !settings}
-                onChange={(e) => void persistPartial({ ytmusicSearchCacheMaxEntries: Number(e.target.value) })}
-              >
-                {[25, 50, 100, 200, 500].map((n) => (
-                  <option key={n} value={n}>
-                    {n} queries
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
+                {playerSettings.watchFolders.length === 0 && (
+                  <div className="py-10 text-center rounded-xl border bg-app-surface border-app-border border-dashed">
+                    <FolderOpen size={32} className="mx-auto mb-3 text-app-text-tertiary opacity-40" />
+                    <p className="text-[13px] text-app-text-secondary font-medium">No folders added</p>
+                    <p className="text-[12px] text-app-text-tertiary mt-1">Add local folders to scan them into your library</p>
+                  </div>
+                )}
+              </div>
 
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-app-surface rounded-xl border border-app-border">
-            <p className="text-[12px] text-app-text-tertiary max-w-xl">
-              Clear saved library JSON, home snapshot, and search cache. Does not remove media files or sign you out.
-            </p>
-            <button
-              type="button"
-              onClick={() => void clearMetadataCache()}
-              className="px-4 py-2 bg-app-elevated hover:bg-app-active rounded-lg text-[13px] text-app-text-primary font-medium border border-app-border shrink-0"
-            >
-              Clear metadata
-            </button>
-          </div>
-        </section>
+            </div>
+          </section>
+
+        </div>
       </div>
     </div>
   );

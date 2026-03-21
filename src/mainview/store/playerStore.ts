@@ -196,6 +196,13 @@ function loadVolume(): number {
   return 0.75;
 }
 
+function loadThemeName(): string {
+  try {
+    return localStorage.getItem("muxics-theme") ?? "default";
+  } catch {}
+  return "default";
+}
+
 export interface PlayerState {
   rpc: DesktopBridge | null;
   auth: AuthStatus;
@@ -236,6 +243,7 @@ export interface PlayerState {
   };
   settings: { watchFolders: string[] };
   theme: { accentColor: string; palette: string[] };
+  themeName: string;
   search: { query: string; results: Track[]; loading: boolean; error: string | null };
   recentlyPlayed: Track[];
   favorites: Set<string>;
@@ -266,6 +274,7 @@ interface PlayerActions {
   setPlaybackUrl: (url: string | null) => void;
   updateTheme: (accent: string, palette: string[]) => void;
   resetTheme: () => void;
+  setThemeName: (name: string) => void;
   loadPlaylists: () => Promise<void>;
   setActivePlaylist: (id: string | null) => void;
   createPlaylist: (name: string) => Promise<void>;
@@ -330,6 +339,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
   },
   settings: { watchFolders: [] },
   theme: defaultTheme,
+  themeName: loadThemeName(),
   search: { query: "", results: [], loading: false, error: null },
   recentlyPlayed: [],
   favorites: loadFavorites(),
@@ -863,6 +873,11 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
     set({ theme: { accentColor, palette } }),
 
   resetTheme: () => set({ theme: defaultTheme }),
+
+  setThemeName: (name) => {
+    try { localStorage.setItem("muxics-theme", name); } catch {}
+    set({ themeName: name });
+  },
 
   loadPlaylists: async () => {
     const { rpc, library } = get();
