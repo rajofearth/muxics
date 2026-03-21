@@ -8,6 +8,7 @@ IMPORTANT: Use Electron main/preload patterns with `contextBridge`, `ipcMain`, a
 
 Electron docs: https://www.electronjs.org/docs/latest
 electron-builder docs: https://www.electron.build/
+Learnings: LEARNS.md
 
 ## Quick Reference
 

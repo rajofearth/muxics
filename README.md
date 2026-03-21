@@ -1,7 +1,7 @@
 # Muxics — Winamp-inspired Electron music player
 
 [![Download Latest Release](https://img.shields.io/badge/Download-Latest%20Release-blue?logo=github)](https://github.com/rajofearth/muxics/releases/latest)
-[![License](https://img.shields.io/badge/License-See%20LICENSE-lightgrey)](https://github.com/rajofearth/muxics/blob/main/LICENSE)
+[![License](https://img.shields.io/badge/License-See%20LICENSE-lightgrey)](https://github.com/rajofearth/muxics/blob/master/LICENSE)
 
 A Winamp-inspired cross-platform desktop music player and unofficial YouTube client — supports streaming from YouTube as well as local music playback. Built with Electron & React.
 
