@@ -1235,6 +1235,10 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
     } catch (err) {
       set({ favorites: previousFavorites });
       saveFavorites(previousFavorites);
+      showToast(
+        err instanceof Error ? `Failed to update favorites: ${err.message}` : "Failed to update favorites",
+        "error",
+      );
       throw err;
     }
   },

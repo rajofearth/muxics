@@ -56,7 +56,9 @@ export function YtMusicLoginDialog({
       if (parsed.protocol === "https:") {
         onOpenExternalRef.current(pending.verificationUrl);
       }
-    } catch {}
+    } catch (err) {
+      console.error("Invalid verification URL:", pending.verificationUrl, err);
+    }
     onAwaitCompletionRef.current();
   }, [pending.userCode, pending.verificationUrl]);
 
@@ -116,7 +118,9 @@ export function YtMusicLoginDialog({
                 if (parsed.protocol === "https:") {
                   onOpenExternal(pending.verificationUrl);
                 }
-              } catch {}
+              } catch (err) {
+                console.error("Invalid verification URL:", pending.verificationUrl, err);
+              }
             }}
             className="inline-flex items-center gap-2 rounded-xl bg-app-text-primary px-4 py-2 text-[13px] font-medium text-app-bg hover:opacity-90"
           >
