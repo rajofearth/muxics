@@ -66,34 +66,60 @@ export function SettingsView({ desktop }: SettingsViewProps) {
     };
   }, [desktop]);
 
+  const [sliderValue, setSliderValue] = useState<number | null>(null);
+  const displayLimitGb = sliderValue ?? limitGb;
+
+  useEffect(() => {
+    if (sliderValue === null || !desktop || !settings) return;
+    const timer = setTimeout(() => {
+      const nextBytes = sliderValue * 1024 * 1024 * 1024;
+      void persistPartial({ ytmusicCacheLimitBytes: nextBytes }).then(() => {
+        showToast("Cache size updated.");
+      });
+      setSliderValue(null);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [sliderValue, desktop, settings]);
+
   const persistPartial = async (partial: Partial<DesktopSettings>) => {
     if (!desktop || !settings) return;
+    const prev = settings;
     const next = { ...settings, ...partial };
     setSettings(next);
-    await desktop.request.saveSettings(partial);
-    const stats = await desktop.request.getYtMusicCacheStats();
-    setUsageBytes(stats.usageBytes);
+    try {
+      await desktop.request.saveSettings(partial);
+      const stats = await desktop.request.getYtMusicCacheStats();
+      setUsageBytes(stats.usageBytes);
+    } catch (error) {
+      setSettings(prev);
+      console.error("Failed to save settings:", error);
+      showToast("Failed to save settings.", "error");
+    }
   };
 
-  const saveLimit = async (nextGb: number) => {
-    if (!desktop || !settings) return;
-    const nextBytes = nextGb * 1024 * 1024 * 1024;
-    await persistPartial({ ytmusicCacheLimitBytes: nextBytes });
-    showToast("Cache size updated.");
-  };
 
   const clearMediaCache = async () => {
     if (!desktop) return;
-    await desktop.request.clearYtMusicCache();
-    const stats = await desktop.request.getYtMusicCacheStats();
-    setUsageBytes(stats.usageBytes);
-    showToast("Media cache cleared.");
+    try {
+      await desktop.request.clearYtMusicCache();
+      const stats = await desktop.request.getYtMusicCacheStats();
+      setUsageBytes(stats.usageBytes);
+      showToast("Media cache cleared.");
+    } catch (error) {
+      console.error("Failed to clear media cache:", error);
+      showToast("Failed to clear media cache.", "error");
+    }
   };
 
   const clearMetadataCache = async () => {
     if (!desktop) return;
-    await desktop.request.clearYtMusicMetadataCache();
-    showToast("Library and search cache cleared.");
+    try {
+      await desktop.request.clearYtMusicMetadataCache();
+      showToast("Library and search cache cleared.");
+    } catch (error) {
+      console.error("Failed to clear metadata cache:", error);
+      showToast("Failed to clear metadata cache.", "error");
+    }
   };
 
   return (
@@ -130,14 +156,14 @@ export function SettingsView({ desktop }: SettingsViewProps) {
                 min={1}
                 max={10}
                 step={1}
-                value={limitGb}
-                onChange={(event) => void saveLimit(Number(event.target.value))}
+                value={displayLimitGb}
+                onChange={(event) => setSliderValue(Number(event.target.value))}
                 disabled={loading || !settings}
                 className="w-full accent-app-accent"
               />
               <div className="mt-2 flex items-center justify-between text-[11px] text-app-text-tertiary">
                 <span>1 GB</span>
-                <span>{limitGb} GB limit</span>
+                <span>{displayLimitGb} GB limit</span>
                 <span>10 GB</span>
               </div>
             </div>

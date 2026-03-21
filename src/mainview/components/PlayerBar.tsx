@@ -2,6 +2,7 @@ import { memo, useCallback } from "react";
 import { Shuffle, Repeat, Repeat1, SkipBack, SkipForward, Minimize2, LayoutList, Heart } from "lucide-react";
 import type { Track, RepeatMode } from "../types";
 import { usePlayerStore } from "../store/playerStore";
+import { formatTime } from "../utils";
 import { Scrubber } from "./Scrubber";
 import { VolumeSlider } from "./VolumeSlider";
 import { PlayPauseButton } from "./PlayPauseButton";
@@ -148,7 +149,7 @@ export const PlayerBar = memo(function PlayerBar({
 
         <div className="w-[30%] flex items-center justify-end gap-3">
           <div className="text-[11px] text-app-text-tertiary tabular-nums select-none whitespace-nowrap" aria-live="off">
-            {currentTrack ? `${fmtTime(currentTime)} / ${fmtTime(duration)}` : ""}
+            {currentTrack ? `${formatTime(currentTime)} / ${formatTime(duration)}` : ""}
           </div>
           <VolumeSlider value={volume} onChange={onVolumeChange} />
           {onNavigateToQueue && (
@@ -177,8 +178,3 @@ export const PlayerBar = memo(function PlayerBar({
   );
 });
 
-function fmtTime(seconds: number): string {
-  if (!isFinite(seconds) || seconds < 0) return "0:00";
-  const s = Math.floor(seconds);
-  return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
-}

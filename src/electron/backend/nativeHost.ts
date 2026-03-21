@@ -54,7 +54,16 @@ export function runNativeMessagingHost(): void {
 
       const body = buffer.subarray(4, 4 + messageLength).toString("utf8");
       buffer = buffer.subarray(4 + messageLength);
-      void handleMessage(JSON.parse(body) as NativeMessage);
+
+      let parsed: NativeMessage;
+      try {
+        parsed = JSON.parse(body) as NativeMessage;
+      } catch (error) {
+        console.error("[muxics:native-host] Failed to parse message:", body.slice(0, 200), error);
+        continue;
+      }
+
+      void handleMessage(parsed);
     }
   });
 

@@ -17,6 +17,7 @@ const DIAGNOSTIC_COOKIE_NAMES = [
 ];
 
 function setStatus(message, tone = "") {
+  if (!statusEl) return;
   statusEl.textContent = message;
   statusEl.className = `status ${tone}`.trim();
 }
@@ -104,7 +105,7 @@ async function callBridge(path, options = {}) {
   }
 }
 
-connectButton.addEventListener("click", async () => {
+connectButton?.addEventListener("click", async () => {
   connectButton.disabled = true;
   setStatus("Collecting browser session...");
 
@@ -129,6 +130,6 @@ connectButton.addEventListener("click", async () => {
   }
 });
 
-openMusicButton.addEventListener("click", () => {
+openMusicButton?.addEventListener("click", () => {
   chrome.tabs.create({ url: "https://music.youtube.com" });
 });

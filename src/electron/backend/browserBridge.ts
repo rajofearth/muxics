@@ -108,6 +108,14 @@ function registerNativeHostManifest(browser: "chrome" | "edge", manifestPath: st
 
 export function prepareBrowserBridgeBundle() {
   try {
+    if (!fs.existsSync(EXTENSION_SOURCE_DIR)) {
+      return {
+        success: false,
+        extensionId: BROWSER_BRIDGE_EXTENSION_ID,
+        error: `Extension source directory missing: ${EXTENSION_SOURCE_DIR}`,
+      };
+    }
+
     ensureBridgeDirs();
     copyDirRecursive(EXTENSION_SOURCE_DIR, STAGED_EXTENSION_DIR);
     const zipPath = createZipArchive(STAGED_EXTENSION_DIR, STAGED_EXTENSION_ZIP);

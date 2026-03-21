@@ -325,9 +325,7 @@ export function MiniPlayer({
                 <button
                   key={`${track.id}-mini-${index}`}
                   type="button"
-                  onClick={() =>
-                    isActive ? onPlayPause() : onTrackSelect(track, playQueue)
-                  }
+                  onClick={() => handleMiniQueueClick(index)}
                   className={`w-full flex items-center justify-between p-2.5 rounded-lg text-left transition-all ${
                     isActive ? "bg-app-active" : "hover:bg-app-hover"
                   }`}

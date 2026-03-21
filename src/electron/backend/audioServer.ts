@@ -147,6 +147,11 @@ function streamLocalFile(req: IncomingMessage, res: ServerResponse, filePath: st
     const start = Number.parseInt(match[1], 10);
     const end = match[2] ? Math.min(Number.parseInt(match[2], 10), stat.size - 1) : stat.size - 1;
 
+    if (!Number.isFinite(start) || !Number.isFinite(end) || start >= stat.size || end < start || end < 0) {
+      sendText(res, 416, "Range Not Satisfiable");
+      return;
+    }
+
     res.writeHead(206, {
       "Content-Type": resolvedType,
       "Content-Range": `bytes ${start}-${end}/${stat.size}`,
@@ -216,55 +221,73 @@ async function handleYtCache(req: IncomingMessage, res: ServerResponse): Promise
       return true;
     }
 
-    const upstream = await fetch(sourceUrl, {
-      headers: {
-        ...(req.headers.range ? { Range: req.headers.range } : {}),
-        "User-Agent":
-          req.headers["user-agent"] ??
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
-        Accept: req.headers.accept ?? "*/*",
-      },
-    });
+    try {
+      const upstream = await fetch(sourceUrl, {
+        headers: {
+          ...(req.headers.range ? { Range: req.headers.range } : {}),
+          "User-Agent":
+            req.headers["user-agent"] ??
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
+          Accept: req.headers.accept ?? "*/*",
+        },
+      });
 
-    if (!upstream.ok && upstream.status !== 206) {
-      sendText(res, upstream.status, `Upstream request failed (${upstream.status})`);
+      if (!upstream.ok && upstream.status !== 206) {
+        sendText(res, upstream.status, `Upstream request failed (${upstream.status})`);
+        return true;
+      }
+
+      void warmAudioCache(key, sourceUrl).catch(() => {});
+
+      const headers: Record<string, string> = {
+        "Access-Control-Allow-Origin": "*",
+        "Accept-Ranges": upstream.headers.get("accept-ranges") ?? "bytes",
+      };
+
+      const contentType = upstream.headers.get("content-type");
+      const contentLength = upstream.headers.get("content-length");
+      const contentRange = upstream.headers.get("content-range");
+
+      if (contentType) headers["Content-Type"] = contentType;
+      if (contentLength) headers["Content-Length"] = contentLength;
+      if (contentRange) headers["Content-Range"] = contentRange;
+
+      res.writeHead(upstream.status, headers);
+
+      if (!upstream.body) {
+        res.end();
+        return true;
+      }
+
+      Readable.fromWeb(upstream.body as Parameters<typeof Readable.fromWeb>[0])
+        .on("error", () => { try { res.end(); } catch {} })
+        .pipe(res);
+      return true;
+    } catch {
+      if (!res.headersSent) {
+        sendText(res, 502, "Upstream audio fetch failed");
+      }
       return true;
     }
-
-    void warmAudioCache(key, sourceUrl).catch(() => {});
-
-    const headers: Record<string, string> = {
-      "Access-Control-Allow-Origin": "*",
-      "Accept-Ranges": upstream.headers.get("accept-ranges") ?? "bytes",
-    };
-
-    const contentType = upstream.headers.get("content-type");
-    const contentLength = upstream.headers.get("content-length");
-    const contentRange = upstream.headers.get("content-range");
-
-    if (contentType) headers["Content-Type"] = contentType;
-    if (contentLength) headers["Content-Length"] = contentLength;
-    if (contentRange) headers["Content-Range"] = contentRange;
-
-    res.writeHead(upstream.status, headers);
-
-    if (!upstream.body) {
-      res.end();
-      return true;
-    }
-
-    Readable.fromWeb(upstream.body as Parameters<typeof Readable.fromWeb>[0]).pipe(res);
-    return true;
   }
 
   sendText(res, 404, "Not Found");
   return true;
 }
 
+const MAX_BODY_BYTES = 1_048_576;
+
 async function readJsonBody(req: IncomingMessage): Promise<any> {
   const chunks: Buffer[] = [];
+  let totalBytes = 0;
   for await (const chunk of req) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    totalBytes += buf.length;
+    if (totalBytes > MAX_BODY_BYTES) {
+      req.destroy();
+      throw new Error("Request body too large");
+    }
+    chunks.push(buf);
   }
 
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));

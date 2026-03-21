@@ -38,6 +38,7 @@ export function YtMusicCookieDialog({
           value={cookie}
           onChange={(event) => setCookie(event.target.value)}
           placeholder="Paste Cookie header value here"
+          aria-label="YouTube Music Cookie header"
           className="min-h-44 w-full rounded-xl border border-app-border bg-app-elevated px-4 py-3 text-[12px] text-app-text-primary outline-none focus:border-app-border-strong"
         />
 
@@ -51,7 +52,7 @@ export function YtMusicCookieDialog({
           <button
             type="button"
             onClick={() => onSubmit(cookie)}
-            disabled={loading}
+            disabled={loading || !cookie?.trim()}
             className="inline-flex items-center gap-2 rounded-xl bg-app-text-primary px-4 py-2 text-[13px] font-medium text-app-bg hover:opacity-90 disabled:opacity-60"
           >
             <KeyRound size={14} />

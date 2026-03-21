@@ -26,6 +26,31 @@ type MediaIndex = {
 
 const audioWarmups = new Map<string, Promise<void>>();
 
+const TRUSTED_CACHE_HOSTS = new Set([
+  "youtube.com",
+  "www.youtube.com",
+  "music.youtube.com",
+  "i.ytimg.com",
+  "s.ytimg.com",
+  "ytimg.com",
+  "lh3.googleusercontent.com",
+  "yt3.ggpht.com",
+]);
+
+function isTrustedCacheUrl(sourceUrl: string): boolean {
+  try {
+    const parsed = new URL(sourceUrl);
+    if (parsed.protocol !== "https:") return false;
+    // googlevideo.com subdomains (e.g. rr1---sn-xxx.googlevideo.com)
+    if (parsed.hostname.endsWith(".googlevideo.com") || parsed.hostname === "googlevideo.com") return true;
+    return TRUSTED_CACHE_HOSTS.has(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
+let cacheGeneration = 0;
+
 /** In-memory index + batched disk writes (avoids rewriting JSON on every cache hit / LRU touch). */
 let indexCache: MediaIndex | null = null;
 let indexDirty = false;
@@ -235,16 +260,26 @@ export async function ensureArtworkCached(key: string, sourceUrl: string): Promi
     return existing;
   }
 
+  if (!isTrustedCacheUrl(sourceUrl)) {
+    throw new Error(`Artwork URL not on trusted host: ${sourceUrl}`);
+  }
+
+  const gen = cacheGeneration;
   const response = await fetch(sourceUrl);
   if (!response.ok) {
     throw new Error(`Artwork fetch failed (${response.status})`);
   }
+
+  if (gen !== cacheGeneration) return null;
 
   const contentType = response.headers.get("content-type");
   const ext = extensionFromContentType(contentType, sanitizeExtension(path.extname(new URL(sourceUrl).pathname), ".jpg"));
   const fileName = `${key}${ext}`;
   const filePath = path.join(YTMUSIC_ARTWORK_CACHE_DIR, fileName);
   const body = Buffer.from(await response.arrayBuffer());
+
+  if (gen !== cacheGeneration) return null;
+
   fs.writeFileSync(filePath, body);
 
   upsertEntry("artwork", key, {
@@ -272,17 +307,27 @@ export function warmAudioCache(key: string, sourceUrl: string): Promise<void> {
     return inFlight;
   }
 
+  if (!isTrustedCacheUrl(sourceUrl)) {
+    return Promise.reject(new Error(`Audio URL not on trusted host: ${sourceUrl}`));
+  }
+
+  const gen = cacheGeneration;
   const task = (async () => {
     const response = await fetch(sourceUrl);
     if (!response.ok) {
       throw new Error(`Audio fetch failed (${response.status})`);
     }
 
+    if (gen !== cacheGeneration) return;
+
     const contentType = response.headers.get("content-type");
     const ext = extensionFromContentType(contentType, sanitizeExtension(path.extname(new URL(sourceUrl).pathname), ".bin"));
     const fileName = `${key}${ext}`;
     const filePath = path.join(YTMUSIC_AUDIO_CACHE_DIR, fileName);
     const body = Buffer.from(await response.arrayBuffer());
+
+    if (gen !== cacheGeneration) return;
+
     fs.writeFileSync(filePath, body);
 
     upsertEntry("audio", key, {
@@ -311,6 +356,7 @@ export function getYtMusicCacheStats(): { usageBytes: number; limitBytes: number
 }
 
 export function clearYtMusicCache(): { success: boolean } {
+  cacheGeneration++;
   const index = getIndex();
 
   for (const entry of Object.values(index.audio)) {

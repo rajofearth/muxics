@@ -19,7 +19,11 @@ function readHomeSnapshotFromDisk(): YTMusicHomeResult | null {
 
 export function writeHomeSnapshotToDisk(result: YTMusicHomeResult): void {
   ensureAppDataDirs();
-  fs.writeFileSync(YTMUSIC_HOME_SNAPSHOT_PATH, JSON.stringify(result, null, 2), "utf-8");
+  try {
+    fs.writeFileSync(YTMUSIC_HOME_SNAPSHOT_PATH, JSON.stringify(result, null, 2), "utf-8");
+  } catch (error) {
+    console.error("[muxics:ytmusic] Failed to write home snapshot to", YTMUSIC_HOME_SNAPSHOT_PATH, error);
+  }
 }
 
 export function getYtMusicHomeSnapshot(): YTMusicHomeResult | null {

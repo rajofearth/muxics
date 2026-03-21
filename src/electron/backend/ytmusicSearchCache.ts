@@ -26,8 +26,12 @@ function loadRaw(): SearchCacheFile {
 }
 
 function saveRaw(data: SearchCacheFile): void {
-  ensureAppDataDirs();
-  fs.writeFileSync(YTMUSIC_SEARCH_CACHE_PATH, JSON.stringify(data, null, 2), "utf-8");
+  try {
+    ensureAppDataDirs();
+    fs.writeFileSync(YTMUSIC_SEARCH_CACHE_PATH, JSON.stringify(data, null, 2), "utf-8");
+  } catch (error) {
+    console.error("[muxics:ytmusic] Failed to write search cache:", error);
+  }
 }
 
 export function bumpYtMusicSearchCacheSession(): void {

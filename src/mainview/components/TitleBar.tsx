@@ -100,7 +100,7 @@ export function TitleBar({
             <>
               <button
                 type="button"
-                onClick={onSync}
+                onClick={() => onSync?.()}
                 className="h-7 px-2.5 rounded-lg text-[11px] text-app-text-secondary hover:text-app-text-primary hover:bg-app-hover inline-flex items-center gap-1.5"
                 aria-label="Sync YouTube Music"
               >
@@ -109,7 +109,12 @@ export function TitleBar({
               </button>
               <div className="h-7 px-2.5 rounded-lg bg-app-elevated text-[11px] text-app-text-primary inline-flex items-center gap-2">
                 {auth.avatarUrl ? (
-                  <img src={auth.avatarUrl} alt="" className="w-4 h-4 rounded-full object-cover" />
+                  <img
+                    src={auth.avatarUrl}
+                    alt=""
+                    className="w-4 h-4 rounded-full object-cover"
+                    onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                  />
                 ) : (
                   <div className="w-4 h-4 rounded-full bg-app-border-strong" />
                 )}
@@ -117,7 +122,7 @@ export function TitleBar({
               </div>
               <button
                 type="button"
-                onClick={onLogout}
+                onClick={() => onLogout?.()}
                 className="h-7 px-2.5 rounded-lg text-[11px] text-app-text-secondary hover:text-app-text-primary hover:bg-app-hover inline-flex items-center gap-1.5"
                 aria-label="Sign out of YouTube Music"
               >
@@ -128,7 +133,7 @@ export function TitleBar({
           ) : (
             <button
               type="button"
-              onClick={onLogin}
+              onClick={() => onLogin?.()}
               className="h-7 px-2.5 rounded-lg text-[11px] text-app-text-secondary hover:text-app-text-primary hover:bg-app-hover inline-flex items-center gap-1.5"
               aria-label="Sign in to YouTube Music"
             >

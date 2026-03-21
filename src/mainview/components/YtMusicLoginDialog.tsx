@@ -40,15 +40,20 @@ export function YtMusicLoginDialog({
     return () => window.clearInterval(timer);
   }, []);
 
+  const onOpenExternalRef = useRef(onOpenExternal);
+  onOpenExternalRef.current = onOpenExternal;
+  const onAwaitCompletionRef = useRef(onAwaitCompletion);
+  onAwaitCompletionRef.current = onAwaitCompletion;
+
   useEffect(() => {
     if (startedCodesRef.current.has(pending.userCode)) {
       return;
     }
 
     startedCodesRef.current.add(pending.userCode);
-    onOpenExternal(pending.verificationUrl);
-    onAwaitCompletion();
-  }, [onAwaitCompletion, onOpenExternal, pending.userCode, pending.verificationUrl]);
+    onOpenExternalRef.current(pending.verificationUrl);
+    onAwaitCompletionRef.current();
+  }, [pending.userCode, pending.verificationUrl]);
 
   const remainingText = useMemo(
     () => formatRemaining(pending.expiresAt - now),

@@ -62,6 +62,10 @@ if (process.argv.includes("--muxics-native-host")) {
   runNativeMessagingHost();
 } else {
 
+process.on("unhandledRejection", (reason) => {
+  console.error("[muxics:main] Unhandled rejection:", reason);
+});
+
 type RequestHandlerMap = {
   [K in keyof DesktopRequestMap]: (
     params: DesktopRequestMap[K]["params"]

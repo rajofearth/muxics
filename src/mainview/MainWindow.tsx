@@ -154,18 +154,20 @@ export function MainWindow({
     return () => document.removeEventListener("app-navigate", navHandler);
   }, [handleNavigate]);
 
-  useEffect(() => {
-    if (navState.view !== "playlist_detail" || !navState.id) {
-      return;
-    }
+  const activePlaylist = useMemo(
+    () => navState.view === "playlist_detail" && navState.id
+      ? playlists.items.find((playlist) => playlist.id === navState.id) ?? null
+      : null,
+    [navState.view, navState.id, playlists.items],
+  );
 
-    const activePlaylist = playlists.items.find((playlist) => playlist.id === navState.id);
+  useEffect(() => {
     if (!activePlaylist || activePlaylist.provider !== "ytmusic") {
       return;
     }
 
     void ensurePlaylistHydrated(activePlaylist.id);
-  }, [ensurePlaylistHydrated, navState.id, navState.view, playlists.items]);
+  }, [ensurePlaylistHydrated, activePlaylist]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {

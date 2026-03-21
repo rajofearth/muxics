@@ -8,6 +8,7 @@ import type {
   Track,
 } from "../types";
 import { shuffleArray, parseTime } from "../utils";
+import { showToast } from "../components/Toast";
 import type {
   AuthLoginStartResult,
   DesktopBridge,
@@ -942,6 +943,14 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
     if (!rpc) return;
     const pl = playlists.items.find((p) => p.id === playlistId);
     if (!pl) return;
+
+    if (pl.provider !== track.provider) {
+      showToast(
+        `Cannot add a ${track.provider} track to a ${pl.provider} playlist.`,
+        "error",
+      );
+      return;
+    }
 
     if (pl.provider === "ytmusic") {
       await rpc.request.ytmusicAddTrackToPlaylist({

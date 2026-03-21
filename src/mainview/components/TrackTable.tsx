@@ -75,17 +75,20 @@ export const TrackTable = memo(function TrackTable({
   const onActiveTrackClickRef = useRef(onActiveTrackClick);
   onActiveTrackClickRef.current = onActiveTrackClick;
 
+  const currentTrackIdRef = useRef(currentTrack?.id);
+  currentTrackIdRef.current = currentTrack?.id;
+
   const handleRowActivate = useCallback((trackId: string) => {
     const list = sortedRef.current;
     const track = list.find((t) => t.id === trackId);
     if (track) {
-      if (track.id === currentTrack?.id) {
+      if (track.id === currentTrackIdRef.current) {
         onActiveTrackClickRef.current?.();
         return;
       }
       onTrackClickRef.current(track, list);
     }
-  }, [currentTrack?.id]);
+  }, []);
 
   const rowHeight = compact ? ROW_HEIGHT_COMPACT : ROW_HEIGHT_FULL;
   const useVirtual = sortedTracks.length >= VIRTUALIZE_THRESHOLD;

@@ -247,7 +247,14 @@ export function MainWindowContent({
           <div className="text-[13px] text-app-text-tertiary mb-4">{library.error}</div>
           <button
             type="button"
-            onClick={() => usePlayerStore.getState().loadLibrary()}
+            onClick={() => {
+              const store = usePlayerStore.getState();
+              if (library.source === "ytmusic") {
+                void store.syncYtMusicLibrary();
+              } else {
+                void store.loadLibrary();
+              }
+            }}
             className="px-4 py-2 bg-app-elevated hover:bg-app-active rounded-lg text-[13px] text-app-text-primary"
           >
             Retry
