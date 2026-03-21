@@ -10,6 +10,7 @@ import {
   shell,
   type MenuItemConstructorOptions,
 } from "electron";
+import { autoUpdater } from "electron-updater";
 import type {
   DesktopEventMap,
   DesktopMessageMap,
@@ -581,6 +582,15 @@ const requestHandlers: RequestHandlerMap = {
   ytmusicDeletePlaylist: ({ playlistId }) => deleteYtMusicPlaylist(playlistId),
   ytmusicAddTrackToPlaylist: ({ playlistId, videoId }) => addTrackToYtMusicPlaylist(playlistId, videoId),
   ytmusicRemoveTrackFromPlaylist: ({ playlistId, videoId }) => removeTrackFromYtMusicPlaylist(playlistId, videoId),
+  getAppVersion: () => app.getVersion(),
+  checkForUpdates: () => {
+    autoUpdater.checkForUpdates().catch((err) => {
+      console.error("[muxics:updater] Check for updates failed:", err);
+    });
+  },
+  installUpdate: () => {
+    autoUpdater.quitAndInstall(false, true);
+  },
 };
 
 const messageHandlers: MessageHandlerMap = {
@@ -715,6 +725,35 @@ app.whenReady().then(async () => {
 
   registerIpc();
   await createMainWindow();
+
+  // ── Auto-updater (production only) ──
+  if (!process.env["VITE_DEV_SERVER_URL"]) {
+    autoUpdater.autoDownload = true;
+    autoUpdater.autoInstallOnAppQuit = true;
+
+    autoUpdater.on("checking-for-update", () => {
+      sendRendererEvent("autoUpdateStatus", { status: "checking" });
+    });
+    autoUpdater.on("update-available", (info) => {
+      sendRendererEvent("autoUpdateStatus", { status: "available", version: info.version });
+    });
+    autoUpdater.on("update-not-available", () => {
+      sendRendererEvent("autoUpdateStatus", { status: "not-available" });
+    });
+    autoUpdater.on("download-progress", (progress) => {
+      sendRendererEvent("autoUpdateStatus", { status: "downloading", percent: Math.round(progress.percent) });
+    });
+    autoUpdater.on("update-downloaded", (info) => {
+      sendRendererEvent("autoUpdateStatus", { status: "downloaded", version: info.version });
+    });
+    autoUpdater.on("error", (err) => {
+      sendRendererEvent("autoUpdateStatus", { status: "error", message: err?.message ?? "Update error" });
+    });
+
+    autoUpdater.checkForUpdatesAndNotify().catch((err) => {
+      console.error("[muxics:updater] Auto-update check failed:", err);
+    });
+  }
 
   app.on("activate", async () => {
     if (BrowserWindow.getAllWindows().length === 0) {

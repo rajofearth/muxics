@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type {
+  AutoUpdateStatus,
   DesktopBridge,
   DesktopEventMap,
 } from "../shared/desktop-contract";
@@ -95,6 +96,12 @@ const desktopBridge: DesktopBridge = {
       ipcRenderer.invoke("desktop:request:ytmusicAddTrackToPlaylist", params),
     ytmusicRemoveTrackFromPlaylist: (params) =>
       ipcRenderer.invoke("desktop:request:ytmusicRemoveTrackFromPlaylist", params),
+    getAppVersion: () =>
+      ipcRenderer.invoke("desktop:request:getAppVersion"),
+    checkForUpdates: () =>
+      ipcRenderer.invoke("desktop:request:checkForUpdates"),
+    installUpdate: () =>
+      ipcRenderer.invoke("desktop:request:installUpdate"),
   },
   send: {
     resizeWindow: (payload) =>
@@ -128,6 +135,12 @@ ipcRenderer.on("desktop:event", (_event, message: RendererEventPayload) => {
   if (message.channel === "ytmusicCacheStatsUpdated") {
     document.dispatchEvent(
       new CustomEvent("muxics-yt-cache-stats", { detail: message.payload }),
+    );
+    return;
+  }
+  if (message.channel === "autoUpdateStatus") {
+    document.dispatchEvent(
+      new CustomEvent<AutoUpdateStatus>("muxics-auto-update", { detail: message.payload }),
     );
     return;
   }

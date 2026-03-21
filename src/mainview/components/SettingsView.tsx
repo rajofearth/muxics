@@ -3,7 +3,9 @@ import type { CacheStatsResult, DesktopBridge, DesktopSettings } from "../../sha
 import { showToast } from "./Toast";
 import { usePlayerStore } from "../store/playerStore";
 import { useShallow } from "zustand/react/shallow";
-import { FolderPlus, Trash2, Loader2, AlertCircle, ChevronDown, FolderOpen, Palette, HardDrive, Library } from "lucide-react";
+import { FolderPlus, Trash2, Loader2, AlertCircle, ChevronDown, FolderOpen, Palette, HardDrive, Library, Info } from "lucide-react";
+// @ts-expect-error vite svg import
+import appIcon from "../../../assets/muzics-dark.svg";
 
 function useDropdown() {
   const [open, setOpen] = useState(false);
@@ -76,9 +78,8 @@ function ThemeDropdown({ themeName, setThemeName }: { themeName: string; setThem
                   setThemeName(opt.id);
                   close();
                 }}
-                className={`w-full flex items-center justify-between p-2.5 rounded-lg text-left transition-colors ${
-                  isActive ? "bg-app-active" : "hover:bg-app-hover"
-                }`}
+                className={`w-full flex items-center justify-between p-2.5 rounded-lg text-left transition-colors ${isActive ? "bg-app-active" : "hover:bg-app-hover"
+                  }`}
               >
                 <div className="flex items-center gap-3">
                   <div className="flex gap-0.5 shrink-0 rounded overflow-hidden border border-white/10 shadow-sm">
@@ -125,6 +126,8 @@ export function SettingsView({ desktop }: { desktop?: DesktopBridge }) {
   const [settings, setSettings] = useState<DesktopSettings | null>(null);
   const [usageBytes, setUsageBytes] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [appVersion, setAppVersion] = useState("");
+  const [updateStatus, setUpdateStatus] = useState<string>("");
 
   // Compute current GB limit from settings
   const limitGb = useMemo(
@@ -152,13 +155,15 @@ export function SettingsView({ desktop }: { desktop?: DesktopBridge }) {
     let cancelled = false;
     void (async () => {
       if (!desktop) return;
-      const [nextSettings, stats] = await Promise.all([
+      const [nextSettings, stats, version] = await Promise.all([
         desktop.request.getSettings(),
         desktop.request.getYtMusicCacheStats(),
+        desktop.request.getAppVersion(),
       ]);
       if (cancelled) return;
       setSettings(nextSettings);
       setUsageBytes(stats.usageBytes);
+      setAppVersion(version);
       setLoading(false);
     })();
     return () => { cancelled = true; };
@@ -170,8 +175,16 @@ export function SettingsView({ desktop }: { desktop?: DesktopBridge }) {
       const detail = (e as CustomEvent<CacheStatsResult>).detail;
       if (detail?.usageBytes != null) setUsageBytes(detail.usageBytes);
     };
+    const onUpdate = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      setUpdateStatus(detail.status);
+    };
     document.addEventListener("muxics-yt-cache-stats", onStats);
-    return () => document.removeEventListener("muxics-yt-cache-stats", onStats);
+    document.addEventListener("muxics-auto-update", onUpdate);
+    return () => {
+      document.removeEventListener("muxics-yt-cache-stats", onStats);
+      document.removeEventListener("muxics-auto-update", onUpdate);
+    };
   }, [desktop]);
 
   useEffect(() => {
@@ -271,7 +284,13 @@ export function SettingsView({ desktop }: { desktop?: DesktopBridge }) {
   };
 
   const folderError = localError ?? library.error;
-  
+
+  const handleCheckForUpdates = () => {
+    if (!desktop) return;
+    setUpdateStatus("checking");
+    desktop.request.checkForUpdates();
+  };
+
   function formattedUsage(): string {
     if (usageBytes >= 1024 * 1024 * 1024) {
       return `${(usageBytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
@@ -287,13 +306,13 @@ export function SettingsView({ desktop }: { desktop?: DesktopBridge }) {
 
       <div className="flex-1 overflow-y-auto px-8 pb-12">
         <div className="max-w-2xl space-y-10">
-          
+
           {/* ── Appearance ── */}
           <section>
-            <SectionHeader 
-              icon={Palette} 
-              title="Appearance" 
-              desc="Customize the visual style and colors" 
+            <SectionHeader
+              icon={Palette}
+              title="Appearance"
+              desc="Customize the visual style and colors"
             />
             <div className="pl-11">
               <ThemeDropdown themeName={themeName} setThemeName={setThemeName} />
@@ -304,13 +323,13 @@ export function SettingsView({ desktop }: { desktop?: DesktopBridge }) {
 
           {/* ── Storage & Cache ── */}
           <section>
-            <SectionHeader 
-              icon={HardDrive} 
-              title="Storage & Cache" 
-              desc="Manage disk usage for YouTube Music streams and artwork" 
+            <SectionHeader
+              icon={HardDrive}
+              title="Storage & Cache"
+              desc="Manage disk usage for YouTube Music streams and artwork"
             />
             <div className="pl-11 space-y-6">
-              
+
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <label className="text-[13px] font-medium text-app-text-primary">Cache Limit</label>
@@ -327,11 +346,10 @@ export function SettingsView({ desktop }: { desktop?: DesktopBridge }) {
                         type="button"
                         onClick={() => persistLimit(gb)}
                         disabled={loading || !settings}
-                        className={`px-4 py-2 rounded-lg text-[13px] font-medium transition-colors border shadow-sm ${
-                          isActive
+                        className={`px-4 py-2 rounded-lg text-[13px] font-medium transition-colors border shadow-sm ${isActive
                             ? "bg-app-accent border-app-accent text-white"
                             : "bg-app-surface border-app-border text-app-text-primary hover:bg-app-hover hover:border-app-border-strong disabled:opacity-50"
-                        }`}
+                          }`}
                       >
                         {gb} GB
                       </button>
@@ -372,13 +390,13 @@ export function SettingsView({ desktop }: { desktop?: DesktopBridge }) {
 
           {/* ── Local Library Folders ── */}
           <section>
-            <SectionHeader 
-              icon={Library} 
-              title="Local Library" 
-              desc="Folders scanned recursively for local audio files" 
+            <SectionHeader
+              icon={Library}
+              title="Local Library"
+              desc="Folders scanned recursively for local audio files"
             />
             <div className="pl-11">
-              
+
               {folderError && (
                 <div className="flex items-center justify-between gap-3 px-4 py-3 mb-4 bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg text-[13px]">
                   <div className="flex items-center gap-2 min-w-0">
@@ -479,6 +497,45 @@ export function SettingsView({ desktop }: { desktop?: DesktopBridge }) {
                 )}
               </div>
 
+            </div>
+          </section>
+
+          <div className="h-px bg-app-border" />
+
+          {/* ── About ── */}
+          <section>
+            <SectionHeader
+              icon={Info}
+              title="About"
+              desc="Application information and updates"
+            />
+            <div className="pl-11">
+              <div className="flex items-center gap-4 p-4 bg-app-surface rounded-xl border border-app-border relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-app-accent/5 rounded-full blur-2xl -mr-10 -mt-10" />
+                <div className="w-16 h-16 flex items-center justify-center shrink-0 drop-shadow-lg relative z-10">
+                  <img src={appIcon} alt="Muxics" className="w-[85%] h-[85%] object-contain" />
+                </div>
+                <div className="flex-1 min-w-0 relative z-10">
+                  <h3 className="text-lg font-bold text-app-text-primary tracking-tight">Muxics</h3>
+                  <div className="text-[13px] text-app-text-tertiary mt-0.5 flex items-center gap-2">
+                    <span>Version {appVersion || "..."}</span>
+                    <span className="w-1 h-1 rounded-full bg-app-border-strong" />
+                    <button
+                      onClick={handleCheckForUpdates}
+                      disabled={updateStatus === "checking" || updateStatus === "downloading"}
+                      className="text-app-accent hover:text-white transition-colors disabled:opacity-50"
+                    >
+                      {updateStatus === "checking" ? "Checking..." : updateStatus === "downloading" ? "Downloading..." : "Check for updates"}
+                    </button>
+                  </div>
+                  <div className="text-[12px] text-app-text-tertiary mt-2">
+                    Made by <a href="https://github.com/rajofearth" target="_blank" rel="noreferrer" className="text-app-text-secondary hover:text-app-text-primary underline underline-offset-2 transition-colors">Yashraj Maher</a>
+                  </div>
+                  <div className="text-[12px] text-app-text-tertiary mt-1">
+                    <a href="https://github.com/rajofearth/muxics" target="_blank" rel="noreferrer" className="text-app-text-secondary hover:text-app-text-primary transition-colors">View source on GitHub</a>
+                  </div>
+                </div>
+              </div>
             </div>
           </section>
 

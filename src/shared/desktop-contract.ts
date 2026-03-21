@@ -31,6 +31,14 @@ export interface CacheStatsResult {
   limitBytes: number;
 }
 
+export type AutoUpdateStatus =
+  | { status: "checking" }
+  | { status: "available"; version: string }
+  | { status: "not-available" }
+  | { status: "downloading"; percent: number }
+  | { status: "downloaded"; version: string }
+  | { status: "error"; message: string };
+
 export interface TrackResult {
   id: string;
   provider: MusicProvider;
@@ -229,6 +237,9 @@ export interface DesktopRequestMap {
     params: { playlistId: string; videoId: string };
     response: { success: boolean };
   };
+  getAppVersion: { params: void; response: string };
+  checkForUpdates: { params: void; response: void };
+  installUpdate: { params: void; response: void };
 }
 
 export interface DesktopMessageMap {
@@ -246,6 +257,7 @@ export interface DesktopEventMap {
   contextMenuAction: { action: string };
   menuAction: { action: string };
   ytmusicCacheStatsUpdated: CacheStatsResult;
+  autoUpdateStatus: AutoUpdateStatus;
 }
 
 type RequestMethods = {

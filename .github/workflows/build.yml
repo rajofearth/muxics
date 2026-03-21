@@ -42,7 +42,9 @@ jobs:
         run: pnpm run build
 
       - name: Package (mac arm64)
-        run: pnpm exec electron-builder --config electron-builder.yml --publish never --mac --arm64
+        run: pnpm exec electron-builder --config electron-builder.yml --publish always --mac --arm64
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
@@ -51,6 +53,7 @@ jobs:
           path: |
             artifacts/Muxics-*.dmg
             artifacts/Muxics-*.zip
+            artifacts/latest-mac.yml
           if-no-files-found: error
 
   build-linux-x64:
@@ -73,7 +76,9 @@ jobs:
         run: pnpm run build
 
       - name: Package (linux x64)
-        run: pnpm exec electron-builder --config electron-builder.yml --publish never --linux --x64
+        run: pnpm exec electron-builder --config electron-builder.yml --publish always --linux --x64
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
@@ -82,6 +87,7 @@ jobs:
           path: |
             artifacts/Muxics-*.AppImage
             artifacts/Muxics-*.tar.gz
+            artifacts/latest-linux.yml
           if-no-files-found: error
 
   build-linux-arm64:
@@ -104,7 +110,9 @@ jobs:
         run: pnpm run build
 
       - name: Package (linux arm64)
-        run: pnpm exec electron-builder --config electron-builder.yml --publish never --linux --arm64
+        run: pnpm exec electron-builder --config electron-builder.yml --publish always --linux --arm64
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
@@ -113,6 +121,7 @@ jobs:
           path: |
             artifacts/Muxics-*.AppImage
             artifacts/Muxics-*.tar.gz
+            artifacts/latest-linux-arm64.yml
           if-no-files-found: error
 
   build-windows-x64:
@@ -135,7 +144,9 @@ jobs:
         run: pnpm run build
 
       - name: Package (windows x64)
-        run: pnpm exec electron-builder --config electron-builder.yml --publish never --win --x64
+        run: pnpm exec electron-builder --config electron-builder.yml --publish always --win --x64
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
@@ -145,6 +156,7 @@ jobs:
           path: |
             artifacts/Muxics-*.exe
             artifacts/Muxics-*.zip
+            artifacts/latest*.yml
           if-no-files-found: error
 
   build-windows-arm64:
@@ -167,7 +179,9 @@ jobs:
         run: pnpm run build
 
       - name: Package (windows arm64)
-        run: pnpm exec electron-builder --config electron-builder.yml --publish never --win --arm64
+        run: pnpm exec electron-builder --config electron-builder.yml --publish always --win --arm64
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
@@ -177,6 +191,7 @@ jobs:
           path: |
             artifacts/Muxics-*.exe
             artifacts/Muxics-*.zip
+            artifacts/latest*.yml
           if-no-files-found: error
 
   release:
@@ -256,8 +271,8 @@ jobs:
         shell: bash
         run: |
           TAG=${{ steps.tag.outputs.tag }}
-          # Collect only final installer/archive assets
-          mapfile -t files < <(find release-artifacts -type f \( -name 'Muxics-*.dmg' -o -name 'Muxics-*.zip' -o -name 'Muxics-*.AppImage' -o -name 'Muxics-*.tar.gz' -o -name 'Muxics-*.exe' \) | sed -e 's/ /\\ /g')
+          # Collect only final installer/archive assets and electron updater manifests
+          mapfile -t files < <(find release-artifacts -type f \( -name 'Muxics-*.dmg' -o -name 'Muxics-*.zip' -o -name 'Muxics-*.AppImage' -o -name 'Muxics-*.tar.gz' -o -name 'Muxics-*.exe' -o -name 'latest*.yml' \) | sed -e 's/ /\\ /g')
           if [ "${#files[@]}" -eq 0 ]; then
             echo "No artifacts found to upload"
             exit 1

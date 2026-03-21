@@ -9,6 +9,7 @@ import { PlayerBar } from "./components/PlayerBar";
 import { BrowserBridgeDialog } from "./components/BrowserBridgeDialog";
 import { showToast } from "./components/Toast";
 import { MainWindowContent } from "./components/MainWindowContent";
+import { UpdateBanner } from "./components/UpdateBanner";
 import type { DesktopBridge } from "../shared/desktop-contract";
 
 type MainWindowProps = {
@@ -331,6 +332,8 @@ export function MainWindow({
         onLogout={logoutFromYtMusic}
         onSync={syncYtMusicLibrary}
       />
+
+      <UpdateBanner />
 
       <div className="flex flex-1 overflow-hidden">
         <Sidebar navState={navState} playlists={playlists.items} onNavigate={handleNavigate} />
