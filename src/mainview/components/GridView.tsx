@@ -1,11 +1,13 @@
 import { memo } from "react";
-import { Music, Play } from "lucide-react";
+import { Play } from "lucide-react";
+import { Collage } from "./Collage";
 
 type GridItem = {
   id: string;
   name: string;
   desc: string;
   picture?: string;
+  pictures?: string[];
 };
 
 type GridViewProps = {
@@ -25,18 +27,7 @@ export const GridView = memo(function GridView({ items, onItemClick, onPlayItem 
             className="text-left group rounded-xl p-3 hover:bg-app-hover transition-all"
           >
             <div className="aspect-square rounded-lg bg-app-elevated mb-3 overflow-hidden shadow-sm group-hover:shadow-lg transition-shadow relative">
-              {item.picture ? (
-                <img
-                  src={item.picture}
-                  alt=""
-                  className="w-full h-full object-cover"
-                  loading="lazy"
-                />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-app-elevated to-app-surface">
-                  <Music size={32} className="text-app-text-tertiary" />
-                </div>
-              )}
+              <Collage pictures={item.pictures} fallback={item.picture} />
               {onPlayItem && (
                 <div
                   className="absolute bottom-2 right-2 w-10 h-10 rounded-full bg-app-text-primary shadow-xl flex items-center justify-center opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200"

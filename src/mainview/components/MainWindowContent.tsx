@@ -25,6 +25,7 @@ import { SearchView } from "./SearchView";
 import { QueueView } from "./QueueView";
 import { NowPlayingView } from "./NowPlayingView";
 import { SettingsView } from "./SettingsView";
+import { Collage } from "./Collage";
 import type { DesktopBridge } from "../../shared/desktop-contract";
 
 export type MainWindowContentProps = {
@@ -420,11 +421,23 @@ export function MainWindowContent({
             icon={<ListMusic size={40} className="text-app-text-tertiary" />}
           />
           <GridView
-            items={playlists.items.map((p) => ({
-              id: p.id,
-              name: p.name,
-              desc: `${playlistVisibleTrackCount(p)} songs`,
-            }))}
+            items={playlists.items.map((p) => {
+              const tracks = loadPlaylistTracks(p.id);
+              const recentPics: string[] = [];
+              for (let i = tracks.length - 1; i >= 0; i--) {
+                const pic = tracks[i]?.picture;
+                if (pic && !recentPics.includes(pic)) {
+                  recentPics.push(pic);
+                }
+                if (recentPics.length === 4) break;
+              }
+              return {
+                id: p.id,
+                name: p.name,
+                desc: `${playlistVisibleTrackCount(p)} songs`,
+                pictures: recentPics,
+              };
+            })}
             onItemClick={(item) => handleNavigate("playlist_detail", item.id)}
           />
         </div>
@@ -435,6 +448,15 @@ export function MainWindowContent({
       const activePlaylist = playlists.items.find((p) => p.id === navState.id);
       const playlistLoading = activePlaylist ? playlists.hydratingById[activePlaylist.id] : false;
       const playlistError = activePlaylist ? playlists.hydrationErrors[activePlaylist.id] : null;
+
+      const recentPics: string[] = [];
+      for (let i = plTracks.length - 1; i >= 0; i--) {
+        const pic = plTracks[i]?.picture;
+        if (pic && !recentPics.includes(pic)) {
+          recentPics.push(pic);
+        }
+        if (recentPics.length === 4) break;
+      }
 
       if (
         activePlaylist?.provider === "ytmusic" &&
@@ -490,7 +512,7 @@ export function MainWindowContent({
         activePlaylist?.name ?? "Playlist",
         activePlaylist?.provider === "ytmusic" ? "YouTube Music" : "Playlist",
         plTracks,
-        <ListMusic size={40} className="text-app-text-tertiary" />,
+        <Collage pictures={recentPics} FallbackIcon={ListMusic} iconSize={40} />,
         activePlaylist ? <PlaylistHeaderActions playlist={activePlaylist} onNavigate={handleNavigate} /> : undefined,
         activePlaylist?.id,
         () => handleNavigate("playlists"),
@@ -509,11 +531,12 @@ export function MainWindowContent({
 
     case "recent": {
       const recent = recentlyPlayed.length > 0 ? recentlyPlayed : library.tracks.slice(0, 20);
+      const recentPics = Array.from(new Set(recent.map(t => t.picture).filter((p): p is string => !!p))).slice(0, 4);
       return renderTrackView(
         "Recently Played",
         "History",
         recent,
-        <Music size={40} className="text-app-text-tertiary" />,
+        <Collage pictures={recentPics} FallbackIcon={Music} iconSize={40} />,
       );
     }
 
