@@ -25,7 +25,8 @@ import { ensureAppDataDirs, YTMUSIC_CACHE_PATH, YTMUSIC_DEBUG_DIR, YTMUSIC_HOME_
 import { writeHomeSnapshotToDisk } from "./ytmusicHomeSnapshot";
 import { bumpYtMusicSearchCacheSession, clearYtMusicSearchCacheFile } from "./ytmusicSearchCache";
 import { log } from "./logger";
-import { getCachedArtworkUrl, getCachedAudioUrl } from "./ytMusicCache";
+import { getCachedArtworkUrl, getCachedAudioUrl, getAudioCacheKey, getAudioPathByKey } from "./ytMusicCache";
+import { getAudioServerPort } from "./audioServer";
 import {
   clearStoredYtMusicSession,
   loadStoredYtMusicSession,
@@ -1530,6 +1531,17 @@ export async function resolveYtMusicDirectStream(
 export async function getYtMusicPlayback(trackId: string, providerId: string): Promise<TrackPlaybackResult> {
   const videoId = providerId || trackId.replace(/^ytmusic:/, "");
   const fallbackExpiresAt = () => Date.now() + 1000 * 60 * 20;
+
+  const cacheKey = getAudioCacheKey(videoId);
+  const cachedPath = getAudioPathByKey(cacheKey);
+  if (cachedPath) {
+    return {
+      mode: "direct",
+      targetId: videoId,
+      url: `http://127.0.0.1:${getAudioServerPort()}/play?path=${encodeURIComponent(cachedPath)}`,
+      expiresAt: Date.now() + 1000 * 60 * 60 * 24 * 365,
+    };
+  }
 
   try {
     const resolved = await resolveYtMusicDirectStream(videoId);

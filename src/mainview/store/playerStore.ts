@@ -262,6 +262,7 @@ interface PlayerActions {
   loadLibrary: () => Promise<void>;
   hydrateYtMusicFromCache: () => Promise<void>;
   syncYtMusicLibrary: () => Promise<void>;
+  loadCachedPlaylist: () => Promise<void>;
   ensurePlaylistHydrated: (playlistId: string) => Promise<void>;
   addFolder: (path: string) => Promise<void>;
   removeFolder: (path: string) => Promise<void>;
@@ -642,6 +643,8 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
         items: mergePlaylists(s.library.source, s.playlists.localItems, remoteItems),
       },
     }));
+
+    void get().loadCachedPlaylist();
   },
 
   syncYtMusicLibrary: async () => {
@@ -675,6 +678,8 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
           items: mergePlaylists(s.library.source, s.playlists.localItems, remoteItems),
         },
       }));
+
+      void get().loadCachedPlaylist();
     } catch (error) {
       set((s) => ({
         library: {
@@ -684,6 +689,48 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
         },
       }));
     }
+  },
+
+  loadCachedPlaylist: async () => {
+    const { rpc, library, recentlyPlayed } = get();
+    if (!rpc) return;
+
+    try {
+      const cachedTrackIds = await rpc.request.getFullyCachedTrackIds();
+      if (!cachedTrackIds) return;
+
+      const allKnownTracks = Object.values(
+        [...library.tracks, ...recentlyPlayed].reduce((acc, t) => {
+          acc[t.id] = t;
+          return acc;
+        }, {} as Record<string, Track>)
+      );
+
+      const cachedTracks = allKnownTracks.filter((t) => cachedTrackIds.includes(t.providerId));
+
+      const cachedPlaylist: Playlist = {
+        id: "ytmusic-cached",
+        provider: "ytmusic",
+        providerId: "ytmusic-cached",
+        name: "Cached",
+        path: "ytmusic-cached",
+        editable: false,
+        trackIds: cachedTracks.map((t) => t.id),
+        tracks: cachedTracks,
+      };
+
+      set((s) => {
+        const withoutCached = s.playlists.remoteItems.filter((p) => p.id !== "ytmusic-cached");
+        const nextRemoteItems = [cachedPlaylist, ...withoutCached];
+        return {
+          playlists: {
+            ...s.playlists,
+            remoteItems: nextRemoteItems,
+            items: mergePlaylists(s.library.source, s.playlists.localItems, nextRemoteItems),
+          },
+        };
+      });
+    } catch {}
   },
 
   ensurePlaylistHydrated: async (playlistId) => {

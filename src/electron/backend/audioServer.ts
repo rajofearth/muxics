@@ -11,6 +11,7 @@ import {
   touchAudioEntry,
   warmAudioCache,
 } from "./ytMusicCache";
+import { APP_DATA_PATH } from "./paths";
 
 let allowedPaths = new Set<string>();
 let serverPort = 0;
@@ -22,6 +23,10 @@ function toComparablePath(filePath: string): string {
 
 function isPathAllowed(filePath: string): boolean {
   const resolved = toComparablePath(filePath);
+
+  if (resolved.startsWith(toComparablePath(APP_DATA_PATH))) {
+    return true;
+  }
 
   for (const allowed of allowedPaths) {
     if (resolved.startsWith(allowed)) {
@@ -186,6 +191,7 @@ async function handleYtCache(req: IncomingMessage, res: ServerResponse): Promise
 
   const key = url.searchParams.get("key");
   const sourceUrl = url.searchParams.get("source");
+  const trackId = url.searchParams.get("trackId");
   if (!key) {
     sendText(res, 400, "Missing key");
     return true;
@@ -237,7 +243,7 @@ async function handleYtCache(req: IncomingMessage, res: ServerResponse): Promise
         return true;
       }
 
-      void warmAudioCache(key, sourceUrl).catch(() => {});
+      void warmAudioCache(key, sourceUrl, trackId || undefined).catch(() => {});
 
       const headers: Record<string, string> = {
         "Access-Control-Allow-Origin": "*",

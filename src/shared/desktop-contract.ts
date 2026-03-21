@@ -171,6 +171,7 @@ export interface DesktopRequestMap {
     response: { success: boolean };
   };
   getYtMusicCacheStats: { params: void; response: CacheStatsResult };
+  getFullyCachedTrackIds: { params: void; response: string[] };
   clearYtMusicCache: { params: void; response: { success: boolean } };
   clearYtMusicMetadataCache: { params: void; response: { success: boolean } };
   addFolder: { params: { path: string }; response: { success: boolean; error?: string } };

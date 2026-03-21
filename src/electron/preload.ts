@@ -26,6 +26,8 @@ const desktopBridge: DesktopBridge = {
       ipcRenderer.invoke("desktop:request:saveSettings", params),
     getYtMusicCacheStats: () =>
       ipcRenderer.invoke("desktop:request:getYtMusicCacheStats"),
+    getFullyCachedTrackIds: () =>
+      ipcRenderer.invoke("desktop:request:getFullyCachedTrackIds"),
     clearYtMusicCache: () =>
       ipcRenderer.invoke("desktop:request:clearYtMusicCache"),
     clearYtMusicMetadataCache: () =>

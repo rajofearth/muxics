@@ -21,7 +21,7 @@ import { getDefaultMusicPath, PLAYLISTS_DIR } from "./backend/paths";
 import { scanFolders } from "./backend/scanner";
 import { formatMetadataTime, getTrackMetadata } from "./backend/metadata";
 import { getAudioServerPort, setAllowedPaths, startAudioServer } from "./backend/audioServer";
-import { clearYtMusicCache, getYtMusicCacheStats } from "./backend/ytMusicCache";
+import { clearYtMusicCache, getYtMusicCacheStats, getFullyCachedTrackIds } from "./backend/ytMusicCache";
 import { setYtMusicCacheStatsListener } from "./backend/rendererNotify";
 import { getCachedYtMusicSearch, setCachedYtMusicSearch } from "./backend/ytmusicSearchCache";
 import { listPlaylists, loadPlaylist, savePlaylist } from "./backend/playlists";
@@ -403,6 +403,7 @@ const requestHandlers: RequestHandlerMap = {
     return { success: true };
   },
   getYtMusicCacheStats: () => getYtMusicCacheStats(),
+  getFullyCachedTrackIds: () => getFullyCachedTrackIds(),
   clearYtMusicCache: () => clearYtMusicCache(),
   clearYtMusicMetadataCache: () => clearYtMusicMetadataCache(),
   addFolder: ({ path: folderPath }) => {

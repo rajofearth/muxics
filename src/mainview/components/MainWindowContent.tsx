@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import type { ReactNode } from "react";
 import type { Track, NavState, NavView, LibrarySource } from "../types";
 import type { PlayerState } from "../store/playerStore";
@@ -101,6 +102,14 @@ export function MainWindowContent({
   handlePlayAll,
   handleShufflePlay,
 }: MainWindowContentProps) {
+  useEffect(() => {
+    const handleCacheUpdate = () => {
+      void usePlayerStore.getState().loadCachedPlaylist();
+    };
+    document.addEventListener("muxics-yt-cache-stats", handleCacheUpdate);
+    return () => document.removeEventListener("muxics-yt-cache-stats", handleCacheUpdate);
+  }, []);
+
   const renderTrackView = (
     title: string,
     subtitle: string,
