@@ -88,6 +88,24 @@ function getRendererEntry(): string | null {
   return null;
 }
 
+function isMissingUpdateMetadataError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = `${error.message}\n${error.stack ?? ""}`;
+  return /latest(?:-[\w.-]+)?\.yml/i.test(message) && /(404|not found|cannot find)/i.test(message);
+}
+
+function handleUpdateCheckError(error: unknown) {
+  if (isMissingUpdateMetadataError(error)) {
+    return;
+  }
+
+  console.error("[muxics:updater] Update check failed:", error);
+  sendRendererEvent("autoUpdateStatus", { status: "error", message: error instanceof Error ? error.message : "Update error" });
+}
+
 function getAssetPath(...segments: string[]): string {
   return path.join(app.getAppPath(), ...segments);
 }
@@ -584,9 +602,7 @@ const requestHandlers: RequestHandlerMap = {
   ytmusicRemoveTrackFromPlaylist: ({ playlistId, videoId }) => removeTrackFromYtMusicPlaylist(playlistId, videoId),
   getAppVersion: () => app.getVersion(),
   checkForUpdates: () => {
-    autoUpdater.checkForUpdates().catch((err) => {
-      console.error("[muxics:updater] Check for updates failed:", err);
-    });
+    autoUpdater.checkForUpdates().catch(handleUpdateCheckError);
   },
   installUpdate: () => {
     autoUpdater.quitAndInstall(false, true);
@@ -747,12 +763,10 @@ app.whenReady().then(async () => {
       sendRendererEvent("autoUpdateStatus", { status: "downloaded", version: info.version });
     });
     autoUpdater.on("error", (err) => {
-      sendRendererEvent("autoUpdateStatus", { status: "error", message: err?.message ?? "Update error" });
+      handleUpdateCheckError(err);
     });
 
-    autoUpdater.checkForUpdatesAndNotify().catch((err) => {
-      console.error("[muxics:updater] Auto-update check failed:", err);
-    });
+    autoUpdater.checkForUpdatesAndNotify().catch(handleUpdateCheckError);
   }
 
   app.on("activate", async () => {
