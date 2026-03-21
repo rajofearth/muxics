@@ -1212,6 +1212,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
   toggleFavorite: async (trackId) => {
     const { rpc, library } = get();
     const track = [...library.localTracks, ...library.remoteTracks].find((item) => item.id === trackId);
+    const previousFavorites = new Set(get().favorites);
 
     set((s) => {
       const next = new Set(s.favorites);
@@ -1225,10 +1226,16 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
       return;
     }
 
-    if (get().favorites.has(trackId)) {
-      await rpc.request.ytmusicLike({ videoId: track.providerId });
-    } else {
-      await rpc.request.ytmusicUnlike({ videoId: track.providerId });
+    try {
+      if (get().favorites.has(trackId)) {
+        await rpc.request.ytmusicLike({ videoId: track.providerId });
+      } else {
+        await rpc.request.ytmusicUnlike({ videoId: track.providerId });
+      }
+    } catch (err) {
+      set({ favorites: previousFavorites });
+      saveFavorites(previousFavorites);
+      throw err;
     }
   },
 

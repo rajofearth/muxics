@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect, startTransition } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useShallow } from "zustand/react/shallow";
 import type { NavState, NavView, Track } from "./types";
 import { usePlayerStore } from "./store/playerStore";
@@ -100,42 +100,52 @@ export function MainWindow({
   }, [clearAuthLoginError]);
 
   const handleSourceChange = useCallback((source: "all" | "local" | "ytmusic") => {
-    startTransition(() => {
-      setLibrarySource(source);
-    });
+    setLibrarySource(source);
   }, [setLibrarySource]);
 
   const handlePrepareBridge = useCallback(() => {
     void (async () => {
       setBridgeBusy(true);
       clearAuthLoginError();
-      const result = await desktop?.request.prepareBrowserBridge();
-      setBridgeBusy(false);
+      try {
+        const result = await desktop?.request.prepareBrowserBridge();
 
-      if (!result?.success) {
-        showToast(result?.error ?? "Could not prepare the browser bridge.", "error");
-        return;
+        if (!result?.success) {
+          showToast(result?.error ?? "Could not prepare the browser bridge.", "error");
+          return;
+        }
+
+        setBridgeExtensionId(result.extensionId);
+        setBridgeFolderPath(result.folderPath ?? null);
+        setBridgeZipPath(result.zipPath ?? null);
+        showToast("Browser bridge files are ready.");
+      } catch (err) {
+        console.error("handlePrepareBridge failed:", err);
+        showToast(err instanceof Error ? err.message : "Failed to prepare the browser bridge.", "error");
+      } finally {
+        setBridgeBusy(false);
       }
-
-      setBridgeExtensionId(result.extensionId);
-      setBridgeFolderPath(result.folderPath ?? null);
-      setBridgeZipPath(result.zipPath ?? null);
-      showToast("Browser bridge files are ready.");
     })();
   }, [clearAuthLoginError, desktop]);
 
   const handleRefreshBridge = useCallback(() => {
     void (async () => {
       setBridgeBusy(true);
-      await loadAuthStatus();
-      setBridgeBusy(false);
+      try {
+        await loadAuthStatus();
 
-      if (usePlayerStore.getState().auth.loggedIn) {
-        showToast("YouTube Music is connected.");
-        setShowBridgeDialog(false);
-        await syncYtMusicLibrary();
-      } else {
-        showToast("No browser session received yet.", "info");
+        if (usePlayerStore.getState().auth.loggedIn) {
+          showToast("YouTube Music is connected.");
+          setShowBridgeDialog(false);
+          await syncYtMusicLibrary();
+        } else {
+          showToast("No browser session received yet.", "info");
+        }
+      } catch (err) {
+        console.error("handleRefreshBridge failed:", err);
+        showToast(err instanceof Error ? err.message : "Failed to refresh bridge status.", "error");
+      } finally {
+        setBridgeBusy(false);
       }
     })();
   }, [loadAuthStatus, syncYtMusicLibrary]);

@@ -51,7 +51,12 @@ export function YtMusicLoginDialog({
     }
 
     startedCodesRef.current.add(pending.userCode);
-    onOpenExternalRef.current(pending.verificationUrl);
+    try {
+      const parsed = new URL(pending.verificationUrl);
+      if (parsed.protocol === "https:") {
+        onOpenExternalRef.current(pending.verificationUrl);
+      }
+    } catch {}
     onAwaitCompletionRef.current();
   }, [pending.userCode, pending.verificationUrl]);
 
@@ -105,7 +110,14 @@ export function YtMusicLoginDialog({
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={() => onOpenExternal(pending.verificationUrl)}
+            onClick={() => {
+              try {
+                const parsed = new URL(pending.verificationUrl);
+                if (parsed.protocol === "https:") {
+                  onOpenExternal(pending.verificationUrl);
+                }
+              } catch {}
+            }}
             className="inline-flex items-center gap-2 rounded-xl bg-app-text-primary px-4 py-2 text-[13px] font-medium text-app-bg hover:opacity-90"
           >
             <ExternalLink size={14} />
@@ -113,7 +125,11 @@ export function YtMusicLoginDialog({
           </button>
           <button
             type="button"
-            onClick={() => void navigator.clipboard.writeText(pending.userCode)}
+            onClick={() => {
+              navigator.clipboard.writeText(pending.userCode).catch((err) => {
+                console.error("Failed to copy code to clipboard:", err);
+              });
+            }}
             className="inline-flex items-center gap-2 rounded-xl bg-app-elevated px-4 py-2 text-[13px] text-app-text-primary hover:bg-app-active"
           >
             <Copy size={14} />
