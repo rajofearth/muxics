@@ -1,5 +1,7 @@
-import { Minus, Square, X } from "lucide-react";
+import { LogIn, LogOut, Minus, RefreshCw, Square, X } from "lucide-react";
 import type { DesktopBridge } from "../../shared/desktop-contract";
+import type { AuthStatus, LibrarySource } from "../types";
+import { LibrarySourceSwitch } from "./LibrarySourceSwitch";
 
 type TitleBarSend = Pick<
   DesktopBridge["send"],
@@ -11,6 +13,12 @@ type TitleBarProps = {
   title?: string;
   subtitle?: string;
   compact?: boolean;
+  auth?: AuthStatus;
+  source?: LibrarySource;
+  onSourceChange?: (source: LibrarySource) => void;
+  onLogin?: () => void;
+  onLogout?: () => void;
+  onSync?: () => void;
 };
 
 function WindowControls({ send }: { send?: TitleBarSend }) {
@@ -49,6 +57,12 @@ export function TitleBar({
   title = "Muxics",
   subtitle,
   compact = false,
+  auth,
+  source,
+  onSourceChange,
+  onLogin,
+  onLogout,
+  onSync,
 }: TitleBarProps) {
   const hClass = compact ? "h-8" : "h-10";
   const send = desktop?.send;
@@ -77,7 +91,57 @@ export function TitleBar({
         </div>
       </div>
 
-      <div className="app-region-no-drag">
+      <div className="app-region-no-drag flex items-center">
+        <div className="hidden sm:flex items-center gap-2 pr-2">
+          {source && onSourceChange ? (
+            <LibrarySourceSwitch value={source} onChange={onSourceChange} />
+          ) : null}
+          {auth?.loggedIn ? (
+            <>
+              <button
+                type="button"
+                onClick={() => onSync?.()}
+                className="h-7 px-2.5 rounded-lg text-[11px] text-app-text-secondary hover:text-app-text-primary hover:bg-app-hover inline-flex items-center gap-1.5"
+                aria-label="Sync YouTube Music"
+              >
+                <RefreshCw size={12} />
+                Sync
+              </button>
+              <div className="h-7 px-2.5 rounded-lg bg-app-elevated text-[11px] text-app-text-primary inline-flex items-center gap-2">
+                {auth.avatarUrl ? (
+                  <img
+                    src={auth.avatarUrl}
+                    alt=""
+                    className="w-4 h-4 rounded-full object-cover"
+                    onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                  />
+                ) : (
+                  <div className="w-4 h-4 rounded-full bg-app-border-strong" />
+                )}
+                <span className="max-w-32 truncate">{auth.profileName ?? "YouTube Music"}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => onLogout?.()}
+                className="h-7 px-2.5 rounded-lg text-[11px] text-app-text-secondary hover:text-app-text-primary hover:bg-app-hover inline-flex items-center gap-1.5"
+                aria-label="Sign out of YouTube Music"
+              >
+                <LogOut size={12} />
+                Logout
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={() => onLogin?.()}
+              className="h-7 px-2.5 rounded-lg text-[11px] text-app-text-secondary hover:text-app-text-primary hover:bg-app-hover inline-flex items-center gap-1.5"
+              aria-label="Sign in to YouTube Music"
+            >
+              <LogIn size={12} />
+              Sign In
+            </button>
+          )}
+        </div>
         <WindowControls send={send} />
       </div>
     </header>

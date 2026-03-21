@@ -1,3 +1,7 @@
+export type MusicProvider = "local" | "ytmusic";
+export type LibrarySource = "all" | "local" | "ytmusic";
+export type PlaybackMode = "direct" | "hidden" | "unavailable";
+
 export interface ScannedFileResult {
   path: string;
   ext: string;
@@ -13,15 +17,146 @@ export interface TrackMetadataResult {
   picture?: string;
 }
 
+export interface TrackPlaybackResult {
+  mode: PlaybackMode;
+  targetId?: string;
+  url?: string;
+  expiresAt?: number;
+  loudnessDb?: number;
+  error?: string;
+}
+
+export interface CacheStatsResult {
+  usageBytes: number;
+  limitBytes: number;
+}
+
+export interface TrackResult {
+  id: string;
+  provider: MusicProvider;
+  providerId: string;
+  path?: string;
+  title: string;
+  artist: string;
+  album: string;
+  time: string;
+  duration: number;
+  genre: string;
+  picture?: string;
+  sourceLabel?: string;
+  playback?: TrackPlaybackResult;
+}
+
 export interface PlaylistEntryResult {
-  path: string;
+  id: string;
+  provider: MusicProvider;
+  providerId: string;
+  path?: string;
   title?: string;
 }
 
 export interface PlaylistResult {
+  id: string;
+  provider: MusicProvider;
+  providerId: string;
   name: string;
-  path: string;
+  path?: string;
+  editable?: boolean;
   entries: PlaylistEntryResult[];
+  tracks?: TrackResult[];
+  /** From YT Music subtitle (e.g. "48 songs") when full track list is not loaded yet */
+  listedItemCount?: number;
+}
+
+export interface AuthStatusResult {
+  loggedIn: boolean;
+  provider: "ytmusic";
+  profileName?: string;
+  avatarUrl?: string;
+  lastSyncedAt?: number;
+  persistent: boolean;
+  error?: string;
+}
+
+export interface PendingYtMusicLoginResult {
+  kind: "pending_verification";
+  verificationUrl: string;
+  userCode: string;
+  expiresAt: number;
+  pollIntervalMs: number;
+}
+
+export interface CompletedYtMusicLoginResult {
+  kind: "completed";
+  auth: AuthStatusResult;
+}
+
+export interface AlreadyLoggedInYtMusicLoginResult {
+  kind: "already_logged_in";
+  auth: AuthStatusResult;
+}
+
+export interface ErrorYtMusicLoginResult {
+  kind: "error";
+  message: string;
+}
+
+export interface ImportYtMusicSessionResult {
+  success: boolean;
+  auth?: AuthStatusResult;
+  error?: string;
+}
+
+export interface ImportYtMusicSessionParams {
+  cookie: string;
+  cookieNames?: string[];
+  sourceUrl?: string;
+}
+
+export interface BrowserBridgeBundleResult {
+  success: boolean;
+  extensionId: string;
+  folderPath?: string;
+  zipPath?: string;
+  error?: string;
+}
+
+export interface BrowserBridgeHostInstallResult {
+  success: boolean;
+  extensionId: string;
+  hostName: string;
+  error?: string;
+}
+
+export type AuthLoginStartResult =
+  | PendingYtMusicLoginResult
+  | CompletedYtMusicLoginResult
+  | AlreadyLoggedInYtMusicLoginResult
+  | ErrorYtMusicLoginResult;
+
+export type AuthLoginCompleteResult =
+  | CompletedYtMusicLoginResult
+  | ErrorYtMusicLoginResult;
+
+export interface YTMusicLibrarySyncResult {
+  tracks: TrackResult[];
+  playlists: PlaylistResult[];
+  lastSyncedAt: number;
+}
+
+export interface YTMusicHomeResult {
+  tracks: TrackResult[];
+}
+
+export interface DesktopSettings {
+  ytmusicCacheLimitBytes: number;
+  ytmusicUseLibraryDiskCache: boolean;
+  ytmusicHomeSnapshotEnabled: boolean;
+  ytmusicSearchCacheEnabled: boolean;
+  ytmusicSearchCacheTtlMinutes: number;
+  ytmusicSearchCacheMaxEntries: number;
+  /** Verbose YT library sync: on-disk JSON dumps + extraction stats (dev / troubleshooting). */
+  ytmusicLibrarySyncDebug: boolean;
 }
 
 export interface DesktopRequestMap {
@@ -30,6 +165,14 @@ export interface DesktopRequestMap {
   getTrackMetadata: { params: { path: string }; response: TrackMetadataResult | null };
   getPlaybackUrl: { params: { path: string }; response: string };
   getWatchFolders: { params: void; response: string[] };
+  getSettings: { params: void; response: DesktopSettings };
+  saveSettings: {
+    params: Partial<DesktopSettings>;
+    response: { success: boolean };
+  };
+  getYtMusicCacheStats: { params: void; response: CacheStatsResult };
+  clearYtMusicCache: { params: void; response: { success: boolean } };
+  clearYtMusicMetadataCache: { params: void; response: { success: boolean } };
   addFolder: { params: { path: string }; response: { success: boolean; error?: string } };
   validateFolder: {
     params: { path: string };
@@ -48,6 +191,43 @@ export interface DesktopRequestMap {
   importPlaylist: { params: { path: string }; response: boolean };
   exportPlaylist: { params: { name: string; entries: string[] }; response: string };
   getPlatform: { params: void; response: string };
+  authGetStatus: { params: void; response: AuthStatusResult };
+  authLogin: { params: void; response: AuthLoginStartResult };
+  authCompleteLogin: { params: void; response: AuthLoginCompleteResult };
+  authCancelLogin: { params: void; response: { success: boolean } };
+  authImportSession: { params: ImportYtMusicSessionParams; response: ImportYtMusicSessionResult };
+  authLogout: { params: void; response: AuthStatusResult };
+  openExternalUrl: { params: { url: string }; response: { success: boolean } };
+  prepareBrowserBridge: { params: void; response: BrowserBridgeBundleResult };
+  installBrowserBridgeHost: { params: void; response: BrowserBridgeHostInstallResult };
+  openPath: { params: { path: string }; response: { success: boolean } };
+  ytmusicSyncLibrary: { params: void; response: YTMusicLibrarySyncResult };
+  ytmusicLoadCachedLibrary: { params: void; response: YTMusicLibrarySyncResult | null };
+  ytmusicSearch: { params: { query: string }; response: TrackResult[] };
+  ytmusicGetPlaylist: { params: { playlistId: string }; response: PlaylistResult | null };
+  ytmusicGetPlayback: { params: { trackId: string; providerId: string }; response: TrackPlaybackResult };
+  ytmusicLike: { params: { videoId: string }; response: { success: boolean } };
+  ytmusicUnlike: { params: { videoId: string }; response: { success: boolean } };
+  ytmusicCreatePlaylist: {
+    params: { name: string; trackProviderIds?: string[] };
+    response: { success: boolean; playlistId?: string };
+  };
+  ytmusicRenamePlaylist: {
+    params: { playlistId: string; name: string };
+    response: { success: boolean };
+  };
+  ytmusicDeletePlaylist: {
+    params: { playlistId: string };
+    response: { success: boolean };
+  };
+  ytmusicAddTrackToPlaylist: {
+    params: { playlistId: string; videoId: string };
+    response: { success: boolean };
+  };
+  ytmusicRemoveTrackFromPlaylist: {
+    params: { playlistId: string; videoId: string };
+    response: { success: boolean };
+  };
 }
 
 export interface DesktopMessageMap {
@@ -64,6 +244,7 @@ export interface DesktopMessageMap {
 export interface DesktopEventMap {
   contextMenuAction: { action: string };
   menuAction: { action: string };
+  ytmusicCacheStatsUpdated: CacheStatsResult;
 }
 
 type RequestMethods = {

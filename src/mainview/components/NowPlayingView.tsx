@@ -10,7 +10,6 @@ import { showToast } from "./Toast";
 type NowPlayingViewProps = {
   currentTrack: Track;
   isPlaying: boolean;
-  currentTime: number;
   volume: number;
   shuffle: boolean;
   repeat: RepeatMode;
@@ -27,7 +26,6 @@ type NowPlayingViewProps = {
 export const NowPlayingView = memo(function NowPlayingView({
   currentTrack,
   isPlaying,
-  currentTime,
   volume,
   shuffle,
   repeat,
@@ -40,6 +38,7 @@ export const NowPlayingView = memo(function NowPlayingView({
   onToggleShuffle,
   onCycleRepeat,
 }: NowPlayingViewProps) {
+  const currentTime = usePlayerStore((s) => s.player.currentTime);
   const duration = currentTrack.duration ?? 0;
   const RepeatIcon = repeat === "one" ? Repeat1 : Repeat;
   const toggleFavorite = usePlayerStore((s) => s.toggleFavorite);

@@ -1,3 +1,14 @@
+import type { Playlist } from "./types";
+
+/**
+ * Returns the maximum track count hint for a playlist.
+ * For partially-loaded remote playlists, the server-reported item count or
+ * hydrated tracks length may be larger than the local trackIds array.
+ */
+export function playlistVisibleTrackCount(pl: Playlist): number {
+  return Math.max(pl.trackIds.length, pl.listedItemCount ?? 0, pl.tracks?.length ?? 0);
+}
+
 export const parseTime = (timeStr: string): number => {
   const parts = timeStr.split(":").map(Number);
   if (parts.length === 3) return (parts[0] ?? 0) * 3600 + (parts[1] ?? 0) * 60 + (parts[2] ?? 0);

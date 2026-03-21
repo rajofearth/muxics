@@ -2,6 +2,7 @@ import { memo, useCallback } from "react";
 import { Shuffle, Repeat, Repeat1, SkipBack, SkipForward, Minimize2, LayoutList, Heart } from "lucide-react";
 import type { Track, RepeatMode } from "../types";
 import { usePlayerStore } from "../store/playerStore";
+import { formatTime } from "../utils";
 import { Scrubber } from "./Scrubber";
 import { VolumeSlider } from "./VolumeSlider";
 import { PlayPauseButton } from "./PlayPauseButton";
@@ -10,7 +11,6 @@ import { showToast } from "./Toast";
 type PlayerBarProps = {
   currentTrack: Track | null;
   isPlaying: boolean;
-  currentTime: number;
   volume: number;
   shuffle: boolean;
   repeat: RepeatMode;
@@ -29,7 +29,6 @@ type PlayerBarProps = {
 export const PlayerBar = memo(function PlayerBar({
   currentTrack,
   isPlaying,
-  currentTime,
   volume,
   shuffle,
   repeat,
@@ -44,6 +43,7 @@ export const PlayerBar = memo(function PlayerBar({
   onNavigateToQueue,
   onNavigateToNowPlaying,
 }: PlayerBarProps) {
+  const currentTime = usePlayerStore((s) => s.player.currentTime);
   const duration = currentTrack?.duration ?? 0;
   const RepeatIcon = repeat === "one" ? Repeat1 : Repeat;
   const toggleFavorite = usePlayerStore((s) => s.toggleFavorite);
@@ -149,7 +149,7 @@ export const PlayerBar = memo(function PlayerBar({
 
         <div className="w-[30%] flex items-center justify-end gap-3">
           <div className="text-[11px] text-app-text-tertiary tabular-nums select-none whitespace-nowrap" aria-live="off">
-            {currentTrack ? `${fmtTime(currentTime)} / ${fmtTime(duration)}` : ""}
+            {currentTrack ? `${formatTime(currentTime)} / ${formatTime(duration)}` : ""}
           </div>
           <VolumeSlider value={volume} onChange={onVolumeChange} />
           {onNavigateToQueue && (
@@ -178,8 +178,3 @@ export const PlayerBar = memo(function PlayerBar({
   );
 });
 
-function fmtTime(seconds: number): string {
-  if (!isFinite(seconds) || seconds < 0) return "0:00";
-  const s = Math.floor(seconds);
-  return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
-}

@@ -7,7 +7,7 @@ function getConfigRoot(): string {
   const home = os.homedir();
 
   if (process.platform === "win32") {
-    return process.env.APPDATA ?? path.join(home, "AppData", "Roaming");
+    return process.env["APPDATA"] ?? path.join(home, "AppData", "Roaming");
   }
 
   if (process.platform === "darwin") {
@@ -33,12 +33,22 @@ function resolveAppDataPath(): string {
 export const APP_DATA_PATH = resolveAppDataPath();
 export const SETTINGS_PATH = path.join(APP_DATA_PATH, "settings.json");
 export const PLAYLISTS_DIR = path.join(APP_DATA_PATH, "playlists");
+export const YTMUSIC_DIR = path.join(APP_DATA_PATH, "ytmusic");
+export const YTMUSIC_SESSION_PATH = path.join(YTMUSIC_DIR, "session.json");
+export const YTMUSIC_CACHE_PATH = path.join(YTMUSIC_DIR, "cache.json");
+export const YTMUSIC_HOME_SNAPSHOT_PATH = path.join(YTMUSIC_DIR, "home-snapshot.json");
+export const YTMUSIC_SEARCH_CACHE_PATH = path.join(YTMUSIC_DIR, "search-cache.json");
+export const YTMUSIC_MEDIA_INDEX_PATH = path.join(YTMUSIC_DIR, "media-index.json");
+export const YTMUSIC_DEBUG_DIR = path.join(YTMUSIC_DIR, "debug");
+export const YTMUSIC_TOOLS_DIR = path.join(YTMUSIC_DIR, "tools");
+export const YTMUSIC_AUDIO_CACHE_DIR = path.join(YTMUSIC_DIR, "audio");
+export const YTMUSIC_ARTWORK_CACHE_DIR = path.join(YTMUSIC_DIR, "artwork");
 
 export function getDefaultMusicPath(): string {
   const home = os.homedir();
 
   if (process.platform === "win32") {
-    const userProfile = process.env.USERPROFILE ?? home;
+    const userProfile = process.env["USERPROFILE"] ?? home;
     return path.join(userProfile, "Music");
   }
 
@@ -46,11 +56,11 @@ export function getDefaultMusicPath(): string {
 }
 
 export function ensureAppDataDirs(): void {
-  if (!fs.existsSync(APP_DATA_PATH)) {
-    fs.mkdirSync(APP_DATA_PATH, { recursive: true });
-  }
-
-  if (!fs.existsSync(PLAYLISTS_DIR)) {
-    fs.mkdirSync(PLAYLISTS_DIR, { recursive: true });
-  }
+  fs.mkdirSync(APP_DATA_PATH, { recursive: true });
+  fs.mkdirSync(PLAYLISTS_DIR, { recursive: true });
+  fs.mkdirSync(YTMUSIC_DIR, { recursive: true });
+  fs.mkdirSync(YTMUSIC_DEBUG_DIR, { recursive: true });
+  fs.mkdirSync(YTMUSIC_TOOLS_DIR, { recursive: true });
+  fs.mkdirSync(YTMUSIC_AUDIO_CACHE_DIR, { recursive: true });
+  fs.mkdirSync(YTMUSIC_ARTWORK_CACHE_DIR, { recursive: true });
 }

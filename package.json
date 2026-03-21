@@ -1,23 +1,26 @@
 {
   "type": "module",
   "name": "muxics",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "author": "Rajofearth <rajofearth@proton.me>",
   "description": "A modern music player built with Electron",
-  "packageManager": "pnpm@10.31.0",
+  "packageManager": "pnpm@10.32.1",
   "main": "dist-electron/main.cjs",
   "scripts": {
     "dev": "concurrently -k \"vite --port 5173\" \"tsup --config tsup.electron.config.ts --watch\" \"cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .\"",
     "build": "vite build && tsup --config tsup.electron.config.ts",
-    "package": "electron-builder --config electron-builder.yml"
+    "typecheck": "tsc --noEmit",
+    "package": "pnpm run build && electron-builder --config electron-builder.yml"
   },
   "dependencies": {
+    "@tanstack/react-virtual": "^3.13.23",
     "colorthief": "^2.7.0",
     "ieee754": "latest",
     "lucide-react": "latest",
     "music-metadata": "^11.12.1",
     "react": "latest",
     "react-dom": "latest",
+    "youtubei.js": "^17.0.1",
     "zustand": "^5.0.11"
   },
   "devDependencies": {

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   Music,
   Play,
@@ -23,7 +24,6 @@ type MiniPlayerProps = {
   currentTrack: Track | null;
   isPlaying: boolean;
   playQueue: Track[];
-  currentTime: number;
   volume: number;
   onPlayPause: () => void;
   onNext: () => void;
@@ -35,6 +35,8 @@ type MiniPlayerProps = {
 
 const MIN_WIDTH = 380;
 const MIN_HEIGHT = 400;
+const MINI_QUEUE_ROW_HEIGHT = 46;
+const MINI_QUEUE_VIRTUAL_THRESHOLD = 28;
 
 function useResizeToContent(
   desktop: DesktopBridge,
@@ -89,7 +91,6 @@ export function MiniPlayer({
   currentTrack,
   isPlaying,
   playQueue,
-  currentTime,
   volume,
   onPlayPause,
   onNext,
@@ -98,12 +99,42 @@ export function MiniPlayer({
   onVolumeChange,
   onTrackSelect,
 }: MiniPlayerProps) {
+  const currentTime = usePlayerStore((s) => s.player.currentTime);
   const duration = currentTrack?.duration ?? 0;
   const containerRef = useResizeToContent(desktop, true, playQueue.length);
   const toggleFavorite = usePlayerStore((s) => s.toggleFavorite);
   const isFav = usePlayerStore((s) =>
     currentTrack ? s.favorites.has(currentTrack.id) : false,
   );
+
+  const queueScrollRef = useRef<HTMLDivElement>(null);
+  const playQueueRef = useRef(playQueue);
+  playQueueRef.current = playQueue;
+  const currentTrackIdRef = useRef(currentTrack?.id);
+  currentTrackIdRef.current = currentTrack?.id;
+  const onTrackSelectRef = useRef(onTrackSelect);
+  onTrackSelectRef.current = onTrackSelect;
+  const onPlayPauseRef = useRef(onPlayPause);
+  onPlayPauseRef.current = onPlayPause;
+
+  const useQueueVirt = playQueue.length >= MINI_QUEUE_VIRTUAL_THRESHOLD;
+  const queueVirtualizer = useVirtualizer({
+    count: useQueueVirt ? playQueue.length : 0,
+    getScrollElement: () => queueScrollRef.current,
+    estimateSize: () => MINI_QUEUE_ROW_HEIGHT,
+    overscan: 12,
+  });
+
+  const handleMiniQueueClick = useCallback((index: number) => {
+    const q = playQueueRef.current;
+    const track = q[index];
+    if (!track) return;
+    if (track.id === currentTrackIdRef.current) {
+      onPlayPauseRef.current();
+    } else {
+      onTrackSelectRef.current(track, q);
+    }
+  }, []);
 
   return (
     <div
@@ -227,11 +258,65 @@ export function MiniPlayer({
           </button>
         </div>
 
-        <div className="h-[380px] overflow-y-auto px-2 pb-2 space-y-0.5">
+        <div
+          ref={queueScrollRef}
+          className="h-[380px] overflow-y-auto px-2 pb-2 space-y-0.5 min-h-0"
+        >
           {playQueue.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-app-text-tertiary gap-2">
               <ListMusic size={32} strokeWidth={1} className="opacity-30" />
               <div className="text-[12px]">Queue is empty</div>
+            </div>
+          ) : useQueueVirt ? (
+            <div
+              className="relative w-full"
+              style={{ height: `${queueVirtualizer.getTotalSize()}px` }}
+            >
+              {queueVirtualizer.getVirtualItems().map((vi) => {
+                const track = playQueue[vi.index];
+                const isActive = track.id === currentTrack?.id;
+                return (
+                  <div
+                    key={`${track.id}-mini-${vi.index}`}
+                    className="absolute top-0 left-0 w-full px-0"
+                    style={{ transform: `translateY(${vi.start}px)` }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => handleMiniQueueClick(vi.index)}
+                      className={`w-full flex items-center justify-between p-2.5 rounded-lg text-left transition-all ${
+                        isActive ? "bg-app-active" : "hover:bg-app-hover"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <span
+                          className={`w-5 text-[11px] text-right shrink-0 tabular-nums ${isActive ? "text-app-accent" : "text-app-text-tertiary"}`}
+                        >
+                          {isActive ? (
+                            <Volume2
+                              size={12}
+                              className={isPlaying ? "animate-pulse-soft" : ""}
+                            />
+                          ) : (
+                            vi.index + 1
+                          )}
+                        </span>
+                        <span
+                          className={`text-[13px] truncate ${isActive ? "text-app-accent font-medium" : "text-app-text-primary"}`}
+                        >
+                          {track.title}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 text-[11px] text-app-text-tertiary shrink-0 ml-2">
+                        <span className="truncate max-w-[100px]">
+                          {track.artist}
+                        </span>
+                        <span className="tabular-nums">{track.time}</span>
+                      </div>
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           ) : (
             playQueue.map((track, index) => {
@@ -239,9 +324,8 @@ export function MiniPlayer({
               return (
                 <button
                   key={`${track.id}-mini-${index}`}
-                  onClick={() =>
-                    isActive ? onPlayPause() : onTrackSelect(track, playQueue)
-                  }
+                  type="button"
+                  onClick={() => handleMiniQueueClick(index)}
                   className={`w-full flex items-center justify-between p-2.5 rounded-lg text-left transition-all ${
                     isActive ? "bg-app-active" : "hover:bg-app-hover"
                   }`}

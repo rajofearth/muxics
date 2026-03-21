@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState, useEffect } from "react";
 import { createPortal } from "react-dom";
+import { useShallow } from "zustand/react/shallow";
 import { Plus, Check, Trash2, LayoutList, ListMusic, ListEnd, Heart } from "lucide-react";
 import type { Track } from "../types";
 import { usePlayerStore } from "../store/playerStore";
@@ -14,7 +15,25 @@ type TrackContextMenuProps = {
 };
 
 export function TrackContextMenu({ x, y, track, onClose, playlistId }: TrackContextMenuProps) {
-  const { playlists, addTrackToPlaylist, removeTrackFromPlaylist, playNext, addToQueue, toggleFavorite, favorites } = usePlayerStore();
+  const {
+    playlists,
+    addTrackToPlaylist,
+    removeTrackFromPlaylist,
+    playNext,
+    addToQueue,
+    toggleFavorite,
+    favorites,
+  } = usePlayerStore(
+    useShallow((s) => ({
+      playlists: s.playlists,
+      addTrackToPlaylist: s.addTrackToPlaylist,
+      removeTrackFromPlaylist: s.removeTrackFromPlaylist,
+      playNext: s.playNext,
+      addToQueue: s.addToQueue,
+      toggleFavorite: s.toggleFavorite,
+      favorites: s.favorites,
+    })),
+  );
   const menuRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ x, y });
   const [showPlaylists, setShowPlaylists] = useState(false);
@@ -96,7 +115,7 @@ export function TrackContextMenu({ x, y, track, onClose, playlistId }: TrackCont
             <div className="px-3 py-2 text-[12px] text-app-text-tertiary">No playlists</div>
           ) : (
             playlists.items.map((pl) => {
-              const isInPlaylist = pl.trackIds.includes(track.path);
+              const isInPlaylist = pl.trackIds.includes(track.id);
               return (
                 <button
                   key={pl.id}
@@ -130,7 +149,7 @@ export function TrackContextMenu({ x, y, track, onClose, playlistId }: TrackCont
           <button
             role="menuitem"
             onClick={async () => {
-              await removeTrackFromPlaylist(playlistId, track.path);
+              await removeTrackFromPlaylist(playlistId, track.id);
               showToast("Removed from playlist", "info");
               onClose();
             }}

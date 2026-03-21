@@ -67,9 +67,14 @@ function parsePLS(content: string, baseDir: string): PlaylistEntry[] {
     }
   }
 
-  return files
-    .map((filePath, index) => (filePath ? { path: filePath, title: titles[index] } : null))
-    .filter((entry): entry is PlaylistEntry => entry !== null);
+  const entries: PlaylistEntry[] = [];
+  for (let index = 0; index < files.length; index++) {
+    const filePath = files[index];
+    if (filePath) {
+      entries.push({ path: filePath, title: titles[index] });
+    }
+  }
+  return entries;
 }
 
 export function loadPlaylist(filePath: string): Playlist | null {

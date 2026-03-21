@@ -23,7 +23,12 @@ export default function App({ desktop }: AppProps) {
   const [windowMode, setWindowMode] = useState<"main" | "mini">("main");
   const initRef = useRef(false);
 
-  const { setRpc, loadLibrary, loadPlaylists, player } = usePlayerStore();
+  const setRpc = usePlayerStore((s) => s.setRpc);
+  const loadLibrary = usePlayerStore((s) => s.loadLibrary);
+  const loadPlaylists = usePlayerStore((s) => s.loadPlaylists);
+  const loadAuthStatus = usePlayerStore((s) => s.loadAuthStatus);
+  const hydrateYtMusicFromCache = usePlayerStore((s) => s.hydrateYtMusicFromCache);
+  const syncYtMusicLibrary = usePlayerStore((s) => s.syncYtMusicLibrary);
   const playTrack = usePlayerStore((s) => s.playTrack);
   const togglePlay = usePlayerStore((s) => s.togglePlay);
   const setVolume = usePlayerStore((s) => s.setVolume);
@@ -31,6 +36,12 @@ export default function App({ desktop }: AppProps) {
   const handlePrev = usePlayerStore((s) => s.handlePrev);
   const toggleShuffle = usePlayerStore((s) => s.toggleShuffle);
   const cycleRepeat = usePlayerStore((s) => s.cycleRepeat);
+  const currentTrack = usePlayerStore((s) => s.player.currentTrack);
+  const isPlaying = usePlayerStore((s) => s.player.isPlaying);
+  const playQueue = usePlayerStore((s) => s.player.queue);
+  const volume = usePlayerStore((s) => s.player.volume);
+  const shuffle = usePlayerStore((s) => s.player.shuffle);
+  const repeat = usePlayerStore((s) => s.player.repeat);
 
   const { analyserRef, analyserReady, seek } = useAudioEngine();
   useThemeFromArt();
@@ -45,22 +56,32 @@ export default function App({ desktop }: AppProps) {
   useEffect(() => {
     if (!initRef.current && rpcReady) {
       initRef.current = true;
-      loadLibrary();
-      loadPlaylists();
+      void (async () => {
+        await loadAuthStatus();
+        const loggedIn = usePlayerStore.getState().auth.loggedIn;
+        await Promise.all([
+          loadLibrary(),
+          loadPlaylists(),
+          ...(loggedIn ? [hydrateYtMusicFromCache()] : []),
+        ]);
+        if (loggedIn) {
+          void syncYtMusicLibrary();
+        }
+      })();
     }
-  }, [rpcReady, loadLibrary, loadPlaylists]);
+  }, [rpcReady, loadAuthStatus, loadLibrary, loadPlaylists, hydrateYtMusicFromCache, syncYtMusicLibrary]);
 
   useEffect(() => {
-    if (player.currentTrack) {
+    if (currentTrack) {
       desktop.send.updateNowPlaying({
-        title: player.currentTrack.title,
-        artist: player.currentTrack.artist,
-        isPlaying: player.isPlaying,
+        title: currentTrack.title,
+        artist: currentTrack.artist,
+        isPlaying,
       });
     } else {
       desktop.send.clearNowPlaying();
     }
-  }, [desktop, player.currentTrack?.id, player.isPlaying]);
+  }, [desktop, currentTrack?.id, currentTrack?.title, currentTrack?.artist, isPlaying]);
 
   const switchToMiniRef = useRef<(() => void) | null>(null);
   const switchToMainRef = useRef<(() => void) | null>(null);
@@ -125,11 +146,10 @@ export default function App({ desktop }: AppProps) {
           <MiniPlayer
             desktop={desktop}
             onExpandToMain={switchToMain}
-            currentTrack={player.currentTrack}
-            isPlaying={player.isPlaying}
-            playQueue={player.queue}
-            currentTime={player.currentTime}
-            volume={player.volume}
+            currentTrack={currentTrack}
+            isPlaying={isPlaying}
+            playQueue={playQueue}
+            volume={volume}
             onPlayPause={togglePlay}
             onNext={handleNext}
             onPrev={handlePrev}
@@ -143,13 +163,12 @@ export default function App({ desktop }: AppProps) {
           <MainWindow
             desktop={desktop}
             onToggleMini={switchToMini}
-            currentTrack={player.currentTrack}
-            isPlaying={player.isPlaying}
-            playQueue={player.queue}
-            currentTime={player.currentTime}
-            volume={player.volume}
-            shuffle={player.shuffle}
-            repeat={player.repeat}
+            currentTrack={currentTrack}
+            isPlaying={isPlaying}
+            playQueue={playQueue}
+            volume={volume}
+            shuffle={shuffle}
+            repeat={repeat}
             onPlayTrack={(track, queue) => playTrack(track, queue)}
             onPlayPause={togglePlay}
             onNext={handleNext}

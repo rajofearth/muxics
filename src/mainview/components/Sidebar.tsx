@@ -11,8 +11,10 @@ import {
   LayoutList,
   Heart,
   Music,
+  Settings,
 } from "lucide-react";
 import type { NavState, NavView, Playlist } from "../types";
+import { playlistVisibleTrackCount } from "../utils";
 import { usePlayerStore } from "../store/playerStore";
 import { CreatePlaylistModal } from "./CreatePlaylistModal";
 import { EqBars } from "./EqBars";
@@ -45,6 +47,7 @@ export const Sidebar = memo(function Sidebar({ navState, playlists, onNavigate }
   const MANAGE_ITEMS: { id: NavView; icon: typeof FolderOpen; label: string }[] = [
     { id: "playlists", icon: ListMusic, label: "All Playlists" },
     { id: "folders", icon: FolderOpen, label: "Folders" },
+    { id: "settings", icon: Settings, label: "Settings" },
   ];
 
   const NavButton = ({ id, icon: Icon, label, count }: { id: NavView; icon: typeof Library; label: string; count?: number }) => {
@@ -123,7 +126,9 @@ export const Sidebar = memo(function Sidebar({ navState, playlists, onNavigate }
                   }`}
                 >
                   <span className="truncate flex-1">{pl.name}</span>
-                  <span className="text-[10px] text-app-text-tertiary tabular-nums shrink-0">{pl.trackIds.length}</span>
+                  <span className="text-[10px] text-app-text-tertiary tabular-nums shrink-0">
+                    {playlistVisibleTrackCount(pl)}
+                  </span>
                 </button>
               );
             })}
