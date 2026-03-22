@@ -124,8 +124,10 @@ jobs:
             artifacts/latest-linux-arm64.yml
           if-no-files-found: error
 
-  build-windows-x64:
-    name: Windows (x64)
+  # Single Windows job builds x64 + arm64 in one electron-builder run so `latest.yml`
+  # is generated and published once (avoids parallel jobs racing on the same manifest).
+  build-windows:
+    name: Windows (x64 & arm64)
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6
@@ -143,50 +145,15 @@ jobs:
       - name: Build web + electron bundles
         run: pnpm run build
 
-      - name: Package (windows x64)
-        run: pnpm exec electron-builder --config electron-builder.yml --publish always --win --x64
+      - name: Package (windows x64 & arm64)
+        run: pnpm exec electron-builder --config electron-builder.yml --publish always --win --x64 --arm64
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: windows-x64
-          compression-level: 0
-          path: |
-            artifacts/Muxics-*.exe
-            artifacts/Muxics-*.zip
-            artifacts/latest*.yml
-          if-no-files-found: error
-
-  build-windows-arm64:
-    name: Windows (arm64)
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: pnpm/action-setup@v5
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: lts/*
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install
-
-      - name: Build web + electron bundles
-        run: pnpm run build
-
-      - name: Package (windows arm64)
-        run: pnpm exec electron-builder --config electron-builder.yml --publish always --win --arm64
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v7
-        with:
-          name: windows-arm64
+          name: windows
           compression-level: 0
           path: |
             artifacts/Muxics-*.exe
@@ -196,7 +163,7 @@ jobs:
 
   release:
     name: Draft GitHub Release (assemble artifacts)
-    needs: [build-macos-arm64, build-linux-x64, build-linux-arm64, build-windows-x64, build-windows-arm64]
+    needs: [build-macos-arm64, build-linux-x64, build-linux-arm64, build-windows]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.tag != '')
     steps:
