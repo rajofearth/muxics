@@ -58,10 +58,17 @@
   - "Similar to __" sections
 - **Offline Downloads**:
   - Implement a download feature for individual tracks and full playlists to save them permanently.
+  - Download Throught Modified Cache Feature which should on click get the track and store it as downloaded.
   - Modify the playback engine to always prefer playing from locally downloaded files instead of streaming. if the track is downloaded.
-- **Settings Redesign**:
-  - Update the settings page to be minimal and clean, reducing "options hell" and simplifying configuration.
-
+- **Search Bugs**
+  - Youtube Music's Artist and Album search results are not showing up.
+  - the YT music's homesections are being shown in the sidebar's playlists which should only have the playlists of the user.
+- **Feature Requests**
+  - Add a feature to add tracks to the queue from the context menu.
+  - Lyrics feature to show the lyrics of the current track.
+- **Bug Fixes**
+  - Context Menu's UI should have scroll view for the playlists.
+  - the like(favorite) btn should also like the track in thier yt account.
 ## Useful Files
 - `src/electron/backend/ytmusic.ts`
 - `src/electron/backend/ytmusicHomeSnapshot.ts`

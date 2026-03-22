@@ -74,6 +74,9 @@ export interface PlaylistResult {
   tracks?: TrackResult[];
   /** From YT Music subtitle (e.g. "48 songs") when full track list is not loaded yet */
   listedItemCount?: number;
+  author?: string;
+  picture?: string;
+  type?: "playlist" | "album";
 }
 
 export interface AuthStatusResult {
@@ -156,6 +159,15 @@ export interface YTMusicHomeResult {
   tracks: TrackResult[];
 }
 
+export interface YTMusicHomeSectionResult {
+  title: string;
+  items: (TrackResult | PlaylistResult)[];
+}
+
+export interface YTMusicHomeFeedResult {
+  sections: YTMusicHomeSectionResult[];
+}
+
 export interface DesktopSettings {
   ytmusicCacheLimitBytes: number;
   ytmusicUseLibraryDiskCache: boolean;
@@ -213,6 +225,7 @@ export interface DesktopRequestMap {
   ytmusicSyncLibrary: { params: void; response: YTMusicLibrarySyncResult };
   ytmusicLoadCachedLibrary: { params: void; response: YTMusicLibrarySyncResult | null };
   ytmusicSearch: { params: { query: string }; response: TrackResult[] };
+  ytmusicGetHomeFeed: { params: void; response: YTMusicHomeFeedResult };
   ytmusicGetPlaylist: { params: { playlistId: string }; response: PlaylistResult | null };
   ytmusicGetPlayback: { params: { trackId: string; providerId: string }; response: TrackPlaybackResult };
   ytmusicLike: { params: { videoId: string }; response: { success: boolean } };

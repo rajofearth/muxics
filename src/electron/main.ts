@@ -36,6 +36,7 @@ import {
   clearYtMusicMetadataCache,
   getCachedYtMusicLibrary,
   getYtMusicAuthStatus,
+  getYtMusicHomeFeed,
   getYtMusicPlayback,
   getYtMusicPlaylist,
   importYtMusicSession,
@@ -590,6 +591,17 @@ const requestHandlers: RequestHandlerMap = {
       setCachedYtMusicSearch(query, results, maxEntries);
     }
     return results;
+  },
+  ytmusicGetHomeFeed: async () => {
+    console.log("[IPC] ytmusicGetHomeFeed start");
+    try {
+      const res = await getYtMusicHomeFeed();
+      console.log(`[IPC] ytmusicGetHomeFeed success (${res.sections.length} sections)`);
+      return res;
+    } catch (err) {
+      console.error("[IPC] ytmusicGetHomeFeed error", err);
+      throw err;
+    }
   },
   ytmusicGetPlaylist: ({ playlistId }) => getYtMusicPlaylist(playlistId),
   ytmusicGetPlayback: ({ trackId, providerId }) => getYtMusicPlayback(trackId, providerId),

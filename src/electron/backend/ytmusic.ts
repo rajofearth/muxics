@@ -17,12 +17,13 @@ import type {
   PlaylistResult,
   TrackPlaybackResult,
   TrackResult,
+  YTMusicHomeFeedResult,
   YTMusicHomeResult,
+  YTMusicHomeSectionResult,
   YTMusicLibrarySyncResult,
 } from "../../shared/desktop-contract";
 import { loadSettings } from "./settings";
 import { ensureAppDataDirs, YTMUSIC_CACHE_PATH, YTMUSIC_DEBUG_DIR, YTMUSIC_HOME_SNAPSHOT_PATH } from "./paths";
-import { writeHomeSnapshotToDisk } from "./ytmusicHomeSnapshot";
 import { bumpYtMusicSearchCacheSession, clearYtMusicSearchCacheFile } from "./ytmusicSearchCache";
 import { log } from "./logger";
 import { getCachedArtworkUrl, getCachedAudioUrl, getAudioCacheKey, getAudioPathByKey } from "./ytMusicCache";
@@ -237,16 +238,36 @@ function createFetchWithYtMusicAuth(cookie?: string): typeof fetch | undefined {
   };
 }
 
-function getThumbnailUrl(item: unknown): string | undefined {
-  if (!item || typeof item !== "object") {
+function getThumbnailUrl(item: any): string | undefined {
+  if (!item) {
     return undefined;
   }
-  const rec = item as {
-    thumbnails?: { url: string }[];
-    thumbnail?: { contents?: { url: string }[] } | null;
-  };
-  const thumbnails = rec.thumbnails ?? rec.thumbnail?.contents ?? [];
-  return thumbnails[thumbnails.length - 1]?.url;
+
+  // Handle case where it's already a wrapped results object from toTrackFromRaw
+  if (Array.isArray(item.thumbnails)) {
+    return item.thumbnails[item.thumbnails.length - 1]?.url;
+  }
+
+  // youtubei.js nodes often have .thumbnail as a Thumbnail object or Thumbnail[] array
+  const thumbnail = item.thumbnail;
+  if (thumbnail) {
+    if (Array.isArray(thumbnail)) {
+      return thumbnail[thumbnail.length - 1]?.url;
+    }
+    if (typeof thumbnail === "object" && "url" in thumbnail) {
+      return thumbnail.url;
+    }
+    if (typeof thumbnail === "object" && Array.isArray(thumbnail.contents)) {
+      return thumbnail.contents[thumbnail.contents.length - 1]?.url;
+    }
+  }
+
+  const thumbnails = item.thumbnails;
+  if (Array.isArray(thumbnails)) {
+    return thumbnails[thumbnails.length - 1]?.url;
+  }
+
+  return undefined;
 }
 
 function getCachedTrackPicture(providerId: string, sourceUrl?: string): string | undefined {
@@ -406,6 +427,30 @@ async function resolvePlaybackUrlFromFormats(
   return null;
 }
 
+function toPlaylist(item: any): PlaylistResult | null {
+  const itemAny = item as any;
+  const name = itemAny.title?.toString() || itemAny.name?.toString();
+  if (!name) return null;
+
+  const id = itemAny.id || itemAny.endpoint?.payload?.browseId || itemAny.browseId;
+  if (!id) return null;
+
+  // YT Music Album IDs usually start with MPRE or OLAK
+  const itemType = itemAny.item_type || (id.startsWith("MPRE") || id.startsWith("OLAK") ? "album" : "playlist");
+
+  return {
+    id: `ytmusic:${id}`,
+    provider: "ytmusic",
+    providerId: id,
+    name: sanitizeText(name, "Unknown Playlist"),
+    author: itemAny.author?.name || itemAny.subtitle?.toString() || "YouTube Music",
+    picture: getThumbnailUrl(itemAny),
+    type: itemType === "album" ? "album" : "playlist",
+    listedItemCount: typeof itemAny.item_count === "number" ? itemAny.item_count : undefined,
+    entries: [],
+  };
+}
+
 function readParsedItemPlayableVideoId(item: MusicResponsiveListItem | MusicTwoRowItem): string | undefined {
   const parsed = item as unknown as Record<string, any>;
   const menuItems = parsed?.menu?.items ?? parsed?.menu?.menu_renderer?.items ?? [];
@@ -415,21 +460,47 @@ function readParsedItemPlayableVideoId(item: MusicResponsiveListItem | MusicTwoR
     ?? [];
   const subtitleRuns = parsed?.subtitle?.runs ?? [];
 
-  return findFirstVideoId([
+  const id = findFirstVideoId([
     parsed.id,
+    parsed.videoId,
     parsed.video_id,
+    parsed.videoId_,
     parsed.endpoint?.payload?.videoId,
     parsed.endpoint?.payload?.video_id,
+    parsed.endpoint?.watchEndpoint?.videoId,
     parsed.navigationEndpoint?.watchEndpoint?.videoId,
     parsed.navigationEndpoint?.watchPlaylistEndpoint?.videoId,
     parsed.overlay?.content?.play_button?.endpoint?.payload?.videoId,
     parsed.overlay?.content?.musicPlayButtonRenderer?.playNavigationEndpoint?.watchEndpoint?.videoId,
     parsed.thumbnail_overlay?.content?.musicPlayButtonRenderer?.playNavigationEndpoint?.watchEndpoint?.videoId,
+    parsed.navigation_endpoint?.payload?.videoId,
+    parsed.navigation_endpoint?.watch_endpoint?.video_id,
+    // Try to find it in the raw_data if it exists
+    parsed.raw_data?.videoId,
+    parsed.raw_data?.navigationEndpoint?.watchEndpoint?.videoId,
     ...subtitleRuns.map((run: any) => run?.endpoint?.payload?.videoId),
-    ...menuItems.map((entry: any) => entry?.navigation_endpoint?.watch_endpoint?.video_id),
-    ...menuItems.map((entry: any) => entry?.service_endpoint?.queue_add_endpoint?.queue_target?.video_id),
-    ...topLevelButtons.map((entry: any) => entry?.navigation_endpoint?.watch_endpoint?.video_id),
+    ...menuItems.map((item: any) => 
+      item?.navigation_endpoint?.watch_endpoint?.video_id || 
+      item?.navigation_endpoint?.watch_endpoint?.videoId ||
+      item?.service_endpoint?.queue_add_endpoint?.queue_target?.video_id ||
+      item?.service_endpoint?.queue_add_endpoint?.queue_target?.videoId
+    ),
+    ...topLevelButtons.map((item: any) => 
+      item?.navigation_endpoint?.watch_endpoint?.video_id ||
+      item?.navigation_endpoint?.watch_endpoint?.videoId
+    ),
   ]);
+
+  if (!id) {
+    // Last ditch: check if there's an id in the raw data if available
+    const raw = (item as any).raw_data;
+    if (raw) {
+       // Deeply search for 11-char strings that look like video IDs? No, too risky.
+       // But we can check common raw paths
+    }
+  }
+
+  return id;
 }
 
 function toTrack(item: MusicResponsiveListItem | MusicTwoRowItem): TrackResult | null {
@@ -438,32 +509,38 @@ function toTrack(item: MusicResponsiveListItem | MusicTwoRowItem): TrackResult |
     return null;
   }
 
-  const title = "title" in item
-    ? sanitizeText(typeof item.title === "string" ? item.title : item.title?.toString(), "Unknown Track")
-    : sanitizeText(item.name, "Unknown Track");
-  const artists = "artists" in item && Array.isArray(item.artists) && item.artists.length > 0
-    ? item.artists
-        .map((artist: { name?: string }) => artist.name)
-        .filter((name): name is string => Boolean(name))
-        .join(", ")
-    : ("author" in item && item.author?.name) || "Unknown Artist";
-  const album = "album" in item && item.album?.name
-    ? item.album.name
-    : "Single";
-  const seconds = "duration" in item ? item.duration?.seconds : undefined;
-  const time = "duration" in item && item.duration?.text
-    ? item.duration.text
-    : formatDuration(seconds);
+  const itemAny = item as any;
+
+  const title =
+    itemAny.title?.toString() ||
+    itemAny.name?.toString() ||
+    "Unknown Track";
+
+  const artists =
+    (Array.isArray(itemAny.artists) && itemAny.artists.length > 0)
+      ? itemAny.artists
+          .map((artist: { name?: string }) => artist.name)
+          .filter(Boolean)
+          .join(", ")
+      : itemAny.author?.name || itemAny.subtitle?.toString() || "Unknown Artist";
+
+  const album =
+    itemAny.album?.name ||
+    (itemAny.subtitle?.toString()?.includes(" • ") ? itemAny.subtitle.toString().split(" • ")[0] : "Single");
+
+  const durationParsed = itemAny.duration;
+  const seconds = typeof durationParsed === "object" ? durationParsed?.seconds : typeof durationParsed === "number" ? durationParsed : undefined;
+  const time = typeof durationParsed === "object" ? durationParsed?.text : typeof durationParsed === "string" ? durationParsed : formatDuration(seconds);
 
   return {
     id: `ytmusic:${providerId}`,
     provider: "ytmusic",
     providerId,
-    title,
+    title: sanitizeText(title, "Unknown Track"),
     artist: sanitizeText(artists, "Unknown Artist"),
     album: sanitizeText(album, "Single"),
     duration: seconds ?? 0,
-    time,
+    time: time || "—",
     genre: "YouTube Music",
     picture: getCachedTrackPicture(providerId, getThumbnailUrl(item)),
     sourceLabel: "YouTube Music",
@@ -667,31 +744,6 @@ async function buildAuthStatus(): Promise<AuthStatusResult> {
   }
 
   return cachedAuthStatus;
-}
-
-async function collectShelfItems(
-  feed: { contents?: Array<{ contents?: Array<MusicResponsiveListItem>; items?: Array<MusicTwoRowItem | MusicResponsiveListItem> }>; has_continuation?: boolean; getContinuation?: () => Promise<any> },
-): Promise<Array<MusicResponsiveListItem | MusicTwoRowItem>> {
-  const items: Array<MusicResponsiveListItem | MusicTwoRowItem> = [];
-  let current: any = feed;
-
-  while (current) {
-    const currentItems = current.contents ?? [];
-    for (const section of currentItems) {
-      const sectionItems = section.contents ?? section.items ?? [];
-      for (const item of sectionItems) {
-        items.push(item);
-      }
-    }
-
-    if (!current.has_continuation || typeof current.getContinuation !== "function") {
-      break;
-    }
-
-    current = await current.getContinuation();
-  }
-
-  return items;
 }
 
 type RawNode = Record<string, any>;
@@ -1403,21 +1455,82 @@ export async function syncYtMusicLibrary(): Promise<YTMusicLibrarySyncResult> {
 }
 
 export async function getYtMusicHome(): Promise<YTMusicHomeResult> {
-  const client = await getClient();
-  const home = await client.music.getHomeFeed();
-  const items = await collectShelfItems(home as any);
-
-  const result: YTMusicHomeResult = {
-    tracks: uniqueById(
-      items.map((item) => toTrack(item)).filter((item): item is TrackResult => item != null),
-    ).slice(0, 25),
+  const result = await getYtMusicHomeFeed();
+  const allTracks = result.sections.flatMap((s) => s.items.filter((i): i is TrackResult => "provider" in i && i.provider === "ytmusic"));
+  return {
+    tracks: uniqueById(allTracks).slice(0, 25),
   };
+}
 
-  if (loadSettings().ytmusicHomeSnapshotEnabled !== false) {
-    writeHomeSnapshotToDisk(result);
+export async function getYtMusicHomeFeed(): Promise<YTMusicHomeFeedResult> {
+  const client = await getClient();
+  const homeFeed = await client.music.getHomeFeed();
+  const sections: YTMusicHomeSectionResult[] = [];
+
+  const rawSections = homeFeed.sections || [];
+  log("ytmusic", "info", `Parsing home feed with ${rawSections.length} raw sections`);
+
+  for (const section of rawSections) {
+    try {
+      log("ytmusic", "info", `Section type: ${section.type}`);
+      let title = "";
+      let shelfContents: any[] = [];
+
+      if (section.type === "MusicCarouselShelf") {
+        const shelf = section.as(YTNodes.MusicCarouselShelf);
+        title = shelf.header?.title?.toString() || "Recommended";
+        shelfContents = shelf.contents || [];
+      } else if (section.type === "MusicShelf") {
+        const shelf = section.as(YTNodes.MusicShelf);
+        title = shelf.title?.toString() || "Recommended";
+        shelfContents = shelf.contents || [];
+      } else if (section.type === "MusicResponsiveListItemShelf") {
+        // Broaden to other shelf types if they exist in future versions
+        const shelf = section as any;
+        title = shelf.header?.title?.toString() || shelf.title?.toString() || "Recommended";
+        shelfContents = shelf.contents || [];
+      } else {
+        continue;
+      }
+
+      log("ytmusic", "info", `Processing shelf: ${title} with ${shelfContents.length} items`);
+
+      const items: (TrackResult | PlaylistResult)[] = [];
+      for (const rawItem of shelfContents) {
+        const track = toTrack(rawItem);
+        if (track) {
+          items.push(track);
+          log("ytmusic", "info", `Parsed track in ${title}: ${track.title} [${track.providerId}]`);
+        } else {
+          const playlist = toPlaylist(rawItem);
+          if (playlist) {
+            items.push(playlist);
+            log("ytmusic", "info", `Parsed playlist in ${title}: ${playlist.name} [${playlist.providerId}]`);
+          } else {
+            const itemAny = rawItem as any;
+            log("ytmusic", "info", `Rejected item in ${title}: ${itemAny.type}`, {
+              id: itemAny.id,
+              keys: Object.keys(itemAny),
+              item_type: itemAny.item_type,
+              hasEndpoint: !!itemAny.endpoint,
+              endpointType: itemAny.endpoint?.type,
+              hasNavEndpoint: !!itemAny.navigationEndpoint,
+              hasRawData: !!itemAny.raw_data
+            });
+          }
+        }
+      }
+
+      if (items.length > 0) {
+        sections.push({ title, items });
+      }
+    } catch (err) {
+      log("ytmusic", "warn", "Failed to parse home feed section", err);
+    }
   }
 
-  return result;
+  log("ytmusic", "info", `Returning home feed with ${sections.length} sections`);
+  return { sections };
 }
 
 export async function searchYtMusic(query: string): Promise<TrackResult[]> {

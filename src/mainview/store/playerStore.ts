@@ -89,6 +89,9 @@ function toPlaylist(playlist: PlaylistResult): Playlist {
     editable: playlist.editable,
     tracks: playlist.tracks?.map(toTrack),
     listedItemCount: playlist.listedItemCount,
+    author: playlist.author,
+    picture: playlist.picture,
+    type: playlist.type,
   };
 }
 
@@ -120,7 +123,7 @@ function playlistNeedsYtDetailFetch(pl: Playlist): boolean {
     pl.tracks?.some((t) => t.duration > 0 || Boolean(t.artist?.trim())) ?? false;
 
   if (nIds === 0 && nTracks === 0) {
-    return target > 0;
+    return true;
   }
 
   if (!rich) {
@@ -245,6 +248,11 @@ export interface PlayerState {
   theme: { accentColor: string; palette: string[] };
   themeName: string;
   search: { query: string; results: Track[]; loading: boolean; error: string | null };
+  homeFeed: {
+    sections: { title: string; items: (Track | Playlist)[] }[];
+    loading: boolean;
+    error: string | null;
+  };
   recentlyPlayed: Track[];
   favorites: Set<string>;
 }
@@ -288,6 +296,7 @@ interface PlayerActions {
   toggleShuffle: () => void;
   cycleRepeat: () => void;
   setSearchQuery: (query: string) => Promise<void>;
+  loadHomeFeed: () => Promise<void>;
   addToRecentlyPlayed: (track: Track) => void;
   toggleFavorite: (trackId: string) => Promise<void>;
   isFavorite: (trackId: string) => boolean;
@@ -342,6 +351,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
   theme: defaultTheme,
   themeName: loadThemeName(),
   search: { query: "", results: [], loading: false, error: null },
+  homeFeed: { sections: [], loading: false, error: null },
   recentlyPlayed: [],
   favorites: loadFavorites(),
 
@@ -1260,6 +1270,67 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
         }
       })();
     }, YTM_REMOTE_SEARCH_DEBOUNCE_MS);
+    void get().loadHomeFeed();
+  },
+
+  loadHomeFeed: async () => {
+    const { rpc, auth } = get();
+    if (!rpc || !auth.loggedIn) return;
+
+    if (get().homeFeed.loading) return;
+
+    console.log("[playerStore] Loading home feed...");
+    set((s) => ({ homeFeed: { ...s.homeFeed, loading: true, error: null } }));
+
+    try {
+      const result = await rpc.request.ytmusicGetHomeFeed();
+      console.log(`[playerStore] Got home feed with ${result.sections.length} sections`);
+      
+      set((s) => {
+        const homePlaylists = result.sections.flatMap((sec) =>
+          sec.items.filter((i): i is PlaylistResult => !("title" in i)),
+        );
+
+        const existingIds = new Set(s.playlists.remoteItems.map((p) => p.id));
+        const newRemoteItems = [...s.playlists.remoteItems];
+        for (const hp of homePlaylists) {
+          if (!existingIds.has(hp.id)) {
+            newRemoteItems.push(toPlaylist(hp));
+            existingIds.add(hp.id);
+          }
+        }
+
+        return {
+          playlists: {
+            ...s.playlists,
+            remoteItems: newRemoteItems,
+            items: mergePlaylists(s.library.source, s.playlists.localItems, newRemoteItems),
+          },
+          homeFeed: {
+            sections: result.sections.map((sec) => ({
+              title: sec.title,
+              items: sec.items.map((item) => {
+                if ("title" in item) {
+                  return toTrack(item);
+                }
+                return toPlaylist(item);
+              }),
+            })),
+            loading: false,
+            error: null,
+          },
+        };
+      });
+    } catch (error) {
+      console.error("[playerStore] Failed to load home feed", error);
+      set((s) => ({
+        homeFeed: {
+          ...s.homeFeed,
+          loading: false,
+          error: error instanceof Error ? error.message : "Failed to load home feed",
+        },
+      }));
+    }
   },
 
   addToRecentlyPlayed: (track) => {

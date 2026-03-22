@@ -521,7 +521,7 @@ export function MainWindowContent({
         activePlaylist?.name ?? "Playlist",
         activePlaylist?.provider === "ytmusic" ? "YouTube Music" : "Playlist",
         plTracks,
-        <Collage pictures={recentPics} FallbackIcon={ListMusic} iconSize={40} />,
+        <Collage pictures={recentPics} fallback={activePlaylist?.picture} FallbackIcon={ListMusic} iconSize={40} />,
         activePlaylist ? <PlaylistHeaderActions playlist={activePlaylist} onNavigate={handleNavigate} /> : undefined,
         activePlaylist?.id,
         () => handleNavigate("playlists"),

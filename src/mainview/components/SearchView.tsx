@@ -4,6 +4,7 @@ import { Search, X, Mic2, Disc3 } from "lucide-react";
 import { usePlayerStore } from "../store/playerStore";
 import type { Track, NavView } from "../types";
 import { TrackTable } from "./TrackTable";
+import { HomeFeed } from "./HomeFeed";
 
 type SearchViewProps = {
   currentTrack: Track | null;
@@ -117,12 +118,7 @@ export function SearchView({ currentTrack, isPlaying, onPlayTrack, onPlayPause, 
       </div>
 
       {!search.query ? (
-        <div className="flex-1 flex flex-col items-center justify-center text-app-text-tertiary gap-2">
-          <Search size={40} strokeWidth={1} className="opacity-30" />
-          <div className="text-sm">
-            {auth.loggedIn ? "Search YouTube Music" : "Search your library"}
-          </div>
-        </div>
+        <HomeFeed onNavigate={onNavigate} />
       ) : search.loading &&
         artists.length === 0 &&
         albums.length === 0 &&
