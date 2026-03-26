@@ -181,7 +181,12 @@ function createFetchWithYtMusicAuth(cookie?: string): typeof fetch | undefined {
     const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
     const body = typeof init?.body === "string" ? init.body : undefined;
     const requestContext = getYtMusicRequestContext(headers, body);
-    const isYtMusicRequest = originalUrl.includes("/youtubei/v1/") && requestContext.isYtMusicRequest;
+    const isYtMusicRequest =
+      originalUrl.includes("/youtubei/v1/") &&
+      (requestContext.isYtMusicRequest ||
+        originalUrl.includes("/like/") ||
+        originalUrl.includes("/playlist/edit") ||
+        requestContext.browseId?.startsWith("FEmusic_"));
     const isLibraryBrowse = requestContext.browseId === "FEmusic_library_landing";
     let authorizationApplied = false;
     let requestUrl = originalUrl;
@@ -532,6 +537,35 @@ function toTrack(item: MusicResponsiveListItem | MusicTwoRowItem): TrackResult |
   const seconds = typeof durationParsed === "object" ? durationParsed?.seconds : typeof durationParsed === "number" ? durationParsed : undefined;
   const time = typeof durationParsed === "object" ? durationParsed?.text : typeof durationParsed === "string" ? durationParsed : formatDuration(seconds);
 
+  // Extract liked status from menu items if available
+  let liked = false;
+  try {
+    const menuItems = itemAny.menu?.items || [];
+    for (const menuItem of menuItems) {
+      const toggleRenderer = menuItem.as?.(YTNodes.ToggleMenuServiceItem);
+      if (toggleRenderer) {
+        const iconType = toggleRenderer.icon_type || toggleRenderer.default_icon_type;
+        if (iconType === "FAVORITE" || iconType === "LIKE") {
+          liked = toggleRenderer.is_toggled || (toggleRenderer as any).toggled;
+          break;
+        }
+      }
+    }
+  } catch {
+    // Fallback for raw data or other structures
+    const menuItems = itemAny.menu?.items || itemAny.menu?.menu_renderer?.items || [];
+    for (const m of menuItems) {
+      const entry = m.menuNavigationItemRenderer || m.menuServiceItemRenderer || m.toggleMenuServiceItemRenderer;
+      if (entry) {
+        const iconType = entry.defaultIcon?.iconType || entry.default_icon_type || entry.icon_type;
+        if (iconType === "FAVORITE" || iconType === "LIKE") {
+          liked = !!(entry.isToggled || entry.is_toggled || entry.toggled);
+          break;
+        }
+      }
+    }
+  }
+
   return {
     id: `ytmusic:${providerId}`,
     provider: "ytmusic",
@@ -544,6 +578,7 @@ function toTrack(item: MusicResponsiveListItem | MusicTwoRowItem): TrackResult |
     genre: "YouTube Music",
     picture: getCachedTrackPicture(providerId, getThumbnailUrl(item)),
     sourceLabel: "YouTube Music",
+    liked,
   };
 }
 
@@ -832,6 +867,16 @@ function toTrackFromRaw(renderer: RawNode): TrackResult | null {
     detailRuns.find((run: any) => /^\d{1,2}:\d{2}(?::\d{2})?$/.test(run?.text ?? ""))?.text
     ?? readText(renderer.fixedColumns?.[0]?.musicResponsiveListItemFixedColumnRenderer?.text);
 
+  let liked = false;
+  const menuItems = renderer?.menu?.menuRenderer?.items ?? [];
+  for (const m of menuItems) {
+    const entry = m.toggleMenuServiceItemRenderer;
+    if (entry?.defaultIcon?.iconType === "FAVORITE" || entry?.default_icon_type === "FAVORITE") {
+      liked = !!(entry.isToggled || entry.is_toggled);
+      break;
+    }
+  }
+
   return {
     id: `ytmusic:${providerId}`,
     provider: "ytmusic",
@@ -846,6 +891,7 @@ function toTrackFromRaw(renderer: RawNode): TrackResult | null {
       thumbnails: renderer.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails,
     })),
     sourceLabel: "YouTube Music",
+    liked,
   };
 }
 
@@ -1685,13 +1731,20 @@ export async function getYtMusicPlayback(trackId: string, providerId: string): P
 
 export async function likeYtMusicTrack(videoId: string): Promise<{ success: boolean }> {
   const client = await getClient();
-  await client.interact.like(videoId);
+  // Using actions.execute directly with target as an object.
+  // The error "Invalid value at 'target' ... \"qFTo8PUBoQ0\"" suggests that the API
+  // expected an object but got a string. We wrap it explicitly.
+  await client.actions.execute("/like/like", {
+    target: { videoId },
+  });
   return { success: true };
 }
 
 export async function unlikeYtMusicTrack(videoId: string): Promise<{ success: boolean }> {
   const client = await getClient();
-  await client.interact.removeRating(videoId);
+  await client.actions.execute("/like/removerating", {
+    target: { videoId },
+  });
   return { success: true };
 }
 

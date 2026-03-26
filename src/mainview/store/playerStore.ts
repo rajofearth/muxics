@@ -71,6 +71,7 @@ function toTrack(track: TrackResult): Track {
     picture: track.picture,
     sourceLabel: track.sourceLabel,
     playback: track.playback,
+    liked: track.liked,
   };
 }
 
@@ -636,23 +637,36 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
       collectPlaylistTracks(remoteItems),
     );
 
-    set((s) => ({
-      auth: {
-        ...s.auth,
-        lastSyncedAt: cached.lastSyncedAt || s.auth.lastSyncedAt,
-      },
-      library: {
-        ...s.library,
-        remoteTracks,
-        tracks: mergeTracks(s.library.source, s.library.localTracks, remoteTracks),
-        lastSyncedAt: cached.lastSyncedAt ?? s.library.lastSyncedAt,
-      },
-      playlists: {
-        ...s.playlists,
-        remoteItems,
-        items: mergePlaylists(s.library.source, s.playlists.localItems, remoteItems),
-      },
-    }));
+    set((s) => {
+      const nextFavorites = new Set(s.favorites);
+      for (const track of remoteTracks) {
+        if (track.liked) {
+          nextFavorites.add(track.id);
+        }
+      }
+      if (nextFavorites.size !== s.favorites.size) {
+        saveFavorites(nextFavorites);
+      }
+
+      return {
+        auth: {
+          ...s.auth,
+          lastSyncedAt: cached.lastSyncedAt || s.auth.lastSyncedAt,
+        },
+        favorites: nextFavorites,
+        library: {
+          ...s.library,
+          remoteTracks,
+          tracks: mergeTracks(s.library.source, s.library.localTracks, remoteTracks),
+          lastSyncedAt: cached.lastSyncedAt ?? s.library.lastSyncedAt,
+        },
+        playlists: {
+          ...s.playlists,
+          remoteItems,
+          items: mergePlaylists(s.library.source, s.playlists.localItems, remoteItems),
+        },
+      };
+    });
 
     void get().loadCachedPlaylist();
   },
@@ -673,21 +687,34 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
         collectPlaylistTracks(remoteItems),
       );
 
-      set((s) => ({
-        auth: { ...s.auth, lastSyncedAt: synced.lastSyncedAt },
-        library: {
-          ...s.library,
-          remoteTracks,
-          tracks: mergeTracks(s.library.source, s.library.localTracks, remoteTracks),
-          syncingRemote: false,
-          lastSyncedAt: synced.lastSyncedAt,
-        },
-        playlists: {
-          ...s.playlists,
-          remoteItems,
-          items: mergePlaylists(s.library.source, s.playlists.localItems, remoteItems),
-        },
-      }));
+      set((s) => {
+        const nextFavorites = new Set(s.favorites);
+        for (const track of remoteTracks) {
+          if (track.liked) {
+            nextFavorites.add(track.id);
+          }
+        }
+        if (nextFavorites.size !== s.favorites.size) {
+          saveFavorites(nextFavorites);
+        }
+
+        return {
+          auth: { ...s.auth, lastSyncedAt: synced.lastSyncedAt },
+          favorites: nextFavorites,
+          library: {
+            ...s.library,
+            remoteTracks,
+            tracks: mergeTracks(s.library.source, s.library.localTracks, remoteTracks),
+            syncingRemote: false,
+            lastSyncedAt: synced.lastSyncedAt,
+          },
+          playlists: {
+            ...s.playlists,
+            remoteItems,
+            items: mergePlaylists(s.library.source, s.playlists.localItems, remoteItems),
+          },
+        };
+      });
 
       void get().loadCachedPlaylist();
     } catch (error) {
@@ -771,6 +798,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
       }
 
       const updated = toPlaylist(detailed);
+      get().syncFavoritesFromTracks(updated.tracks ?? []);
       set((s) => {
         const remoteItems = s.playlists.remoteItems.map((item) =>
           item.id === updated.id ? updated : item,
@@ -1248,6 +1276,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
             return;
           }
           const normalized = remoteResults.map(toTrack);
+          get().syncFavoritesFromTracks(normalized);
           const combined =
             libNow.source === "all"
               ? [...normalized, ...localAgain].filter(
@@ -1307,15 +1336,19 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
             items: mergePlaylists(s.library.source, s.playlists.localItems, newRemoteItems),
           },
           homeFeed: {
-            sections: result.sections.map((sec) => ({
-              title: sec.title,
-              items: sec.items.map((item) => {
+            sections: result.sections.map((sec) => {
+              const items = sec.items.map((item) => {
                 if ("title" in item) {
                   return toTrack(item);
                 }
                 return toPlaylist(item);
-              }),
-            })),
+              });
+              get().syncFavoritesFromTracks(items.filter((i): i is Track => "liked" in i));
+              return {
+                title: sec.title,
+                items,
+              };
+            }),
             loading: false,
             error: null,
           },
@@ -1339,6 +1372,24 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
       return {
         recentlyPlayed: [track, ...filtered].slice(0, MAX_RECENTLY_PLAYED),
       };
+    });
+  },
+
+  syncFavoritesFromTracks: (tracks: Track[]) => {
+    set((s) => {
+      const next = new Set(s.favorites);
+      let changed = false;
+      for (const t of tracks) {
+        if (t.liked && !next.has(t.id)) {
+          next.add(t.id);
+          changed = true;
+        }
+      }
+      if (changed) {
+        saveFavorites(next);
+        return { favorites: next };
+      }
+      return {};
     });
   },
 

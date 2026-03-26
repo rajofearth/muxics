@@ -26,6 +26,7 @@ export interface Track {
   picture?: string;
   sourceLabel?: string;
   playback?: TrackPlayback;
+  liked?: boolean;
 }
 
 export interface Playlist {

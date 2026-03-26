@@ -53,6 +53,7 @@ export interface TrackResult {
   picture?: string;
   sourceLabel?: string;
   playback?: TrackPlaybackResult;
+  liked?: boolean;
 }
 
 export interface PlaylistEntryResult {
