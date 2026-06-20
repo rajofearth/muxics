@@ -178,12 +178,15 @@ export function useAudioEngine() {
           duration > 0 &&
           (!currentTrack.duration || currentTrack.duration === 0)
         ) {
+          const min = Math.floor(duration / 60);
+          const sec = duration % 60;
+          const time = `${min}:${sec.toString().padStart(2, "0")}`;
           console.log(
             `[AudioEngine] Updating missing duration for "${currentTrack.title}": ${duration}s`,
           );
           usePlayerStore.setState((s) => {
             if (s.player.currentTrack?.id !== currentTrack.id) return s;
-            const updatedTrack = { ...s.player.currentTrack, duration };
+            const updatedTrack = { ...s.player.currentTrack, duration, time };
 
             // Also update it in the library if found
             const remoteTracks = s.library.remoteTracks.map((t) =>
@@ -193,11 +196,17 @@ export function useAudioEngine() {
               t.id === updatedTrack.id ? updatedTrack : t,
             );
 
+            // Also update the queue so queued-up tracks show correct duration
+            const queue = s.player.queue.map((t) =>
+              t.id === updatedTrack.id ? updatedTrack : t,
+            );
+
             return {
               library: { ...s.library, remoteTracks, tracks },
               player: {
                 ...s.player,
                 currentTrack: updatedTrack,
+                queue,
               },
             };
           });

@@ -238,6 +238,81 @@ export async function getYtDlpStreamUrl(
 }
 
 /**
+ * Get the duration (in seconds) of a YouTube Music video via yt-dlp.
+ *
+ * Uses `--print duration` which is much faster than a full stream URL
+ * resolution because it only parses the page metadata.
+ *
+ * @param videoId  The YouTube video ID (e.g. "dQw4w9WgXcQ")
+ * @param cookieString  Optional YT Music session cookie string for auth
+ * @returns The duration in seconds, or null on failure.
+ */
+export async function getYtDlpDuration(
+  videoId: string,
+  cookieString?: string,
+): Promise<number | null> {
+  const binaryPath = await ensureYtDlpBinary();
+  const url = `https://music.youtube.com/watch?v=${videoId}`;
+  const cookiesPath = writeCookiesFile(cookieString);
+
+  const args: string[] = ["--no-warnings", "-q", "--print", "duration"];
+
+  if (cookiesPath) {
+    args.push("--cookies", cookiesPath);
+  }
+
+  args.push(url);
+
+  log("ytdlp", "info", "Getting track duration", { videoId });
+
+  return new Promise((resolve) => {
+    const child = execFile(
+      binaryPath,
+      args,
+      { timeout: 15_000, maxBuffer: 1024 },
+      (error, stdout, stderr) => {
+        if (error) {
+          const stderrStr = (stderr ?? "").toString().trim();
+          log("ytdlp", "warn", "yt-dlp failed to get duration", {
+            videoId,
+            error: error.message,
+            stderr: stderrStr.slice(0, 500),
+          });
+          resolve(null);
+          return;
+        }
+
+        const durationStr = (stdout ?? "").toString().trim();
+        const duration = Number(durationStr);
+        if (!Number.isFinite(duration) || duration <= 0) {
+          log("ytdlp", "warn", "yt-dlp returned invalid duration", {
+            videoId,
+            raw: durationStr,
+          });
+          resolve(null);
+          return;
+        }
+
+        log("ytdlp", "info", "Track duration obtained", {
+          videoId,
+          duration,
+        });
+
+        resolve(duration);
+      },
+    );
+
+    child.on("error", (err) => {
+      log("ytdlp", "warn", "yt-dlp process error", {
+        videoId,
+        error: err.message,
+      });
+      resolve(null);
+    });
+  });
+}
+
+/**
  * Check whether the yt-dlp binary is available (exists and executable).
  * Does not attempt to download if missing.
  */

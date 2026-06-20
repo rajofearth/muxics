@@ -32,7 +32,7 @@ import {
   clearYtMusicSearchCacheFile,
 } from "./ytmusicSearchCache";
 import { log } from "./logger";
-import { getYtDlpStreamUrl } from "./ytdlp";
+import { getYtDlpDuration, getYtDlpStreamUrl } from "./ytdlp";
 import {
   getCachedArtworkUrl,
   getCachedAudioUrl,
@@ -78,6 +78,144 @@ let cachedClient: Innertube | null = null;
 let cachedAuthStatus: AuthStatusResult | null = null;
 let pendingLogin: PendingLoginState | null = null;
 let loggedLibraryAuthDebug = false;
+
+/**
+ * Lazy-loaded map of track id → { duration, time } populated from the
+ * on-disk YT Music library cache.  Used to fill in missing duration info
+ * for search / home-feed results that the lightweight API response omits.
+ */
+let _cachedTrackMeta:
+  | Map<string, { duration: number; time: string }>
+  | null
+  | "loading"
+  | "failed" = null;
+
+function loadCachedTrackMeta(): void {
+  if (_cachedTrackMeta !== null) return;
+  try {
+    _cachedTrackMeta = "loading";
+    const cache = loadCache();
+    const map = new Map<string, { duration: number; time: string }>();
+    for (const t of cache.tracks) {
+      if (t.duration > 0 && t.time && t.time !== "—") {
+        map.set(t.id, { duration: t.duration, time: t.time });
+      }
+    }
+    _cachedTrackMeta = map;
+  } catch {
+    _cachedTrackMeta = "failed";
+  }
+}
+
+function fillMissingDurations(tracks: TrackResult[]): void {
+  loadCachedTrackMeta();
+  if (
+    !_cachedTrackMeta ||
+    _cachedTrackMeta === "loading" ||
+    _cachedTrackMeta === "failed"
+  )
+    return;
+  for (const track of tracks) {
+    if (track.duration === 0 || track.time === "—") {
+      const cached = _cachedTrackMeta.get(track.id);
+      if (cached) {
+        track.duration = cached.duration;
+        track.time = cached.time;
+      }
+    }
+  }
+}
+
+function invalidateCachedTrackMeta(): void {
+  _cachedTrackMeta = null;
+}
+
+/** In-memory cache for durations fetched via youtubei.js API. */
+const _fetchedTrackMeta = new Map<string, { duration: number; time: string }>();
+
+/** Run async functions with limited concurrency. */
+async function pLimit<T, R>(
+  items: T[],
+  concurrency: number,
+  fn: (x: T) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = [];
+  let idx = 0;
+
+  async function worker(): Promise<void> {
+    while (idx < items.length) {
+      const i = idx++;
+      const res = await fn(items[i]);
+      results[i] = res;
+    }
+  }
+
+  const workers = Array.from(
+    { length: Math.min(concurrency, items.length) },
+    () => worker(),
+  );
+  await Promise.all(workers);
+  return results;
+}
+
+async function fetchBatchTrackDurations(tracks: TrackResult[]): Promise<void> {
+  const client = await getClient().catch(() => null);
+  const cookie = getYtMusicSessionCookie();
+
+  const missing = tracks.filter(
+    (t) => (t.duration === 0 || t.time === "—") && !_fetchedTrackMeta.has(t.id),
+  );
+  if (missing.length === 0) return;
+
+  await pLimit(missing, 3, async (track): Promise<void> => {
+    // Skip if already resolved by a concurrent batch
+    if (_fetchedTrackMeta.has(track.id)) return;
+
+    let seconds: number | null = null;
+
+    // Strategy 1: youtubei.js API (fast, lightweight)
+    if (client) {
+      try {
+        const info = await client.music.getInfo(track.providerId);
+        const d = info?.basic_info?.duration;
+        if (d && typeof d === "number" && d > 0) {
+          seconds = d;
+          log("ytmusic", "info", "Duration via youtubei.js", {
+            videoId: track.providerId,
+            duration: seconds,
+          });
+        }
+      } catch (err) {
+        log("ytmusic", "info", "youtubei.js duration fetch failed", {
+          videoId: track.providerId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    // Strategy 2: yt-dlp --print duration (fallback, more reliable)
+    if (seconds === null) {
+      try {
+        seconds = await getYtDlpDuration(track.providerId, cookie);
+        if (seconds !== null) {
+          log("ytmusic", "info", "Duration via yt-dlp", {
+            videoId: track.providerId,
+            duration: seconds,
+          });
+        }
+      } catch {
+        // Final fallback — playback will resolve it later
+      }
+    }
+
+    if (seconds !== null && seconds > 0) {
+      const time = formatDuration(seconds);
+      _fetchedTrackMeta.set(track.id, { duration: seconds, time });
+      track.duration = seconds;
+      track.time = time;
+    }
+  });
+}
 
 /**
  * Returns the YouTube Music session cookie from the cached Innertube client.
@@ -527,18 +665,81 @@ function toTrack(
       : "Single");
 
   const durationParsed = itemAny.duration;
-  const seconds =
+  let seconds =
     typeof durationParsed === "object"
       ? durationParsed?.seconds
       : typeof durationParsed === "number"
         ? durationParsed
         : undefined;
-  const time =
-    typeof durationParsed === "object"
-      ? durationParsed?.text
-      : typeof durationParsed === "string"
-        ? durationParsed
-        : formatDuration(seconds);
+  let time =
+    seconds !== undefined
+      ? typeof durationParsed === "object"
+        ? (durationParsed?.text ?? formatDuration(seconds))
+        : typeof durationParsed === "string"
+          ? durationParsed
+          : formatDuration(seconds)
+      : undefined;
+
+  // Fallback: extract duration from subtitle / flex columns raw data
+  // (MusicTwoRowItem in home feed carousels often lacks .duration
+  //  but the info is present in the subtitle runs or raw text)
+  if (seconds === undefined || time === undefined) {
+    const candidateTexts: string[] = [];
+
+    // Check subtitle runs for a "M:SS" or "H:MM:SS" pattern
+    const subtitleRuns = itemAny.subtitle?.runs ?? [];
+    for (const run of subtitleRuns) {
+      const text = run?.text ?? "";
+      if (/^\d{1,2}:\d{2}(?::\d{2})?$/.test(text)) {
+        candidateTexts.push(text);
+      }
+    }
+
+    // Check the full subtitle text for trailing duration
+    const subtitleText = itemAny.subtitle?.toString() ?? "";
+    const durMatch = subtitleText.match(/(\d{1,2}:\d{2}(?::\d{2})?)$/);
+    if (durMatch) {
+      candidateTexts.push(durMatch[1]);
+    }
+
+    // Check flex columns (raw renderer data) for duration
+    const flexCols = itemAny.flexColumns ?? itemAny.flex_columns ?? [];
+    for (const col of flexCols) {
+      const colText = col?.title?.toString() ?? col?.toString() ?? "";
+      const m = colText.match(/(\d{1,2}:\d{2}(?::\d{2})?)$/);
+      if (m) candidateTexts.push(m[1]);
+    }
+
+    // Fixed columns (duration is often here in list items)
+    const fixedCols = itemAny.fixedColumns ?? itemAny.fixed_columns ?? [];
+    for (const col of fixedCols) {
+      const colText = col?.title?.toString() ?? col?.toString() ?? "";
+      if (/^\d{1,2}:\d{2}(?::\d{2})?$/.test(colText)) {
+        candidateTexts.push(colText);
+      }
+    }
+
+    // Use the first valid candidate found
+    for (const text of candidateTexts) {
+      if (text) {
+        const parts = text.split(":").map(Number);
+        const s =
+          parts.length === 3
+            ? parts[0] * 3600 + parts[1] * 60 + parts[2]
+            : parts[0] * 60 + parts[1];
+        if (s > 0) {
+          seconds = s;
+          time = text;
+          break;
+        }
+      }
+    }
+
+    // Last resort: still show a placeholder if truly unknown
+    if (seconds === undefined) {
+      time = "—";
+    }
+  }
 
   // Extract liked status from menu items if available
   let liked = false;
@@ -1075,6 +1276,7 @@ function toTrackFromRaw(renderer: RawNode): TrackResult | null {
     }
   }
 
+  const unknownDuration = !durationText;
   return {
     id: `ytmusic:${providerId}`,
     provider: "ytmusic",
@@ -1085,8 +1287,8 @@ function toTrackFromRaw(renderer: RawNode): TrackResult | null {
       "Unknown Artist",
     ),
     album: sanitizeText(albumRun?.text ?? "Single", "Single"),
-    duration: readDurationSeconds(durationText),
-    time: durationText || formatDuration(readDurationSeconds(durationText)),
+    duration: unknownDuration ? 0 : readDurationSeconds(durationText),
+    time: unknownDuration ? "—" : durationText,
     genre: "YouTube Music",
     picture: getCachedTrackPicture(providerId, getThumbnailUrl(renderer)),
     sourceLabel: "YouTube Music",
@@ -1938,6 +2140,7 @@ export async function syncYtMusicLibrary(): Promise<YTMusicLibrarySyncResult> {
 
   const lastSyncedAt = Date.now();
   saveCache({ tracks, playlists, lastSyncedAt });
+  invalidateCachedTrackMeta();
 
   cachedAuthStatus = cachedAuthStatus
     ? { ...cachedAuthStatus, lastSyncedAt, loggedIn: true }
@@ -2053,6 +2256,20 @@ export async function getYtMusicHomeFeed(): Promise<YTMusicHomeFeedResult> {
     }
   }
 
+  // Fill in missing durations from cached library data
+  const allTracks: TrackResult[] = [];
+  for (const section of sections) {
+    for (const item of section.items) {
+      if ("duration" in item && "providerId" in item) {
+        allTracks.push(item);
+      }
+    }
+  }
+  fillMissingDurations(allTracks);
+
+  // Fetch remaining missing durations via youtubei.js API
+  await fetchBatchTrackDurations(allTracks);
+
   log(
     "ytmusic",
     "info",
@@ -2086,6 +2303,12 @@ export async function searchYtMusic(query: string): Promise<{
   const playlists = (playlistResults.playlists?.contents ?? [])
     .map((item) => toPlaylist(item))
     .filter((item): item is PlaylistResult => item != null);
+
+  // Fill in missing durations from cached library data (full metadata)
+  fillMissingDurations(tracks);
+
+  // Fetch remaining missing durations via youtubei.js API
+  await fetchBatchTrackDurations(tracks);
 
   return {
     tracks: uniqueById(tracks),
