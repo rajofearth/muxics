@@ -288,6 +288,8 @@ export interface PlayerState {
   };
   recentlyPlayed: Track[];
   favorites: Set<string>;
+  _initReady: boolean;
+  _initStatus: string;
 }
 
 interface PlayerActions {
@@ -344,6 +346,8 @@ interface PlayerActions {
   updateQueue: (newQueue: Track[]) => void;
   playNext: (track: Track) => void;
   addToQueue: (track: Track) => void;
+  setInitReady: () => void;
+  setInitStatus: (status: string) => void;
 }
 
 export const usePlayerStore = create<PlayerState & PlayerActions>(
@@ -403,6 +407,11 @@ export const usePlayerStore = create<PlayerState & PlayerActions>(
     homeFeed: { sections: [], loading: false, error: null },
     recentlyPlayed: [],
     favorites: loadFavorites(),
+    _initReady: false,
+    _initStatus: "",
+
+    setInitReady: () => set({ _initReady: true }),
+    setInitStatus: (status) => set({ _initStatus: status }),
 
     setRpc: (rpc) => set({ rpc }),
 

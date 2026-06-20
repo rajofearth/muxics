@@ -7,6 +7,7 @@ import { useThemeFromArt } from "./hooks/useThemeFromArt";
 import { AudioEngineProvider } from "./context/AudioEngineContext";
 import { ThemeProvider } from "./components/ThemeProvider";
 import { ToastContainer } from "./components/Toast";
+import { SplashScreen } from "./components/SplashScreen";
 import type { DesktopBridge } from "../shared/desktop-contract";
 
 const MINI_WIDTH = 380;
@@ -27,7 +28,9 @@ export default function App({ desktop }: AppProps) {
   const loadLibrary = usePlayerStore((s) => s.loadLibrary);
   const loadPlaylists = usePlayerStore((s) => s.loadPlaylists);
   const loadAuthStatus = usePlayerStore((s) => s.loadAuthStatus);
-  const hydrateYtMusicFromCache = usePlayerStore((s) => s.hydrateYtMusicFromCache);
+  const hydrateYtMusicFromCache = usePlayerStore(
+    (s) => s.hydrateYtMusicFromCache,
+  );
   const syncYtMusicLibrary = usePlayerStore((s) => s.syncYtMusicLibrary);
   const playTrack = usePlayerStore((s) => s.playTrack);
   const togglePlay = usePlayerStore((s) => s.togglePlay);
@@ -53,23 +56,54 @@ export default function App({ desktop }: AppProps) {
     return () => setRpc(null);
   }, [desktop, setRpc]);
 
+  const setInitReady = usePlayerStore((s) => s.setInitReady);
+  const setInitStatus = usePlayerStore((s) => s.setInitStatus);
+  const initReady = usePlayerStore((s) => s._initReady);
+
   useEffect(() => {
     if (!initRef.current && rpcReady) {
       initRef.current = true;
       void (async () => {
+        setInitStatus("Checking authentication...");
         await loadAuthStatus();
         const loggedIn = usePlayerStore.getState().auth.loggedIn;
-        await Promise.all([
-          loadLibrary(),
-          loadPlaylists(),
-          ...(loggedIn ? [hydrateYtMusicFromCache()] : []),
-        ]);
+
+        setInitStatus("Scanning local library...");
+        const libraryPromise = loadLibrary();
+
+        setInitStatus("Loading playlists...");
+        const playlistsPromise = loadPlaylists();
+
+        let cachePromise = Promise.resolve();
         if (loggedIn) {
-          void syncYtMusicLibrary();
+          setInitStatus("Loading YouTube Music...");
+          cachePromise = hydrateYtMusicFromCache();
         }
+
+        await Promise.all([libraryPromise, playlistsPromise, cachePromise]);
+
+        if (loggedIn) {
+          setInitStatus("Syncing YouTube Music...");
+          await syncYtMusicLibrary();
+        }
+
+        setInitStatus("Almost ready...");
+        // Small tick so the final status renders before transitioning
+        await new Promise((r) => setTimeout(r, 200));
+
+        setInitReady();
       })();
     }
-  }, [rpcReady, loadAuthStatus, loadLibrary, loadPlaylists, hydrateYtMusicFromCache, syncYtMusicLibrary]);
+  }, [
+    rpcReady,
+    loadAuthStatus,
+    loadLibrary,
+    loadPlaylists,
+    hydrateYtMusicFromCache,
+    syncYtMusicLibrary,
+    setInitReady,
+    setInitStatus,
+  ]);
 
   useEffect(() => {
     if (currentTrack) {
@@ -81,7 +115,13 @@ export default function App({ desktop }: AppProps) {
     } else {
       desktop.send.clearNowPlaying();
     }
-  }, [desktop, currentTrack?.id, currentTrack?.title, currentTrack?.artist, isPlaying]);
+  }, [
+    desktop,
+    currentTrack?.id,
+    currentTrack?.title,
+    currentTrack?.artist,
+    isPlaying,
+  ]);
 
   const switchToMiniRef = useRef<(() => void) | null>(null);
   const switchToMainRef = useRef<(() => void) | null>(null);
@@ -90,28 +130,48 @@ export default function App({ desktop }: AppProps) {
     const handleAction = (e: Event) => {
       const action = (e as CustomEvent<string>).detail;
       switch (action) {
-        case "playPause": togglePlay(); break;
-        case "prev": handlePrev(); break;
-        case "next": handleNext(); break;
-        case "close": desktop.send.closeWindow(); break;
-        case "miniPlayer": switchToMiniRef.current?.(); break;
+        case "playPause":
+          togglePlay();
+          break;
+        case "prev":
+          handlePrev();
+          break;
+        case "next":
+          handleNext();
+          break;
+        case "close":
+          desktop.send.closeWindow();
+          break;
+        case "miniPlayer":
+          switchToMiniRef.current?.();
+          break;
         case "viewLibrary":
-          document.dispatchEvent(new CustomEvent("app-navigate", { detail: "library" }));
+          document.dispatchEvent(
+            new CustomEvent("app-navigate", { detail: "library" }),
+          );
           break;
         case "viewNowPlaying":
-          document.dispatchEvent(new CustomEvent("app-navigate", { detail: "now_playing" }));
+          document.dispatchEvent(
+            new CustomEvent("app-navigate", { detail: "now_playing" }),
+          );
           break;
         case "viewSearch":
-          document.dispatchEvent(new CustomEvent("app-navigate", { detail: "search" }));
+          document.dispatchEvent(
+            new CustomEvent("app-navigate", { detail: "search" }),
+          );
           break;
         case "viewMini":
           switchToMiniRef.current?.();
           break;
         case "volumeUp":
-          setVolume(Math.min(1, usePlayerStore.getState().player.volume + 0.05));
+          setVolume(
+            Math.min(1, usePlayerStore.getState().player.volume + 0.05),
+          );
           break;
         case "volumeDown":
-          setVolume(Math.max(0, usePlayerStore.getState().player.volume - 0.05));
+          setVolume(
+            Math.max(0, usePlayerStore.getState().player.volume - 0.05),
+          );
           break;
       }
     };
@@ -132,7 +192,10 @@ export default function App({ desktop }: AppProps) {
 
   const switchToMain = useCallback(() => {
     desktop.send.setMinSize({ width: 800, height: 600 });
-    desktop.send.resizeWindow({ width: MAIN_WINDOW_WIDTH, height: MAIN_WINDOW_HEIGHT });
+    desktop.send.resizeWindow({
+      width: MAIN_WINDOW_WIDTH,
+      height: MAIN_WINDOW_HEIGHT,
+    });
     setWindowMode("main");
   }, [desktop]);
 
@@ -141,7 +204,11 @@ export default function App({ desktop }: AppProps) {
 
   return (
     <ThemeProvider>
-      {windowMode === "mini" ? (
+      {!initReady ? (
+        <div className="h-screen w-full bg-app-bg flex flex-col">
+          <SplashScreen />
+        </div>
+      ) : windowMode === "mini" ? (
         <div className="h-full w-full">
           <MiniPlayer
             desktop={desktop}
@@ -159,7 +226,10 @@ export default function App({ desktop }: AppProps) {
           />
         </div>
       ) : (
-        <AudioEngineProvider analyserRef={analyserRef} analyserReady={analyserReady}>
+        <AudioEngineProvider
+          analyserRef={analyserRef}
+          analyserReady={analyserReady}
+        >
           <MainWindow
             desktop={desktop}
             onToggleMini={switchToMini}
