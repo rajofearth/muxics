@@ -107,7 +107,8 @@ export function MainWindowContent({
       void usePlayerStore.getState().loadCachedPlaylist();
     };
     document.addEventListener("muxics-yt-cache-stats", handleCacheUpdate);
-    return () => document.removeEventListener("muxics-yt-cache-stats", handleCacheUpdate);
+    return () =>
+      document.removeEventListener("muxics-yt-cache-stats", handleCacheUpdate);
   }, []);
 
   const renderTrackView = (
@@ -164,12 +165,19 @@ export function MainWindowContent({
         </div>
       </div>
       <TabNav
-        tabs={["All", ...Array.from(new Set(tracks.map((t) => t.genre).filter(Boolean)))]}
+        tabs={[
+          "All",
+          ...Array.from(new Set(tracks.map((t) => t.genre).filter(Boolean))),
+        ]}
         activeTab={activeTab}
         onTabChange={setActiveTab}
       />
       <TrackTable
-        tracks={activeTab === "All" ? tracks : tracks.filter((t) => t.genre === activeTab)}
+        tracks={
+          activeTab === "All"
+            ? tracks
+            : tracks.filter((t) => t.genre === activeTab)
+        }
         currentTrack={currentTrack}
         isPlaying={isPlaying}
         onTrackClick={(track, queue) => onPlayTrack(track, queue)}
@@ -186,9 +194,12 @@ export function MainWindowContent({
           <div className="mx-auto mb-4 w-16 h-16 rounded-2xl bg-app-elevated flex items-center justify-center">
             <Music size={26} className="text-app-text-primary" />
           </div>
-          <h2 className="text-2xl font-bold text-app-text-primary mb-2">Sign in to YouTube Music</h2>
+          <h2 className="text-2xl font-bold text-app-text-primary mb-2">
+            Sign in to YouTube Music
+          </h2>
           <p className="text-[13px] text-app-text-tertiary mb-5">
-            Connect your account to sync playlists, search your library, and stream directly inside the app.
+            Connect your account to sync playlists, search your library, and
+            stream directly inside the app.
           </p>
           {authLogin.error ? (
             <div className="mb-4 rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-[12px] text-red-200">
@@ -222,7 +233,9 @@ export function MainWindowContent({
       <div className="flex-1 flex items-center justify-center">
         <div className="text-center w-64">
           <div className="w-10 h-10 border-2 border-app-text-tertiary border-t-app-text-primary rounded-full animate-spin mx-auto mb-4" />
-          <div className="text-[14px] text-app-text-primary mb-3">Scanning library...</div>
+          <div className="text-[14px] text-app-text-primary mb-3">
+            Scanning library...
+          </div>
           {library.scanProgress > 0 && (
             <div>
               <div className="h-1 bg-app-border-strong rounded-full overflow-hidden mb-2">
@@ -231,7 +244,9 @@ export function MainWindowContent({
                   style={{ width: `${library.scanProgress}%` }}
                 />
               </div>
-              <div className="text-[11px] text-app-text-tertiary">{library.scanProgress}% complete</div>
+              <div className="text-[11px] text-app-text-tertiary">
+                {library.scanProgress}% complete
+              </div>
             </div>
           )}
         </div>
@@ -252,8 +267,12 @@ export function MainWindowContent({
     return (
       <div className="flex-1 flex items-center justify-center">
         <div className="text-center max-w-md">
-          <div className="text-[14px] text-red-400 mb-2">Something went wrong</div>
-          <div className="text-[13px] text-app-text-tertiary mb-4">{library.error}</div>
+          <div className="text-[14px] text-red-400 mb-2">
+            Something went wrong
+          </div>
+          <div className="text-[13px] text-app-text-tertiary mb-4">
+            {library.error}
+          </div>
           <button
             type="button"
             onClick={() => {
@@ -273,12 +292,20 @@ export function MainWindowContent({
     );
   }
 
-  if (library.source !== "ytmusic" && library.tracks.length === 0 && settings.watchFolders.length > 0) {
+  if (
+    library.source !== "ytmusic" &&
+    library.tracks.length === 0 &&
+    settings.watchFolders.length > 0
+  ) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <div className="text-center">
-          <div className="text-[14px] text-app-text-primary mb-2">No tracks found</div>
-          <div className="text-[13px] text-app-text-tertiary mb-4">Try adding more folders</div>
+          <div className="text-[14px] text-app-text-primary mb-2">
+            No tracks found
+          </div>
+          <div className="text-[13px] text-app-text-tertiary mb-4">
+            Try adding more folders
+          </div>
           <button
             type="button"
             onClick={() => handleNavigate("folders")}
@@ -361,7 +388,9 @@ export function MainWindowContent({
             items={artists}
             onItemClick={(item) => handleNavigate("artist_detail", item.name)}
             onPlayItem={(item) => {
-              const tracks = library.tracks.filter((t) => t.artist === item.name);
+              const tracks = library.tracks.filter(
+                (t) => t.artist === item.name,
+              );
               if (tracks.length > 0) onPlayTrack(tracks[0], tracks);
             }}
           />
@@ -369,7 +398,9 @@ export function MainWindowContent({
       );
 
     case "artist_detail": {
-      const artistTracks = library.tracks.filter((t) => t.artist === navState.id);
+      const artistTracks = library.tracks.filter(
+        (t) => t.artist === navState.id,
+      );
       const artistPic = artistTracks.find((t) => t.picture)?.picture;
       return renderTrackView(
         navState.id ?? "Artist",
@@ -399,7 +430,9 @@ export function MainWindowContent({
             items={albums}
             onItemClick={(item) => handleNavigate("album_detail", item.name)}
             onPlayItem={(item) => {
-              const tracks = library.tracks.filter((t) => t.album === item.name);
+              const tracks = library.tracks.filter(
+                (t) => t.album === item.name,
+              );
               if (tracks.length > 0) onPlayTrack(tracks[0], tracks);
             }}
           />
@@ -408,16 +441,30 @@ export function MainWindowContent({
 
     case "album_detail": {
       const isYt = navState.id?.startsWith("ytmusic:");
-      const activeAlbum = isYt ? playlists.items.find((p) => p.id === navState.id) : null;
-      const albumTracks = isYt 
-        ? (activeAlbum ? loadPlaylistTracks(activeAlbum.id) : [])
+      const activeAlbum = isYt
+        ? playlists.items.find((p) => p.id === navState.id)
+        : null;
+      const albumTracks = isYt
+        ? activeAlbum
+          ? loadPlaylistTracks(activeAlbum.id)
+          : []
         : library.tracks.filter((t) => t.album === navState.id);
-      
-      const albumLoading = activeAlbum ? playlists.hydratingById[activeAlbum.id] : false;
-      const albumError = activeAlbum ? playlists.hydrationErrors[activeAlbum.id] : null;
-      const albumPic = isYt ? activeAlbum?.picture : albumTracks.find((t) => t.picture)?.picture;
 
-      if (isYt && albumLoading && !(activeAlbum?.tracks && activeAlbum.tracks.length > 0)) {
+      const albumLoading = activeAlbum
+        ? playlists.hydratingById[activeAlbum.id]
+        : false;
+      const albumError = activeAlbum
+        ? playlists.hydrationErrors[activeAlbum.id]
+        : null;
+      const albumPic = isYt
+        ? activeAlbum?.picture
+        : albumTracks.find((t) => t.picture)?.picture;
+
+      if (
+        isYt &&
+        albumLoading &&
+        !(activeAlbum?.tracks && activeAlbum.tracks.length > 0)
+      ) {
         return (
           <div className="flex-1 flex flex-col overflow-hidden">
             <HeroHeader
@@ -430,14 +477,21 @@ export function MainWindowContent({
             <div className="flex-1 flex items-center justify-center px-8">
               <div className="w-full max-w-xl rounded-3xl border border-app-border bg-app-surface-alt/70 px-6 py-8 text-center">
                 <div className="mx-auto mb-4 h-10 w-10 rounded-full border-2 border-app-text-tertiary border-t-app-text-primary animate-spin" />
-                <div className="text-[15px] font-medium text-app-text-primary">Loading album details...</div>
+                <div className="text-[15px] font-medium text-app-text-primary">
+                  Loading album details...
+                </div>
               </div>
             </div>
           </div>
         );
       }
 
-      if (isYt && albumError && !(activeAlbum?.tracks && activeAlbum.tracks.length > 0)) {
+      if (
+        isYt &&
+        activeAlbum &&
+        albumError &&
+        !(activeAlbum.tracks && activeAlbum.tracks.length > 0)
+      ) {
         return (
           <div className="flex-1 flex flex-col overflow-hidden">
             <HeroHeader
@@ -447,7 +501,10 @@ export function MainWindowContent({
               icon={<Disc3 size={40} className="text-app-text-tertiary" />}
               onBack={() => handleNavigate("albums")}
               actions={
-                <PlaylistHeaderActions playlist={activeAlbum!} onNavigate={handleNavigate} />
+                <PlaylistHeaderActions
+                  playlist={activeAlbum!}
+                  onNavigate={handleNavigate}
+                />
               }
             />
             <div className="flex-1 px-8 pb-8">
@@ -461,10 +518,21 @@ export function MainWindowContent({
 
       return renderTrackView(
         isYt ? (activeAlbum?.name ?? "Album") : (navState.id ?? "Album"),
-        isYt ? (activeAlbum?.author ?? "YouTube Music") : (albumTracks[0]?.artist ?? "Album"),
+        isYt
+          ? (activeAlbum?.author ?? "YouTube Music")
+          : (albumTracks[0]?.artist ?? "Album"),
         albumTracks,
-        albumPic ? <img src={albumPic} alt="" className="w-full h-full object-cover" /> : <Disc3 size={40} className="text-app-text-tertiary" />,
-        isYt && activeAlbum ? <PlaylistHeaderActions playlist={activeAlbum} onNavigate={handleNavigate} /> : undefined,
+        albumPic ? (
+          <img src={albumPic} alt="" className="w-full h-full object-cover" />
+        ) : (
+          <Disc3 size={40} className="text-app-text-tertiary" />
+        ),
+        isYt && activeAlbum ? (
+          <PlaylistHeaderActions
+            playlist={activeAlbum}
+            onNavigate={handleNavigate}
+          />
+        ) : undefined,
         isYt ? activeAlbum?.id : undefined,
         () => handleNavigate("albums"),
       );
@@ -505,8 +573,12 @@ export function MainWindowContent({
     case "playlist_detail": {
       const plTracks = loadPlaylistTracks(navState.id ?? "");
       const activePlaylist = playlists.items.find((p) => p.id === navState.id);
-      const playlistLoading = activePlaylist ? playlists.hydratingById[activePlaylist.id] : false;
-      const playlistError = activePlaylist ? playlists.hydrationErrors[activePlaylist.id] : null;
+      const playlistLoading = activePlaylist
+        ? playlists.hydratingById[activePlaylist.id]
+        : false;
+      const playlistError = activePlaylist
+        ? playlists.hydrationErrors[activePlaylist.id]
+        : null;
 
       const recentPics: string[] = [];
       for (let i = plTracks.length - 1; i >= 0; i--) {
@@ -534,7 +606,9 @@ export function MainWindowContent({
             <div className="flex-1 flex items-center justify-center px-8">
               <div className="w-full max-w-xl rounded-3xl border border-app-border bg-app-surface-alt/70 px-6 py-8 text-center">
                 <div className="mx-auto mb-4 h-10 w-10 rounded-full border-2 border-app-text-tertiary border-t-app-text-primary animate-spin" />
-                <div className="text-[15px] font-medium text-app-text-primary">Loading this YouTube Music playlist...</div>
+                <div className="text-[15px] font-medium text-app-text-primary">
+                  Loading this YouTube Music playlist...
+                </div>
               </div>
             </div>
           </div>
@@ -555,7 +629,10 @@ export function MainWindowContent({
               icon={<ListMusic size={40} className="text-app-text-tertiary" />}
               onBack={() => handleNavigate("playlists")}
               actions={
-                <PlaylistHeaderActions playlist={activePlaylist} onNavigate={handleNavigate} />
+                <PlaylistHeaderActions
+                  playlist={activePlaylist}
+                  onNavigate={handleNavigate}
+                />
               }
             />
             <div className="flex-1 px-8 pb-8">
@@ -571,13 +648,22 @@ export function MainWindowContent({
         activePlaylist?.name ?? "Playlist",
         activePlaylist?.provider === "ytmusic" ? "YouTube Music" : "Playlist",
         plTracks,
-        <Collage pictures={recentPics} fallback={activePlaylist?.picture} FallbackIcon={ListMusic} iconSize={40} />,
-        activePlaylist ? <PlaylistHeaderActions playlist={activePlaylist} onNavigate={handleNavigate} /> : undefined,
+        <Collage
+          pictures={recentPics}
+          fallback={activePlaylist?.picture}
+          FallbackIcon={ListMusic}
+          iconSize={40}
+        />,
+        activePlaylist ? (
+          <PlaylistHeaderActions
+            playlist={activePlaylist}
+            onNavigate={handleNavigate}
+          />
+        ) : undefined,
         activePlaylist?.id,
         () => handleNavigate("playlists"),
       );
     }
-
 
     case "queue":
       return (
@@ -589,8 +675,13 @@ export function MainWindowContent({
       );
 
     case "recent": {
-      const recent = recentlyPlayed.length > 0 ? recentlyPlayed : library.tracks.slice(0, 20);
-      const recentPics = Array.from(new Set(recent.map(t => t.picture).filter((p): p is string => !!p))).slice(0, 4);
+      const recent =
+        recentlyPlayed.length > 0
+          ? recentlyPlayed
+          : library.tracks.slice(0, 20);
+      const recentPics = Array.from(
+        new Set(recent.map((t) => t.picture).filter((p): p is string => !!p)),
+      ).slice(0, 4);
       return renderTrackView(
         "Recently Played",
         "History",
@@ -603,7 +694,8 @@ export function MainWindowContent({
       return <SettingsView desktop={desktop} />;
 
     default: {
-      const defaultTracks = playQueue.length > 0 ? playQueue : library.tracks.slice(0, 10);
+      const defaultTracks =
+        playQueue.length > 0 ? playQueue : library.tracks.slice(0, 10);
       return renderTrackView(
         "Now Playing",
         "Queue",

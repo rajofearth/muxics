@@ -1,4 +1,4 @@
-import { memo, useEffect } from "react";
+import { memo, useEffect, useRef } from "react";
 import { usePlayerStore } from "../store/playerStore";
 import { useShallow } from "zustand/react/shallow";
 import { Play, Disc3, ListMusic, Music } from "lucide-react";
@@ -18,17 +18,15 @@ export const HomeFeed = memo(function HomeFeed({
     })),
   );
 
+  const hasAttemptedRef = useRef(false);
+
   useEffect(() => {
-    console.log("[HomeFeed] useEffect check:", {
-      loggedIn: auth.loggedIn,
-      sections: homeFeed.sections.length,
-      loading: homeFeed.loading,
-    });
-    if (auth.loggedIn && homeFeed.sections.length === 0 && !homeFeed.loading) {
+    if (auth.loggedIn && !hasAttemptedRef.current && !homeFeed.loading) {
+      hasAttemptedRef.current = true;
       console.log("[HomeFeed] Triggering loadHomeFeed");
       void loadHomeFeed();
     }
-  }, [auth.loggedIn, homeFeed.sections.length, homeFeed.loading, loadHomeFeed]);
+  }, [auth.loggedIn, homeFeed.loading, loadHomeFeed]);
 
   if (homeFeed.loading && homeFeed.sections.length === 0) {
     return (

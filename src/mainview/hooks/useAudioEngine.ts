@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type MutableRefObject,
+} from "react";
 import { usePlayerStore } from "../store/playerStore";
 import { showToast } from "../components/Toast";
 import type { Track } from "../types";
@@ -80,8 +86,13 @@ export function useAudioEngine() {
   const ctxRef = useRef<AudioContext | null>(null);
   const gainRef = useRef<GainNode | null>(null);
   const loadTokenRef = useRef(0);
-  const streamRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const errorRecoveryRef = useRef<{ loadToken: number; retried: boolean }>({ loadToken: 0, retried: false });
+  const streamRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const errorRecoveryRef = useRef<{ loadToken: number; retried: boolean }>({
+    loadToken: 0,
+    retried: false,
+  });
   const [analyserReady, setAnalyserReady] = useState(false);
 
   const clearStreamRefreshTimer = useCallback(() => {
@@ -134,7 +145,9 @@ export function useAudioEngine() {
         usePlayerStore.getState().playTrack(queue[0], queue);
       } else {
         usePlayerStore.getState().setCurrentTime(0);
-        usePlayerStore.setState((s) => ({ player: { ...s.player, isPlaying: false } }));
+        usePlayerStore.setState((s) => ({
+          player: { ...s.player, isPlaying: false },
+        }));
       }
     };
 
@@ -148,22 +161,33 @@ export function useAudioEngine() {
       if (audioRef.current) {
         const duration = Math.floor(audioRef.current.duration);
         const { currentTrack } = usePlayerStore.getState().player;
-        if (currentTrack && duration > 0 && (!currentTrack.duration || currentTrack.duration === 0)) {
-          console.log(`[AudioEngine] Updating missing duration for "${currentTrack.title}": ${duration}s`);
+        if (
+          currentTrack &&
+          Number.isFinite(duration) &&
+          duration > 0 &&
+          (!currentTrack.duration || currentTrack.duration === 0)
+        ) {
+          console.log(
+            `[AudioEngine] Updating missing duration for "${currentTrack.title}": ${duration}s`,
+          );
           usePlayerStore.setState((s) => {
             if (s.player.currentTrack?.id !== currentTrack.id) return s;
             const updatedTrack = { ...s.player.currentTrack, duration };
-            
+
             // Also update it in the library if found
-            const remoteTracks = s.library.remoteTracks.map(t => t.id === updatedTrack.id ? updatedTrack : t);
-            const tracks = s.library.tracks.map(t => t.id === updatedTrack.id ? updatedTrack : t);
+            const remoteTracks = s.library.remoteTracks.map((t) =>
+              t.id === updatedTrack.id ? updatedTrack : t,
+            );
+            const tracks = s.library.tracks.map((t) =>
+              t.id === updatedTrack.id ? updatedTrack : t,
+            );
 
             return {
               library: { ...s.library, remoteTracks, tracks },
               player: {
                 ...s.player,
                 currentTrack: updatedTrack,
-              }
+              },
             };
           });
         }
@@ -194,7 +218,11 @@ export function useAudioEngine() {
             trackId: currentTrack.id,
             providerId: currentTrack.providerId,
           });
-          if (token !== loadTokenRef.current || usePlayerStore.getState().player.currentTrack?.id !== currentTrack.id) {
+          if (
+            token !== loadTokenRef.current ||
+            usePlayerStore.getState().player.currentTrack?.id !==
+              currentTrack.id
+          ) {
             return;
           }
           if (playback.mode !== "direct" || !playback.url) {
@@ -217,7 +245,10 @@ export function useAudioEngine() {
           });
         } catch (e) {
           if (token === loadTokenRef.current) {
-            showToast(e instanceof Error ? e.message : "Playback failed.", "error");
+            showToast(
+              e instanceof Error ? e.message : "Playback failed.",
+              "error",
+            );
           }
         }
       })();
@@ -288,7 +319,10 @@ export function useAudioEngine() {
             url = playback.url;
             expiresAt = playback.expiresAt;
           } else {
-            throw new Error(playback.error ?? "Playback unavailable for this YouTube Music track.");
+            throw new Error(
+              playback.error ??
+                "Playback unavailable for this YouTube Music track.",
+            );
           }
         } else if (currentTrack.path) {
           url = await rpc.request.getPlaybackUrl({ path: currentTrack.path });
@@ -327,7 +361,10 @@ export function useAudioEngine() {
         if (!cancelled && loadTokenRef.current === token) {
           console.warn("Playback start failed:", err);
           if (currentTrack.provider === "ytmusic") {
-            showToast(err instanceof Error ? err.message : "Playback failed.", "error");
+            showToast(
+              err instanceof Error ? err.message : "Playback failed.",
+              "error",
+            );
           }
         }
       }

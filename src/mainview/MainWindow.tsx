@@ -184,6 +184,9 @@ export function MainWindow({
     return () => document.removeEventListener("app-navigate", navHandler);
   }, [handleNavigate]);
 
+  const homeFeedSections = usePlayerStore((s) => s.homeFeed.sections);
+  const searchState = usePlayerStore((s) => s.search);
+
   const activePlaylist = useMemo(() => {
     if (
       (navState.view !== "playlist_detail" &&
@@ -196,7 +199,7 @@ export function MainWindow({
     if (fromLibrary) return fromLibrary;
 
     // Check home feed sections for transient items
-    for (const section of usePlayerStore.getState().homeFeed.sections) {
+    for (const section of homeFeedSections) {
       const found = section.items.find(
         (item): item is Playlist =>
           !("title" in item) && item.id === navState.id,
@@ -205,15 +208,20 @@ export function MainWindow({
     }
 
     // Check search results for albums/playlists
-    const search = usePlayerStore.getState().search;
     const fromSearch = [
-      ...(search.albums || []),
-      ...(search.playlists || []),
+      ...(searchState.albums || []),
+      ...(searchState.playlists || []),
     ].find((p) => p.id === navState.id);
     if (fromSearch) return fromSearch;
 
     return null;
-  }, [navState.view, navState.id, playlists.items]);
+  }, [
+    navState.view,
+    navState.id,
+    playlists.items,
+    homeFeedSections,
+    searchState,
+  ]);
 
   useEffect(() => {
     if (!activePlaylist || activePlaylist.provider !== "ytmusic") {

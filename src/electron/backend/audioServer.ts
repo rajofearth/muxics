@@ -368,13 +368,13 @@ async function handleYtCache(
       // Handle both Node.js Readable and web ReadableStream
       if (typeof (body as any).pipe === "function") {
         (body as any).on("error", () => {
-          if (!res.headersSent) res.destroy();
+          res.destroy();
         });
         (body as any).pipe(res);
       } else {
         Readable.fromWeb(body as any)
           .on("error", () => {
-            if (!res.headersSent) res.destroy();
+            res.destroy();
           })
           .pipe(res);
       }

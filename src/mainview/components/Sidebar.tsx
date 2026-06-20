@@ -1,4 +1,4 @@
-import { useState, memo, useMemo } from "react";
+import { useState, memo } from "react";
 import {
   Library,
   Mic2,
@@ -25,7 +25,11 @@ type SidebarProps = {
   onNavigate: (view: NavView, id?: string) => void;
 };
 
-export const Sidebar = memo(function Sidebar({ navState, playlists, onNavigate }: SidebarProps) {
+export const Sidebar = memo(function Sidebar({
+  navState,
+  playlists,
+  onNavigate,
+}: SidebarProps) {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const trackCount = usePlayerStore((s) => s.library.tracks.length);
   const favCount = usePlayerStore((s) => s.favorites.size);
@@ -34,22 +38,61 @@ export const Sidebar = memo(function Sidebar({ navState, playlists, onNavigate }
   const currentTrack = usePlayerStore((s) => s.player.currentTrack);
   const isPlaying = usePlayerStore((s) => s.player.isPlaying);
 
-  const NAV_ITEMS: { id: NavView; icon: typeof Library; label: string; count?: number }[] = [
+  const NAV_ITEMS: {
+    id: NavView;
+    icon: typeof Library;
+    label: string;
+    count?: number;
+  }[] = [
     { id: "search", icon: Search, label: "Search" },
-    { id: "library", icon: Library, label: "All Songs", count: trackCount || undefined },
-    { id: "favorites", icon: Heart, label: "Favorites", count: favCount || undefined },
+    {
+      id: "library",
+      icon: Library,
+      label: "All Songs",
+      count: trackCount || undefined,
+    },
+    {
+      id: "favorites",
+      icon: Heart,
+      label: "Favorites",
+      count: favCount || undefined,
+    },
     { id: "artists", icon: Mic2, label: "Artists" },
     { id: "albums", icon: Disc3, label: "Albums" },
-    { id: "recent", icon: Clock, label: "Recently Played", count: recentCount || undefined },
-    { id: "queue", icon: LayoutList, label: "Up Next", count: queueCount || undefined },
+    {
+      id: "recent",
+      icon: Clock,
+      label: "Recently Played",
+      count: recentCount || undefined,
+    },
+    {
+      id: "queue",
+      icon: LayoutList,
+      label: "Up Next",
+      count: queueCount || undefined,
+    },
   ];
 
-  const MANAGE_ITEMS: { id: NavView; icon: typeof FolderOpen; label: string }[] = [
+  const MANAGE_ITEMS: {
+    id: NavView;
+    icon: typeof FolderOpen;
+    label: string;
+  }[] = [
     { id: "playlists", icon: ListMusic, label: "All Playlists" },
     { id: "settings", icon: Settings, label: "Settings" },
   ];
 
-  const NavButton = ({ id, icon: Icon, label, count }: { id: NavView; icon: typeof Library; label: string; count?: number }) => {
+  const NavButton = ({
+    id,
+    icon: Icon,
+    label,
+    count,
+  }: {
+    id: NavView;
+    icon: typeof Library;
+    label: string;
+    count?: number;
+  }) => {
     const isActive =
       navState.view === id ||
       (id === "artists" && navState.view === "artist_detail") ||
@@ -66,21 +109,29 @@ export const Sidebar = memo(function Sidebar({ navState, playlists, onNavigate }
             : "text-app-text-secondary hover:bg-app-hover hover:text-app-text-primary"
         }`}
       >
-        <Icon size={16} strokeWidth={isActive ? 2 : 1.5} className={id === "favorites" && isActive ? "fill-current" : ""} />
+        <Icon
+          size={16}
+          strokeWidth={isActive ? 2 : 1.5}
+          className={id === "favorites" && isActive ? "fill-current" : ""}
+        />
         <span className="flex-1 text-left">{label}</span>
         {count !== undefined && count > 0 && (
-          <span className="text-[10px] text-app-text-tertiary tabular-nums">{count}</span>
+          <span className="text-[10px] text-app-text-tertiary tabular-nums">
+            {count}
+          </span>
         )}
       </button>
     );
   };
 
   const transientItems = usePlayerStore((s) => s.playlists.transientItems);
-  const transientIds = useMemo(() => new Set(transientItems.map((p) => p.id)), [transientItems]);
-  const libraryPlaylists = playlists.filter((p) => !transientIds.has(p.id));
+  const libraryPlaylists = playlists.filter((p) => !transientItems.includes(p));
 
   return (
-    <nav className="w-56 border-r border-app-border bg-app-surface-alt flex flex-col shrink-0 select-none" aria-label="Navigation">
+    <nav
+      className="w-56 border-r border-app-border bg-app-surface-alt flex flex-col shrink-0 select-none"
+      aria-label="Navigation"
+    >
       <div className="p-3 pt-2 flex-1 overflow-y-auto no-scrollbar">
         <div className="mb-1">
           <div className="px-3 py-1.5 text-[11px] font-medium text-app-text-tertiary uppercase tracking-wider">
@@ -116,7 +167,8 @@ export const Sidebar = memo(function Sidebar({ navState, playlists, onNavigate }
         {libraryPlaylists.length > 0 && (
           <div className="mt-2 space-y-0.5">
             {libraryPlaylists.map((pl) => {
-              const isActive = navState.view === "playlist_detail" && navState.id === pl.id;
+              const isActive =
+                navState.view === "playlist_detail" && navState.id === pl.id;
               return (
                 <button
                   key={pl.id}
@@ -146,21 +198,31 @@ export const Sidebar = memo(function Sidebar({ navState, playlists, onNavigate }
           aria-label="Now playing"
         >
           {currentTrack.picture ? (
-            <img src={currentTrack.picture} alt="" className="w-10 h-10 rounded-lg object-cover shadow-sm shrink-0" />
+            <img
+              src={currentTrack.picture}
+              alt=""
+              className="w-10 h-10 rounded-lg object-cover shadow-sm shrink-0"
+            />
           ) : (
             <div className="w-10 h-10 rounded-lg bg-app-bg flex items-center justify-center shrink-0">
               <Music size={16} className="text-app-text-tertiary" />
             </div>
           )}
           <div className="min-w-0 flex-1">
-            <div className="text-[12px] font-medium text-app-text-primary truncate leading-tight">{currentTrack.title}</div>
-            <div className="text-[10px] text-app-text-tertiary truncate leading-tight mt-0.5">{currentTrack.artist}</div>
+            <div className="text-[12px] font-medium text-app-text-primary truncate leading-tight">
+              {currentTrack.title}
+            </div>
+            <div className="text-[10px] text-app-text-tertiary truncate leading-tight mt-0.5">
+              {currentTrack.artist}
+            </div>
           </div>
           {isPlaying && <EqBars playing size={12} />}
         </button>
       )}
 
-      {showCreateModal && <CreatePlaylistModal onClose={() => setShowCreateModal(false)} />}
+      {showCreateModal && (
+        <CreatePlaylistModal onClose={() => setShowCreateModal(false)} />
+      )}
     </nav>
   );
 });

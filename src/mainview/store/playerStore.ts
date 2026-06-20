@@ -134,6 +134,7 @@ function playlistNeedsYtDetailFetch(pl: Playlist): boolean {
 
   const nTracks = pl.tracks?.length ?? 0;
   const nIds = pl.trackIds.length;
+  const hasTracksArray = Array.isArray(pl.tracks);
   const target = pl.listedItemCount ?? 0;
 
   const rich =
@@ -141,7 +142,7 @@ function playlistNeedsYtDetailFetch(pl: Playlist): boolean {
     false;
 
   if (nIds === 0 && nTracks === 0) {
-    return true;
+    return !hasTracksArray;
   }
 
   if (!rich) {
@@ -567,10 +568,20 @@ export const usePlayerStore = create<PlayerState & PlayerActions>(
         playlists: {
           ...s.playlists,
           remoteItems: [],
+          transientItems: [],
           items: mergePlaylists("local", s.playlists.localItems, []),
           hydratingById: {},
           hydrationErrors: {},
         },
+        search: {
+          query: "",
+          results: [],
+          albums: [],
+          playlists: [],
+          loading: false,
+          error: null,
+        },
+        homeFeed: { sections: [], loading: false, error: null },
       }));
     },
 
@@ -879,38 +890,44 @@ export const usePlayerStore = create<PlayerState & PlayerActions>(
     },
 
     ensurePlaylistHydrated: async (playlistId) => {
-      const { rpc, playlists, homeFeed, library } = get();
+      const { rpc, playlists, homeFeed, library, search } = get();
       if (!rpc) return;
 
       let playlist = playlists.items.find((item) => item.id === playlistId);
 
-      // If not in standard playlists, check the home feed (for albums/playlists the user hasn't saved yet)
+      // If not in standard playlists, check transient browse/search sources.
       if (!playlist) {
-        for (const section of homeFeed.sections) {
-          const found = section.items.find(
-            (item): item is Playlist =>
-              !("title" in item) && item.id === playlistId,
-          );
-          if (found) {
-            playlist = found;
-            // Add it to transientItems so it can be hydrated and managed without cluttering the sidebar
-            set((s) => ({
+        const candidates = [
+          ...homeFeed.sections.flatMap((section) =>
+            section.items.filter(
+              (item): item is Playlist => !("title" in item),
+            ),
+          ),
+          ...(search.albums ?? []),
+          ...(search.playlists ?? []),
+        ];
+        const found = candidates.find((item) => item.id === playlistId);
+        if (found) {
+          playlist = found;
+          set((s) => {
+            const transientItems = s.playlists.transientItems.some(
+              (item) => item.id === found.id,
+            )
+              ? s.playlists.transientItems
+              : [...s.playlists.transientItems, found];
+            return {
               playlists: {
                 ...s.playlists,
-                transientItems: [...s.playlists.transientItems, found],
+                transientItems,
                 items: mergePlaylists(
                   library.source,
                   s.playlists.localItems,
                   s.playlists.remoteItems,
-                  [...s.playlists.transientItems, found],
+                  transientItems,
                 ),
               },
-            }));
-            // IMPORTANT: Refresh our local playlist reference from the newly updated state
-            // to ensure we have the most current object for the rest of the function.
-            playlist = found;
-            break;
-          }
+            };
+          });
         }
       }
 
@@ -1657,12 +1674,27 @@ export const usePlayerStore = create<PlayerState & PlayerActions>(
         );
         get().syncFavoritesFromTracks(allHomeTracks);
 
-        set({
-          homeFeed: {
-            sections,
-            loading: false,
-            error: null,
-          },
+        set((s) => {
+          const remoteTracks = mergeUniqueTracks(
+            s.library.remoteTracks,
+            allHomeTracks,
+          );
+          return {
+            library: {
+              ...s.library,
+              remoteTracks,
+              tracks: mergeTracks(
+                s.library.source,
+                s.library.localTracks,
+                remoteTracks,
+              ),
+            },
+            homeFeed: {
+              sections,
+              loading: false,
+              error: null,
+            },
+          };
         });
       } catch (error) {
         console.error("[playerStore] Failed to load home feed", error);
@@ -1693,8 +1725,10 @@ export const usePlayerStore = create<PlayerState & PlayerActions>(
         const next = new Set(s.favorites);
         let changed = false;
         for (const t of tracks) {
-          if (t.liked && !next.has(t.id)) {
+          if (t.liked === true && !next.has(t.id)) {
             next.add(t.id);
+            changed = true;
+          } else if (t.liked === false && next.delete(t.id)) {
             changed = true;
           }
         }

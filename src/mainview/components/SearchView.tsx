@@ -140,6 +140,7 @@ export function SearchView({
       ) : search.loading &&
         localArtists.length === 0 &&
         (search.albums?.length ?? 0) === 0 &&
+        (search.playlists?.length ?? 0) === 0 &&
         search.results.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center text-app-text-tertiary gap-4">
           <div className="w-8 h-8 border-2 border-app-accent border-t-transparent rounded-full animate-spin" />
@@ -147,7 +148,8 @@ export function SearchView({
         </div>
       ) : search.results.length === 0 &&
         localArtists.length === 0 &&
-        (search.albums?.length ?? 0) === 0 ? (
+        (search.albums?.length ?? 0) === 0 &&
+        (search.playlists?.length ?? 0) === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center text-app-text-tertiary gap-2">
           <div className="text-sm">No results for "{search.query}"</div>
           <div className="text-xs">

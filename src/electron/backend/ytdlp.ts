@@ -10,8 +10,7 @@ import { log } from "./logger";
 // ---------------------------------------------------------------------------
 
 const BINARY_URLS: Record<string, string> = {
-  win32:
-    "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe",
+  win32: "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe",
   darwin:
     "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos",
   linux:
@@ -137,12 +136,13 @@ function writeCookiesFile(cookieString: string | undefined): string | null {
     // www.youtube.com, or youtube.com.
     const isSecure = name.startsWith("__Secure-");
     const secureFlag = isSecure ? "TRUE" : "FALSE";
-    lines.push(
-      `.youtube.com\tTRUE\t/\t${secureFlag}\t0\t${name}\t${value}`,
-    );
+    lines.push(`.youtube.com\tTRUE\t/\t${secureFlag}\t0\t${name}\t${value}`);
   }
 
   fs.writeFileSync(COOKIES_FILE, lines.join("\n"), "utf-8");
+  if (process.platform !== "win32") {
+    fs.chmodSync(COOKIES_FILE, 0o600);
+  }
   return COOKIES_FILE;
 }
 
