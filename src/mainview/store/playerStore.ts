@@ -305,6 +305,7 @@ interface PlayerActions {
   syncYtMusicLibrary: () => Promise<void>;
   loadCachedPlaylist: () => Promise<void>;
   ensurePlaylistHydrated: (playlistId: string) => Promise<void>;
+  hydrateAllYtPlaylists: () => Promise<void>;
   addFolder: (path: string) => Promise<void>;
   removeFolder: (path: string) => Promise<void>;
   playTrack: (track: Track, queue?: Track[] | null) => void;
@@ -766,6 +767,32 @@ export const usePlayerStore = create<PlayerState & PlayerActions>(
       });
 
       void get().loadCachedPlaylist();
+
+      // Hydrate all YT Music playlists in background so the grid view
+      // shows track data / cover images without requiring manual navigation.
+      void get().hydrateAllYtPlaylists();
+    },
+
+    hydrateAllYtPlaylists: async () => {
+      const { playlists, ensurePlaylistHydrated } = get();
+      const ytPlaylists = playlists.items.filter(
+        (p) =>
+          p.provider === "ytmusic" &&
+          p.id !== "ytmusic-cached" &&
+          playlistNeedsYtDetailFetch(p),
+      );
+      if (ytPlaylists.length === 0) return;
+
+      // Hydrate with limited concurrency
+      const CONCURRENT = 3;
+      let idx = 0;
+      const next = (): Promise<void> => {
+        if (idx >= ytPlaylists.length) return Promise.resolve();
+        const playlist = ytPlaylists[idx++];
+        return ensurePlaylistHydrated(playlist.id).then(next, next);
+      };
+      const workers = Array.from({ length: CONCURRENT }, () => next());
+      await Promise.all(workers);
     },
 
     syncYtMusicLibrary: async () => {
@@ -779,12 +806,22 @@ export const usePlayerStore = create<PlayerState & PlayerActions>(
       try {
         const synced = await rpc.request.ytmusicSyncLibrary();
         const remoteItems = synced.playlists.map(toPlaylist);
-        const remoteTracks = mergeUniqueTracks(
-          synced.tracks.map(toTrack),
-          collectPlaylistTracks(remoteItems),
-        );
 
         set((s) => {
+          const freshTracks = mergeUniqueTracks(
+            synced.tracks.map(toTrack),
+            collectPlaylistTracks(remoteItems),
+          );
+
+          // Preserve tracks from playlists that were previously hydrated
+          // (they have full metadata including cover art) but weren't in the
+          // sync result (e.g. tracks that exist in a playlist but not in the
+          // user's YouTube Music library "Songs" collection).
+          const remoteTracks = mergeUniqueTracks(
+            freshTracks,
+            collectPlaylistTracks(s.playlists.remoteItems),
+          );
+
           const nextFavorites = new Set(s.favorites);
           for (const track of remoteTracks) {
             if (track.liked) {
@@ -822,6 +859,9 @@ export const usePlayerStore = create<PlayerState & PlayerActions>(
         });
 
         void get().loadCachedPlaylist();
+
+        // Hydrate all YT Music playlists in background after sync.
+        void get().hydrateAllYtPlaylists();
       } catch (error) {
         set((s) => ({
           library: {

@@ -270,27 +270,71 @@ function getThumbnailUrl(item: any): string | undefined {
   }
 
   // Handle case where it's already a wrapped results object from toTrackFromRaw
+  // or has a direct thumbnails array (parsed youtubei.js nodes)
   if (Array.isArray(item.thumbnails)) {
     return item.thumbnails[item.thumbnails.length - 1]?.url;
   }
+
+  // Helper: extract the last URL from a thumbnails array
+  const pickLastThumbnailUrl = (
+    thumbs: { url?: string }[] | undefined,
+  ): string | undefined => thumbs?.[thumbs.length - 1]?.url;
+
+  // Helper: drill into a thumbnail object (raw API structures)
+  const resolveThumbnailRenderer = (obj: any): string | undefined => {
+    if (!obj || typeof obj !== "object") return undefined;
+    // Direct .thumbnails on the object itself (most common raw API pattern)
+    if (Array.isArray(obj.thumbnails))
+      return pickLastThumbnailUrl(obj.thumbnails);
+    // Direct .thumbnail.thumbnails
+    const direct = obj.thumbnail;
+    if (direct && Array.isArray(direct.thumbnails))
+      return pickLastThumbnailUrl(direct.thumbnails);
+    // musicThumbnailRenderer wrapper
+    const renderer = obj.musicThumbnailRenderer;
+    if (renderer?.thumbnail && Array.isArray(renderer.thumbnail.thumbnails))
+      return pickLastThumbnailUrl(renderer.thumbnail.thumbnails);
+    return undefined;
+  };
 
   // youtubei.js nodes often have .thumbnail as a Thumbnail object or Thumbnail[] array
   const thumbnail = item.thumbnail;
   if (thumbnail) {
     if (Array.isArray(thumbnail)) {
-      return thumbnail[thumbnail.length - 1]?.url;
+      return pickLastThumbnailUrl(thumbnail);
     }
     if (typeof thumbnail === "object" && "url" in thumbnail) {
       return thumbnail.url;
     }
     if (typeof thumbnail === "object" && Array.isArray(thumbnail.contents)) {
-      return thumbnail.contents[thumbnail.contents.length - 1]?.url;
+      return pickLastThumbnailUrl(thumbnail.contents);
     }
+    // Try nested thumbnail renderer structures (raw YouTube API responses)
+    if (typeof thumbnail === "object") {
+      const result = resolveThumbnailRenderer(thumbnail);
+      if (result) return result;
+    }
+  }
+
+  // Try thumbnailRenderer sibling (alternative raw API structure)
+  const thumbRenderer = item.thumbnailRenderer;
+  if (thumbRenderer) {
+    const result = resolveThumbnailRenderer(thumbRenderer);
+    if (result) return result;
+  }
+
+  // Try item-level thumbnail renderer (some raw nodes have this at root)
+  const musicRenderer = item.musicThumbnailRenderer;
+  if (
+    musicRenderer?.thumbnail &&
+    Array.isArray(musicRenderer.thumbnail.thumbnails)
+  ) {
+    return pickLastThumbnailUrl(musicRenderer.thumbnail.thumbnails);
   }
 
   const thumbnails = item.thumbnails;
   if (Array.isArray(thumbnails)) {
-    return thumbnails[thumbnails.length - 1]?.url;
+    return pickLastThumbnailUrl(thumbnails);
   }
 
   return undefined;
