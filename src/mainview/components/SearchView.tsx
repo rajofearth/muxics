@@ -1,6 +1,6 @@
 import { useCallback, useRef, useEffect, useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { Search, X, Mic2, Disc3, Play, ListMusic, Music } from "lucide-react";
+import { Search, X, Mic2, Disc3, Play, ListMusic } from "lucide-react";
 import { usePlayerStore } from "../store/playerStore";
 import type { Track, NavView, Playlist } from "../types";
 import { TrackTable } from "./TrackTable";
@@ -17,7 +17,10 @@ type SearchViewProps = {
 /** Single pass over tracks for artist/album suggestion chips (rebuilt when library changes). */
 function buildLibrarySearchMaps(tracks: readonly Track[]) {
   const artistMap = new Map<string, { count: number; picture?: string }>();
-  const albumMap = new Map<string, { artist: string; count: number; picture?: string }>();
+  const albumMap = new Map<
+    string,
+    { artist: string; count: number; picture?: string }
+  >();
   for (const t of tracks) {
     const artist = t.artist || "Unknown Artist";
     const ae = artistMap.get(artist);
@@ -41,19 +44,29 @@ function buildLibrarySearchMaps(tracks: readonly Track[]) {
   return { artistMap, albumMap };
 }
 
-export function SearchView({ currentTrack, isPlaying, onPlayTrack, onPlayPause, onNavigate }: SearchViewProps) {
+export function SearchView({
+  currentTrack,
+  isPlaying,
+  onPlayTrack,
+  onPlayPause,
+  onNavigate,
+}: SearchViewProps) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const { search, setSearchQuery, libraryTracks, librarySource, auth } = usePlayerStore(
-    useShallow((s) => ({
-      search: s.search,
-      setSearchQuery: s.setSearchQuery,
-      libraryTracks: s.library.tracks,
-      librarySource: s.library.source,
-      auth: s.auth,
-    })),
-  );
+  const { search, setSearchQuery, libraryTracks, librarySource, auth } =
+    usePlayerStore(
+      useShallow((s) => ({
+        search: s.search,
+        setSearchQuery: s.setSearchQuery,
+        libraryTracks: s.library.tracks,
+        librarySource: s.library.source,
+        auth: s.auth,
+      })),
+    );
 
-  const libraryMaps = useMemo(() => buildLibrarySearchMaps(libraryTracks), [libraryTracks]);
+  const libraryMaps = useMemo(
+    () => buildLibrarySearchMaps(libraryTracks),
+    [libraryTracks],
+  );
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -73,7 +86,9 @@ export function SearchView({ currentTrack, isPlaying, onPlayTrack, onPlayPause, 
         out.push({ name, ...data });
       }
     }
-    return out.sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)).slice(0, 8);
+    return out
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+      .slice(0, 8);
   }, [search.query, libraryMaps.artistMap]);
 
   const handleItemClick = useCallback(
@@ -92,7 +107,10 @@ export function SearchView({ currentTrack, isPlaying, onPlayTrack, onPlayPause, 
     <div className="flex-1 flex flex-col overflow-hidden bg-app-bg">
       <div className="px-8 pt-6 pb-4 shrink-0">
         <div className="relative max-w-xl">
-          <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-app-text-tertiary" />
+          <Search
+            size={18}
+            className="absolute left-3.5 top-1/2 -translate-y-1/2 text-app-text-tertiary"
+          />
           <input
             ref={inputRef}
             type="text"
@@ -127,10 +145,14 @@ export function SearchView({ currentTrack, isPlaying, onPlayTrack, onPlayPause, 
           <div className="w-8 h-8 border-2 border-app-accent border-t-transparent rounded-full animate-spin" />
           <div className="text-sm font-medium">Searching...</div>
         </div>
-      ) : search.results.length === 0 && localArtists.length === 0 && (search.albums?.length ?? 0) === 0 ? (
+      ) : search.results.length === 0 &&
+        localArtists.length === 0 &&
+        (search.albums?.length ?? 0) === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center text-app-text-tertiary gap-2">
           <div className="text-sm">No results for "{search.query}"</div>
-          <div className="text-xs">{search.error ?? "Try a different search term"}</div>
+          <div className="text-xs">
+            {search.error ?? "Try a different search term"}
+          </div>
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto min-h-0 no-scrollbar pb-12">
@@ -155,15 +177,23 @@ export function SearchView({ currentTrack, isPlaying, onPlayTrack, onPlayPause, 
                     className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-app-surface hover:bg-app-hover border border-app-border text-[13px] transition-all shadow-sm group"
                   >
                     {a.picture ? (
-                      <img src={a.picture} alt="" className="w-8 h-8 rounded-full object-cover group-hover:scale-105 transition-transform" />
+                      <img
+                        src={a.picture}
+                        alt=""
+                        className="w-8 h-8 rounded-full object-cover group-hover:scale-105 transition-transform"
+                      />
                     ) : (
                       <div className="w-8 h-8 rounded-full bg-app-border flex items-center justify-center">
                         <Mic2 size={14} className="text-app-text-tertiary" />
                       </div>
                     )}
                     <div className="text-left">
-                      <div className="text-app-text-primary font-semibold">{a.name}</div>
-                      <div className="text-app-text-tertiary text-[11px]">{a.count} songs</div>
+                      <div className="text-app-text-primary font-semibold">
+                        {a.name}
+                      </div>
+                      <div className="text-app-text-tertiary text-[11px]">
+                        {a.count} songs
+                      </div>
                     </div>
                   </button>
                 ))}
@@ -187,7 +217,11 @@ export function SearchView({ currentTrack, isPlaying, onPlayTrack, onPlayPause, 
                   >
                     <div className="aspect-square rounded-xl bg-app-elevated mb-3 overflow-hidden shadow-md group-hover:shadow-xl transition-all relative ring-1 ring-inset ring-white/5">
                       {album.picture ? (
-                        <img src={album.picture} alt="" className="w-full h-full object-cover" />
+                        <img
+                          src={album.picture}
+                          alt=""
+                          className="w-full h-full object-cover"
+                        />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center bg-app-border">
                           <Disc3 className="text-app-text-tertiary w-1/3 h-1/3 opacity-40" />
@@ -195,7 +229,10 @@ export function SearchView({ currentTrack, isPlaying, onPlayTrack, onPlayPause, 
                       )}
                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-[2px]">
                         <div className="w-10 h-10 rounded-full bg-app-text-primary flex items-center justify-center translate-y-2 group-hover:translate-y-0 transition-transform shadow-2xl">
-                          <Play size={18} className="fill-app-bg text-app-bg ml-1" />
+                          <Play
+                            size={18}
+                            className="fill-app-bg text-app-bg ml-1"
+                          />
                         </div>
                       </div>
                     </div>
@@ -227,7 +264,11 @@ export function SearchView({ currentTrack, isPlaying, onPlayTrack, onPlayPause, 
                   >
                     <div className="aspect-square rounded-lg bg-app-elevated mb-3 overflow-hidden shadow-md group-hover:shadow-xl transition-all relative ring-1 ring-inset ring-white/5">
                       {pl.picture ? (
-                        <img src={pl.picture} alt="" className="w-full h-full object-cover" />
+                        <img
+                          src={pl.picture}
+                          alt=""
+                          className="w-full h-full object-cover"
+                        />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center bg-app-border">
                           <ListMusic className="text-app-text-tertiary w-1/3 h-1/3 opacity-40" />

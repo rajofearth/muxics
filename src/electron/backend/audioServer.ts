@@ -1,5 +1,9 @@
 import fs from "node:fs";
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import {
+  createServer,
+  type IncomingMessage,
+  type ServerResponse,
+} from "node:http";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { AUDIO_SERVER_PORT, MIME_TYPES } from "../../shared/constants";
@@ -96,7 +100,9 @@ function handlePlayback(req: IncomingMessage, res: ServerResponse): void {
     return;
   }
 
-  const contentType = MIME_TYPES[path.extname(filePath).toLowerCase()] ?? "application/octet-stream";
+  const contentType =
+    MIME_TYPES[path.extname(filePath).toLowerCase()] ??
+    "application/octet-stream";
   const rangeHeader = req.headers.range;
 
   if (rangeHeader) {
@@ -107,7 +113,9 @@ function handlePlayback(req: IncomingMessage, res: ServerResponse): void {
     }
 
     const start = Number.parseInt(match[1], 10);
-    const end = match[2] ? Math.min(Number.parseInt(match[2], 10), stat.size - 1) : stat.size - 1;
+    const end = match[2]
+      ? Math.min(Number.parseInt(match[2], 10), stat.size - 1)
+      : stat.size - 1;
 
     if (start >= stat.size || end < start) {
       res.writeHead(416, { "Content-Range": `bytes */${stat.size}` });
@@ -137,9 +145,17 @@ function handlePlayback(req: IncomingMessage, res: ServerResponse): void {
   fs.createReadStream(filePath).pipe(res);
 }
 
-function streamLocalFile(req: IncomingMessage, res: ServerResponse, filePath: string, contentType?: string | null): void {
+function streamLocalFile(
+  req: IncomingMessage,
+  res: ServerResponse,
+  filePath: string,
+  contentType?: string | null,
+): void {
   const stat = fs.statSync(filePath);
-  const resolvedType = contentType ?? MIME_TYPES[path.extname(filePath).toLowerCase()] ?? "application/octet-stream";
+  const resolvedType =
+    contentType ??
+    MIME_TYPES[path.extname(filePath).toLowerCase()] ??
+    "application/octet-stream";
   const rangeHeader = req.headers.range;
 
   if (rangeHeader) {
@@ -150,9 +166,17 @@ function streamLocalFile(req: IncomingMessage, res: ServerResponse, filePath: st
     }
 
     const start = Number.parseInt(match[1], 10);
-    const end = match[2] ? Math.min(Number.parseInt(match[2], 10), stat.size - 1) : stat.size - 1;
+    const end = match[2]
+      ? Math.min(Number.parseInt(match[2], 10), stat.size - 1)
+      : stat.size - 1;
 
-    if (!Number.isFinite(start) || !Number.isFinite(end) || start >= stat.size || end < start || end < 0) {
+    if (
+      !Number.isFinite(start) ||
+      !Number.isFinite(end) ||
+      start >= stat.size ||
+      end < start ||
+      end < 0
+    ) {
       sendText(res, 416, "Range Not Satisfiable");
       return;
     }
@@ -179,7 +203,10 @@ function streamLocalFile(req: IncomingMessage, res: ServerResponse, filePath: st
   fs.createReadStream(filePath).pipe(res);
 }
 
-async function handleYtCache(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
+async function handleYtCache(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<boolean> {
   if (!req.url) {
     return false;
   }
@@ -200,7 +227,9 @@ async function handleYtCache(req: IncomingMessage, res: ServerResponse): Promise
   if (url.pathname === "/yt-cache/artwork") {
     try {
       const cached = getArtworkPathByKey(key);
-      const filePath = cached ?? (sourceUrl ? await ensureArtworkCached(key, sourceUrl) : null);
+      const filePath =
+        cached ??
+        (sourceUrl ? await ensureArtworkCached(key, sourceUrl) : null);
       if (!filePath) {
         sendText(res, 404, "Artwork not found");
         return true;
@@ -235,11 +264,17 @@ async function handleYtCache(req: IncomingMessage, res: ServerResponse): Promise
             req.headers["user-agent"] ??
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
           Accept: req.headers.accept ?? "*/*",
+          Referer: "https://music.youtube.com",
+          Origin: "https://music.youtube.com",
         },
       });
 
       if (!upstream.ok && upstream.status !== 206) {
-        sendText(res, upstream.status, `Upstream request failed (${upstream.status})`);
+        sendText(
+          res,
+          upstream.status,
+          `Upstream request failed (${upstream.status})`,
+        );
         return true;
       }
 
@@ -261,13 +296,33 @@ async function handleYtCache(req: IncomingMessage, res: ServerResponse): Promise
       res.writeHead(upstream.status, headers);
 
       if (!upstream.body) {
-        res.end();
+        if (!res.headersSent) {
+          sendText(res, 502, "Upstream returned empty body");
+        }
         return true;
       }
 
-      Readable.fromWeb(upstream.body as Parameters<typeof Readable.fromWeb>[0])
-        .on("error", () => { try { res.end(); } catch {} })
-        .pipe(res);
+      // Electron's global fetch may return a Node.js Readable (not a web ReadableStream)
+      // in some environments. Handle both cases.
+      if (typeof (upstream.body as any).pipe === "function") {
+        (upstream.body as any)
+          .on("error", () => {
+            try {
+              res.end();
+            } catch {}
+          })
+          .pipe(res);
+      } else {
+        Readable.fromWeb(
+          upstream.body as Parameters<typeof Readable.fromWeb>[0],
+        )
+          .on("error", () => {
+            try {
+              res.end();
+            } catch {}
+          })
+          .pipe(res);
+      }
       return true;
     } catch {
       if (!res.headersSent) {
@@ -299,7 +354,10 @@ async function readJsonBody(req: IncomingMessage): Promise<any> {
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }
 
-async function handleBridge(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
+async function handleBridge(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<boolean> {
   if (!req.url) {
     return false;
   }
@@ -329,9 +387,12 @@ async function handleBridge(req: IncomingMessage, res: ServerResponse): Promise<
     const body = await readJsonBody(req);
     const result = await importYtMusicSession(body?.cookie ?? "", {
       cookieNames: Array.isArray(body?.cookieNames)
-        ? body.cookieNames.filter((entry: unknown): entry is string => typeof entry === "string")
+        ? body.cookieNames.filter(
+            (entry: unknown): entry is string => typeof entry === "string",
+          )
         : undefined,
-      sourceUrl: typeof body?.sourceUrl === "string" ? body.sourceUrl : undefined,
+      sourceUrl:
+        typeof body?.sourceUrl === "string" ? body.sourceUrl : undefined,
     });
     sendJson(res, result.success ? 200 : 400, result);
     return true;
