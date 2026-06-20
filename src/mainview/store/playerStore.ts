@@ -9,6 +9,7 @@ import type {
 } from "../types";
 import { shuffleArray, parseTime } from "../utils";
 import { showToast } from "../components/Toast";
+import { clearAllCachedStreamUrls } from "./streamPreloader";
 import type {
   AuthLoginStartResult,
   DesktopBridge,
@@ -593,6 +594,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>(
         },
         homeFeed: { sections: [], loading: false, error: null },
       }));
+      clearAllCachedStreamUrls();
     },
 
     setLibrarySource: (source) =>

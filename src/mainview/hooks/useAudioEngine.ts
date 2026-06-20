@@ -8,6 +8,11 @@ import {
 import { usePlayerStore } from "../store/playerStore";
 import { showToast } from "../components/Toast";
 import type { Track } from "../types";
+import {
+  getCachedStreamUrl,
+  prefetchUpcomingTracks,
+  setCachedStreamUrl,
+} from "../store/streamPreloader";
 
 const STREAM_EXPIRY_MARGIN_MS = 90_000;
 const STREAM_REFRESH_MIN_DELAY_MS = 30_000;
@@ -52,6 +57,12 @@ function scheduleYtStreamUrlRefresh(args: {
           return;
         }
         if (playback.mode !== "direct" || !playback.url) return;
+        // Update preloader cache so the next transition is instant
+        setCachedStreamUrl(
+          args.track.id,
+          playback.url,
+          playback.expiresAt ?? Date.now() + 20 * 60 * 1000,
+        );
         usePlayerStore.getState().setPlaybackUrl(playback.url);
         el.src = playback.url;
         el.load();
@@ -228,6 +239,12 @@ export function useAudioEngine() {
           if (playback.mode !== "direct" || !playback.url) {
             throw new Error(playback.error ?? "Playback unavailable.");
           }
+          // Update preloader cache after recovery
+          setCachedStreamUrl(
+            currentTrack.id,
+            playback.url,
+            playback.expiresAt ?? Date.now() + 20 * 60 * 1000,
+          );
           usePlayerStore.getState().setPlaybackUrl(playback.url);
           el.src = playback.url;
           el.load();
@@ -287,8 +304,22 @@ export function useAudioEngine() {
   }, [clearStreamRefreshTimer]);
 
   const currentTrackId = usePlayerStore((s) => s.player.currentTrack?.id);
+  const queueLength = usePlayerStore((s) => s.player.queue.length);
+  const shuffle = usePlayerStore((s) => s.player.shuffle);
   const rpc = usePlayerStore((s) => s.rpc);
 
+  // ── 2a. Prefetch upcoming tracks in the background ───────────────────
+  // When the current track, queue, or shuffle state changes, prefetch
+  // stream URLs for the next few tracks so the user never waits.
+  useEffect(() => {
+    const state = usePlayerStore.getState();
+    const { currentTrack, queue } = state.player;
+    if (currentTrack && state.rpc) {
+      prefetchUpcomingTracks(queue, currentTrack.id, state.rpc.request);
+    }
+  }, [currentTrackId, queueLength, shuffle]);
+
+  // ── 2b. Load current track and start playback ────────────────────────
   useEffect(() => {
     const { currentTrack } = usePlayerStore.getState().player;
     if (!currentTrack || !rpc) return;
@@ -311,18 +342,25 @@ export function useAudioEngine() {
         let url: string | null = null;
         let expiresAt: number | undefined;
         if (currentTrack.provider === "ytmusic") {
-          const playback = await rpc.request.ytmusicGetPlayback({
-            trackId: currentTrack.id,
-            providerId: currentTrack.providerId,
-          });
-          if (playback.mode === "direct" && playback.url) {
-            url = playback.url;
-            expiresAt = playback.expiresAt;
+          // Check in-memory preloader cache first for instant playback
+          const cached = getCachedStreamUrl(currentTrack.id);
+          if (cached) {
+            url = cached.url;
+            expiresAt = cached.expiresAt;
           } else {
-            throw new Error(
-              playback.error ??
-                "Playback unavailable for this YouTube Music track.",
-            );
+            const playback = await rpc.request.ytmusicGetPlayback({
+              trackId: currentTrack.id,
+              providerId: currentTrack.providerId,
+            });
+            if (playback.mode === "direct" && playback.url) {
+              url = playback.url;
+              expiresAt = playback.expiresAt;
+            } else {
+              throw new Error(
+                playback.error ??
+                  "Playback unavailable for this YouTube Music track.",
+              );
+            }
           }
         } else if (currentTrack.path) {
           url = await rpc.request.getPlaybackUrl({ path: currentTrack.path });
