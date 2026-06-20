@@ -35,6 +35,7 @@ const TRUSTED_CACHE_HOSTS = new Set([
   "s.ytimg.com",
   "ytimg.com",
   "lh3.googleusercontent.com",
+  "yt3.googleusercontent.com",
   "yt3.ggpht.com",
 ]);
 
@@ -43,7 +44,11 @@ function isTrustedCacheUrl(sourceUrl: string): boolean {
     const parsed = new URL(sourceUrl);
     if (parsed.protocol !== "https:") return false;
     // googlevideo.com subdomains (e.g. rr1---sn-xxx.googlevideo.com)
-    if (parsed.hostname.endsWith(".googlevideo.com") || parsed.hostname === "googlevideo.com") return true;
+    if (
+      parsed.hostname.endsWith(".googlevideo.com") ||
+      parsed.hostname === "googlevideo.com"
+    )
+      return true;
     return TRUSTED_CACHE_HOSTS.has(parsed.hostname);
   } catch {
     return false;
@@ -78,6 +83,19 @@ function readIndexFromDisk(): MediaIndex {
       }
     }
 
+    // Migrate audio cache keys from v1 (audio_v1:...) to v2 (audio_v2:...)
+    for (const [key, entry] of Object.entries(index.audio)) {
+      if (entry.trackId) {
+        const newKey = getAudioCacheKey(entry.trackId);
+        if (key !== newKey) {
+          // Entry has an old-style key (audio_v1:... or any other outdated format)
+          index.audio[newKey] = entry;
+          delete index.audio[key];
+          migrated = true;
+        }
+      }
+    }
+
     if (migrated) {
       indexCache = index;
       indexDirty = true;
@@ -107,7 +125,11 @@ function flushIndexSync(): void {
     return;
   }
   ensureAppDataDirs();
-  fs.writeFileSync(YTMUSIC_MEDIA_INDEX_PATH, JSON.stringify(indexCache, null, 2), "utf8");
+  fs.writeFileSync(
+    YTMUSIC_MEDIA_INDEX_PATH,
+    JSON.stringify(indexCache, null, 2),
+    "utf8",
+  );
   indexDirty = false;
 }
 
@@ -134,7 +156,9 @@ function sanitizeExtension(raw: string | undefined, fallback: string): string {
     return fallback;
   }
 
-  const normalized = raw.startsWith(".") ? raw.toLowerCase() : `.${raw.toLowerCase()}`;
+  const normalized = raw.startsWith(".")
+    ? raw.toLowerCase()
+    : `.${raw.toLowerCase()}`;
   if (!/^\.[a-z0-9]{1,8}$/.test(normalized)) {
     return fallback;
   }
@@ -142,7 +166,10 @@ function sanitizeExtension(raw: string | undefined, fallback: string): string {
   return normalized;
 }
 
-function extensionFromContentType(contentType: string | null, fallback: string): string {
+function extensionFromContentType(
+  contentType: string | null,
+  fallback: string,
+): string {
   if (!contentType) {
     return fallback;
   }
@@ -159,10 +186,17 @@ function extensionFromContentType(contentType: string | null, fallback: string):
 }
 
 function getEntryPath(kind: "artwork" | "audio", entry: CacheEntry): string {
-  return path.join(kind === "artwork" ? YTMUSIC_ARTWORK_CACHE_DIR : YTMUSIC_AUDIO_CACHE_DIR, entry.fileName);
+  return path.join(
+    kind === "artwork" ? YTMUSIC_ARTWORK_CACHE_DIR : YTMUSIC_AUDIO_CACHE_DIR,
+    entry.fileName,
+  );
 }
 
-function upsertEntry(kind: "artwork" | "audio", key: string, entry: CacheEntry): void {
+function upsertEntry(
+  kind: "artwork" | "audio",
+  key: string,
+  entry: CacheEntry,
+): void {
   const index = getIndex();
   index[kind][key] = entry;
   indexDirty = true;
@@ -174,7 +208,10 @@ function totalAudioUsage(index: MediaIndex): number {
 }
 
 function totalArtworkUsage(index: MediaIndex): number {
-  return Object.values(index.artwork).reduce((sum, entry) => sum + entry.size, 0);
+  return Object.values(index.artwork).reduce(
+    (sum, entry) => sum + entry.size,
+    0,
+  );
 }
 
 function enforceMediaCacheLimit(): void {
@@ -221,7 +258,10 @@ function enforceMediaCacheLimit(): void {
   notifyYtMusicCacheStatsChanged();
 }
 
-export function getArtworkCacheKey(providerId: string, sourceUrl: string): string {
+export function getArtworkCacheKey(
+  providerId: string,
+  sourceUrl: string,
+): string {
   return hash(`${providerId}:${sourceUrl}`);
 }
 
@@ -229,7 +269,10 @@ export function getAudioCacheKey(trackId: string): string {
   return hash(`audio_v2:${trackId}`);
 }
 
-export function getCachedArtworkUrl(providerId: string, sourceUrl?: string): string | undefined {
+export function getCachedArtworkUrl(
+  providerId: string,
+  sourceUrl?: string,
+): string | undefined {
   if (!sourceUrl) {
     return undefined;
   }
@@ -275,7 +318,10 @@ export function touchAudioEntry(key: string): void {
   scheduleIndexFlush();
 }
 
-export async function ensureArtworkCached(key: string, sourceUrl: string): Promise<string | null> {
+export async function ensureArtworkCached(
+  key: string,
+  sourceUrl: string,
+): Promise<string | null> {
   const existing = getArtworkPathByKey(key);
   if (existing) {
     return existing;
@@ -286,7 +332,13 @@ export async function ensureArtworkCached(key: string, sourceUrl: string): Promi
   }
 
   const gen = cacheGeneration;
-  const response = await fetch(sourceUrl);
+  const response = await fetch(sourceUrl, {
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
+      Accept: "*/*",
+    },
+  });
   if (!response.ok) {
     throw new Error(`Artwork fetch failed (${response.status})`);
   }
@@ -294,7 +346,10 @@ export async function ensureArtworkCached(key: string, sourceUrl: string): Promi
   if (gen !== cacheGeneration) return null;
 
   const contentType = response.headers.get("content-type");
-  const ext = extensionFromContentType(contentType, sanitizeExtension(path.extname(new URL(sourceUrl).pathname), ".jpg"));
+  const ext = extensionFromContentType(
+    contentType,
+    sanitizeExtension(path.extname(new URL(sourceUrl).pathname), ".jpg"),
+  );
   const fileName = `${key}${ext}`;
   const filePath = path.join(YTMUSIC_ARTWORK_CACHE_DIR, fileName);
   const body = Buffer.from(await response.arrayBuffer());
@@ -316,7 +371,11 @@ export async function ensureArtworkCached(key: string, sourceUrl: string): Promi
   return filePath;
 }
 
-export function warmAudioCache(key: string, sourceUrl: string, trackId?: string): Promise<void> {
+export function warmAudioCache(
+  key: string,
+  sourceUrl: string,
+  trackId?: string,
+): Promise<void> {
   const existing = getAudioPathByKey(key);
   if (existing) {
     touchAudioEntry(key);
@@ -329,7 +388,9 @@ export function warmAudioCache(key: string, sourceUrl: string, trackId?: string)
   }
 
   if (!isTrustedCacheUrl(sourceUrl)) {
-    return Promise.reject(new Error(`Audio URL not on trusted host: ${sourceUrl}`));
+    return Promise.reject(
+      new Error(`Audio URL not on trusted host: ${sourceUrl}`),
+    );
   }
 
   const gen = cacheGeneration;
@@ -337,9 +398,12 @@ export function warmAudioCache(key: string, sourceUrl: string, trackId?: string)
     try {
       const response = await fetch(sourceUrl, {
         headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
           Accept: "*/*",
-        }
+          Referer: "https://music.youtube.com",
+          Origin: "https://music.youtube.com",
+        },
       });
       if (!response.ok) {
         throw new Error(`Audio fetch failed (${response.status})`);
@@ -348,7 +412,10 @@ export function warmAudioCache(key: string, sourceUrl: string, trackId?: string)
       if (gen !== cacheGeneration) return;
 
       const contentType = response.headers.get("content-type");
-      const ext = extensionFromContentType(contentType, sanitizeExtension(path.extname(new URL(sourceUrl).pathname), ".bin"));
+      const ext = extensionFromContentType(
+        contentType,
+        sanitizeExtension(path.extname(new URL(sourceUrl).pathname), ".bin"),
+      );
       const fileName = `${key}${ext}`;
       const filePath = path.join(YTMUSIC_AUDIO_CACHE_DIR, fileName);
       const body = Buffer.from(await response.arrayBuffer());
@@ -389,7 +456,10 @@ export function getFullyCachedTrackIds(): string[] {
   return ids;
 }
 
-export function getYtMusicCacheStats(): { usageBytes: number; limitBytes: number } {
+export function getYtMusicCacheStats(): {
+  usageBytes: number;
+  limitBytes: number;
+} {
   const index = getIndex();
   return {
     usageBytes: totalAudioUsage(index) + totalArtworkUsage(index),

@@ -78,6 +78,8 @@ const desktopBridge: DesktopBridge = {
       ipcRenderer.invoke("desktop:request:ytmusicLoadCachedLibrary"),
     ytmusicSearch: (params) =>
       ipcRenderer.invoke("desktop:request:ytmusicSearch", params),
+    ytmusicGetHomeFeed: () =>
+      ipcRenderer.invoke("desktop:request:ytmusicGetHomeFeed"),
     ytmusicGetPlaylist: (params) =>
       ipcRenderer.invoke("desktop:request:ytmusicGetPlaylist", params),
     ytmusicGetPlayback: (params) =>
@@ -96,6 +98,10 @@ const desktopBridge: DesktopBridge = {
       ipcRenderer.invoke("desktop:request:ytmusicAddTrackToPlaylist", params),
     ytmusicRemoveTrackFromPlaylist: (params) =>
       ipcRenderer.invoke("desktop:request:ytmusicRemoveTrackFromPlaylist", params),
+    ytmusicSavePlaylist: (params) =>
+      ipcRenderer.invoke("desktop:request:ytmusicSavePlaylist", params),
+    ytmusicUnsavePlaylist: (params) =>
+      ipcRenderer.invoke("desktop:request:ytmusicUnsavePlaylist", params),
     getAppVersion: () =>
       ipcRenderer.invoke("desktop:request:getAppVersion"),
     checkForUpdates: () =>

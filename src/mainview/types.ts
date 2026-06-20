@@ -26,6 +26,7 @@ export interface Track {
   picture?: string;
   sourceLabel?: string;
   playback?: TrackPlayback;
+  liked?: boolean;
 }
 
 export interface Playlist {
@@ -39,6 +40,9 @@ export interface Playlist {
   tracks?: Track[];
   /** Shown in sidebar/lists before hydration completes */
   listedItemCount?: number;
+  author?: string;
+  picture?: string;
+  type?: "playlist" | "album";
 }
 
 export type RepeatMode = "off" | "all" | "one";

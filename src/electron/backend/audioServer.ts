@@ -1,9 +1,19 @@
 import fs from "node:fs";
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import {
+  createServer,
+  type IncomingMessage,
+  type ServerResponse,
+} from "node:http";
 import path from "node:path";
 import { Readable } from "node:stream";
+import { log } from "./logger";
 import { AUDIO_SERVER_PORT, MIME_TYPES } from "../../shared/constants";
-import { getYtMusicAuthStatus, importYtMusicSession } from "./ytmusic";
+import {
+  createSapisdHash,
+  getYtMusicAuthStatus,
+  getYtMusicSessionCookie,
+  importYtMusicSession,
+} from "./ytmusic";
 import {
   ensureArtworkCached,
   getAudioPathByKey,
@@ -96,7 +106,9 @@ function handlePlayback(req: IncomingMessage, res: ServerResponse): void {
     return;
   }
 
-  const contentType = MIME_TYPES[path.extname(filePath).toLowerCase()] ?? "application/octet-stream";
+  const contentType =
+    MIME_TYPES[path.extname(filePath).toLowerCase()] ??
+    "application/octet-stream";
   const rangeHeader = req.headers.range;
 
   if (rangeHeader) {
@@ -107,7 +119,9 @@ function handlePlayback(req: IncomingMessage, res: ServerResponse): void {
     }
 
     const start = Number.parseInt(match[1], 10);
-    const end = match[2] ? Math.min(Number.parseInt(match[2], 10), stat.size - 1) : stat.size - 1;
+    const end = match[2]
+      ? Math.min(Number.parseInt(match[2], 10), stat.size - 1)
+      : stat.size - 1;
 
     if (start >= stat.size || end < start) {
       res.writeHead(416, { "Content-Range": `bytes */${stat.size}` });
@@ -137,9 +151,17 @@ function handlePlayback(req: IncomingMessage, res: ServerResponse): void {
   fs.createReadStream(filePath).pipe(res);
 }
 
-function streamLocalFile(req: IncomingMessage, res: ServerResponse, filePath: string, contentType?: string | null): void {
+function streamLocalFile(
+  req: IncomingMessage,
+  res: ServerResponse,
+  filePath: string,
+  contentType?: string | null,
+): void {
   const stat = fs.statSync(filePath);
-  const resolvedType = contentType ?? MIME_TYPES[path.extname(filePath).toLowerCase()] ?? "application/octet-stream";
+  const resolvedType =
+    contentType ??
+    MIME_TYPES[path.extname(filePath).toLowerCase()] ??
+    "application/octet-stream";
   const rangeHeader = req.headers.range;
 
   if (rangeHeader) {
@@ -150,9 +172,17 @@ function streamLocalFile(req: IncomingMessage, res: ServerResponse, filePath: st
     }
 
     const start = Number.parseInt(match[1], 10);
-    const end = match[2] ? Math.min(Number.parseInt(match[2], 10), stat.size - 1) : stat.size - 1;
+    const end = match[2]
+      ? Math.min(Number.parseInt(match[2], 10), stat.size - 1)
+      : stat.size - 1;
 
-    if (!Number.isFinite(start) || !Number.isFinite(end) || start >= stat.size || end < start || end < 0) {
+    if (
+      !Number.isFinite(start) ||
+      !Number.isFinite(end) ||
+      start >= stat.size ||
+      end < start ||
+      end < 0
+    ) {
       sendText(res, 416, "Range Not Satisfiable");
       return;
     }
@@ -179,7 +209,10 @@ function streamLocalFile(req: IncomingMessage, res: ServerResponse, filePath: st
   fs.createReadStream(filePath).pipe(res);
 }
 
-async function handleYtCache(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
+async function handleYtCache(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<boolean> {
   if (!req.url) {
     return false;
   }
@@ -200,7 +233,9 @@ async function handleYtCache(req: IncomingMessage, res: ServerResponse): Promise
   if (url.pathname === "/yt-cache/artwork") {
     try {
       const cached = getArtworkPathByKey(key);
-      const filePath = cached ?? (sourceUrl ? await ensureArtworkCached(key, sourceUrl) : null);
+      const filePath =
+        cached ??
+        (sourceUrl ? await ensureArtworkCached(key, sourceUrl) : null);
       if (!filePath) {
         sendText(res, 404, "Artwork not found");
         return true;
@@ -215,11 +250,14 @@ async function handleYtCache(req: IncomingMessage, res: ServerResponse): Promise
   }
 
   if (url.pathname === "/yt-cache/audio") {
-    const cached = getAudioPathByKey(key);
-    if (cached) {
-      touchAudioEntry(key);
-      streamLocalFile(req, res, cached, null);
-      return true;
+    // ── Cache hit: serve directly from disk ──────────────────────
+    {
+      const cached = getAudioPathByKey(key);
+      if (cached) {
+        touchAudioEntry(key);
+        streamLocalFile(req, res, cached, null);
+        return true;
+      }
     }
 
     if (!sourceUrl) {
@@ -227,53 +265,150 @@ async function handleYtCache(req: IncomingMessage, res: ServerResponse): Promise
       return true;
     }
 
+    // ── Cache miss: proxy the upstream URL directly ─────────────
+    // The upstream URL may be from yt-dlp (self-authenticating with PoT,
+    // signature, expire params) or from old cached Innertube entries.
+    // yt-dlp URLs don't need session cookies (they carry their own auth),
+    // while old Innertube URLs may still need them.
+    //
+    // Strategy: try without cookies first, then with cookies if 403.
+    const PROXY_TIMEOUT_MS = 20_000;
+
+    async function tryProxy(withCookies: boolean): Promise<Response | null> {
+      const ac = new AbortController();
+      const timeout = setTimeout(() => ac.abort(), PROXY_TIMEOUT_MS);
+      try {
+        if (!sourceUrl) return null;
+
+        const sessionCookie = withCookies
+          ? getYtMusicSessionCookie()
+          : undefined;
+        const authHeader =
+          sessionCookie && withCookies
+            ? createSapisdHash(sessionCookie)
+            : undefined;
+
+        const resp = await fetch(sourceUrl, {
+          signal: ac.signal,
+          headers: {
+            "User-Agent":
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
+            Accept: "*/*",
+            Referer: "https://www.youtube.com",
+            Origin: "https://www.youtube.com",
+            ...(sessionCookie ? { Cookie: sessionCookie } : {}),
+            ...(authHeader ? { Authorization: authHeader } : {}),
+            "X-Goog-Authuser": "0",
+          },
+        });
+
+        if (!resp.ok) {
+          log(
+            "audio-server",
+            withCookies ? "warn" : "info",
+            `Proxy attempt (cookies=${withCookies}) returned ${resp.status}`,
+            { sourceUrl: sourceUrl?.slice(0, 80) },
+          );
+          return null;
+        }
+
+        return resp;
+      } finally {
+        clearTimeout(timeout);
+      }
+    }
+
     try {
-      const upstream = await fetch(sourceUrl, {
-        headers: {
-          ...(req.headers.range ? { Range: req.headers.range } : {}),
-          "User-Agent":
-            req.headers["user-agent"] ??
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
-          Accept: req.headers.accept ?? "*/*",
-        },
+      // 1. Try without session cookies first (yt-dlp URLs are self-auth)
+      let upstream = await tryProxy(false);
+
+      // 2. If 403, retry with session cookies (legacy Innertube URLs)
+      if (!upstream) {
+        upstream = await tryProxy(true);
+      }
+
+      if (!upstream) {
+        // Both attempts failed — try warmAudioCache fallback
+        log(
+          "audio-server",
+          "warn",
+          "Proxy fetch failed both attempts, falling back to warmAudioCache",
+          { sourceUrl: sourceUrl?.slice(0, 80) },
+        );
+        throw new Error("Proxy fetch failed (all attempts)");
+      }
+
+      const contentType = upstream.headers.get("content-type") || "audio/mp4";
+      const contentLength = upstream.headers.get("content-length");
+
+      log("audio-server", "info", "Proxy stream started", {
+        sourceUrl: sourceUrl?.slice(0, 80),
+        contentType,
       });
 
-      if (!upstream.ok && upstream.status !== 206) {
-        sendText(res, upstream.status, `Upstream request failed (${upstream.status})`);
-        return true;
-      }
-
-      void warmAudioCache(key, sourceUrl, trackId || undefined).catch(() => {});
-
-      const headers: Record<string, string> = {
+      // Write 200 with CORS headers, then pipe the upstream body through
+      const head: Record<string, string> = {
+        "Content-Type": contentType,
+        "Accept-Ranges": "bytes",
         "Access-Control-Allow-Origin": "*",
-        "Accept-Ranges": upstream.headers.get("accept-ranges") ?? "bytes",
       };
+      if (contentLength) {
+        head["Content-Length"] = contentLength;
+      }
+      res.writeHead(200, head);
 
-      const contentType = upstream.headers.get("content-type");
-      const contentLength = upstream.headers.get("content-length");
-      const contentRange = upstream.headers.get("content-range");
-
-      if (contentType) headers["Content-Type"] = contentType;
-      if (contentLength) headers["Content-Length"] = contentLength;
-      if (contentRange) headers["Content-Range"] = contentRange;
-
-      res.writeHead(upstream.status, headers);
-
-      if (!upstream.body) {
-        res.end();
+      const body = upstream.body;
+      if (!body) {
+        if (!res.headersSent) {
+          sendText(res, 502, "Upstream returned empty body");
+        }
         return true;
       }
 
-      Readable.fromWeb(upstream.body as Parameters<typeof Readable.fromWeb>[0])
-        .on("error", () => { try { res.end(); } catch {} })
-        .pipe(res);
-      return true;
-    } catch {
-      if (!res.headersSent) {
-        sendText(res, 502, "Upstream audio fetch failed");
+      // Handle both Node.js Readable and web ReadableStream
+      if (typeof (body as any).pipe === "function") {
+        (body as any).on("error", () => {
+          res.destroy();
+        });
+        (body as any).pipe(res);
+      } else {
+        Readable.fromWeb(body as any)
+          .on("error", () => {
+            res.destroy();
+          })
+          .pipe(res);
       }
+
+      // Fire-and-forget background cache for next play
+      warmAudioCache(key, sourceUrl, trackId || undefined).catch(() => {
+        // Background cache failure is non-fatal
+      });
+
       return true;
+    } catch (err) {
+      // Fallback: try the old warm-to-cache path
+      try {
+        await warmAudioCache(key, sourceUrl, trackId || undefined);
+
+        const cached = getAudioPathByKey(key);
+        if (cached) {
+          touchAudioEntry(key);
+          streamLocalFile(req, res, cached, null);
+          return true;
+        }
+
+        sendText(res, 502, "Audio cache warm completed but file not found");
+        return true;
+      } catch (warmErr) {
+        const msg =
+          warmErr instanceof Error
+            ? warmErr.message
+            : "Audio cache warm failed";
+        if (!res.headersSent) {
+          sendText(res, 502, msg);
+        }
+        return true;
+      }
     }
   }
 
@@ -299,7 +434,10 @@ async function readJsonBody(req: IncomingMessage): Promise<any> {
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }
 
-async function handleBridge(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
+async function handleBridge(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<boolean> {
   if (!req.url) {
     return false;
   }
@@ -329,9 +467,12 @@ async function handleBridge(req: IncomingMessage, res: ServerResponse): Promise<
     const body = await readJsonBody(req);
     const result = await importYtMusicSession(body?.cookie ?? "", {
       cookieNames: Array.isArray(body?.cookieNames)
-        ? body.cookieNames.filter((entry: unknown): entry is string => typeof entry === "string")
+        ? body.cookieNames.filter(
+            (entry: unknown): entry is string => typeof entry === "string",
+          )
         : undefined,
-      sourceUrl: typeof body?.sourceUrl === "string" ? body.sourceUrl : undefined,
+      sourceUrl:
+        typeof body?.sourceUrl === "string" ? body.sourceUrl : undefined,
     });
     sendJson(res, result.success ? 200 : 400, result);
     return true;

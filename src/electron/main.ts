@@ -36,6 +36,7 @@ import {
   clearYtMusicMetadataCache,
   getCachedYtMusicLibrary,
   getYtMusicAuthStatus,
+  getYtMusicHomeFeed,
   getYtMusicPlayback,
   getYtMusicPlaylist,
   importYtMusicSession,
@@ -46,9 +47,11 @@ import {
   logoutFromYtMusic,
   removeTrackFromYtMusicPlaylist,
   renameYtMusicPlaylist,
+  saveYtMusicPlaylist,
   searchYtMusic,
   syncYtMusicLibrary,
   unlikeYtMusicTrack,
+  unsaveYtMusicPlaylist,
 } from "./backend/ytmusic";
 
 let mainWindow: BrowserWindow | null = null;
@@ -591,6 +594,17 @@ const requestHandlers: RequestHandlerMap = {
     }
     return results;
   },
+  ytmusicGetHomeFeed: async () => {
+    console.log("[IPC] ytmusicGetHomeFeed start");
+    try {
+      const res = await getYtMusicHomeFeed();
+      console.log(`[IPC] ytmusicGetHomeFeed success (${res.sections.length} sections)`);
+      return res;
+    } catch (err) {
+      console.error("[IPC] ytmusicGetHomeFeed error", err);
+      throw err;
+    }
+  },
   ytmusicGetPlaylist: ({ playlistId }) => getYtMusicPlaylist(playlistId),
   ytmusicGetPlayback: ({ trackId, providerId }) => getYtMusicPlayback(trackId, providerId),
   ytmusicLike: ({ videoId }) => likeYtMusicTrack(videoId),
@@ -599,7 +613,10 @@ const requestHandlers: RequestHandlerMap = {
   ytmusicRenamePlaylist: ({ playlistId, name }) => renameYtMusicPlaylist(playlistId, name),
   ytmusicDeletePlaylist: ({ playlistId }) => deleteYtMusicPlaylist(playlistId),
   ytmusicAddTrackToPlaylist: ({ playlistId, videoId }) => addTrackToYtMusicPlaylist(playlistId, videoId),
-  ytmusicRemoveTrackFromPlaylist: ({ playlistId, videoId }) => removeTrackFromYtMusicPlaylist(playlistId, videoId),
+  ytmusicRemoveTrackFromPlaylist: ({ playlistId, videoId }) =>
+    removeTrackFromYtMusicPlaylist(playlistId, videoId),
+  ytmusicSavePlaylist: ({ playlistId }) => saveYtMusicPlaylist(playlistId),
+  ytmusicUnsavePlaylist: ({ playlistId }) => unsaveYtMusicPlaylist(playlistId),
   getAppVersion: () => app.getVersion(),
   checkForUpdates: () => {
     autoUpdater.checkForUpdates().catch(handleUpdateCheckError);

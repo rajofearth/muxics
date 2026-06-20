@@ -11,6 +11,11 @@ files:
   - package.json
 asar: true
 artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+extraResources:
+  - from: bin/${os}
+    to: bin
+    filter:
+      - "yt-dlp*"
 mac:
   category: public.app-category.music
   target:

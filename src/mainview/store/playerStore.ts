@@ -32,7 +32,11 @@ function hashPath(p: string): string {
   return `local:${Math.abs(h).toString(36)}:${p}`;
 }
 
-function mergeTracks(source: LibrarySource, localTracks: Track[], remoteTracks: Track[]): Track[] {
+function mergeTracks(
+  source: LibrarySource,
+  localTracks: Track[],
+  remoteTracks: Track[],
+): Track[] {
   if (source === "local") {
     return localTracks;
   }
@@ -44,16 +48,25 @@ function mergeTracks(source: LibrarySource, localTracks: Track[], remoteTracks: 
   return [...remoteTracks, ...localTracks];
 }
 
-function mergePlaylists(source: LibrarySource, localItems: Playlist[], remoteItems: Playlist[]): Playlist[] {
-  if (source === "local") {
-    return localItems;
-  }
+function mergePlaylists(
+  source: LibrarySource,
+  localItems: Playlist[],
+  remoteItems: Playlist[],
+  transientItems: Playlist[] = [],
+): Playlist[] {
+  const base =
+    source === "local"
+      ? localItems
+      : source === "ytmusic"
+        ? remoteItems
+        : [...remoteItems, ...localItems];
 
-  if (source === "ytmusic") {
-    return remoteItems;
-  }
+  // Include transient items (browsed from home/search but not in library)
+  // that are not already in the library base
+  const libraryIds = new Set(base.map((p) => p.id));
+  const uniqueTransient = transientItems.filter((p) => !libraryIds.has(p.id));
 
-  return [...remoteItems, ...localItems];
+  return [...base, ...uniqueTransient];
 }
 
 function toTrack(track: TrackResult): Track {
@@ -71,13 +84,15 @@ function toTrack(track: TrackResult): Track {
     picture: track.picture,
     sourceLabel: track.sourceLabel,
     playback: track.playback,
+    liked: track.liked,
   };
 }
 
 function toPlaylist(playlist: PlaylistResult): Playlist {
   const trackIdsFromEntries = playlist.entries.map((entry) => entry.id);
   const trackIdsFromTracks = (playlist.tracks ?? []).map((t) => t.id);
-  const trackIds = trackIdsFromEntries.length > 0 ? trackIdsFromEntries : trackIdsFromTracks;
+  const trackIds =
+    trackIdsFromEntries.length > 0 ? trackIdsFromEntries : trackIdsFromTracks;
 
   return {
     id: playlist.id,
@@ -89,11 +104,16 @@ function toPlaylist(playlist: PlaylistResult): Playlist {
     editable: playlist.editable,
     tracks: playlist.tracks?.map(toTrack),
     listedItemCount: playlist.listedItemCount,
+    author: playlist.author,
+    picture: playlist.picture,
+    type: playlist.type,
   };
 }
 
 function ytTrackStubFromId(trackId: string): Track {
-  const providerId = trackId.startsWith("ytmusic:") ? trackId.slice("ytmusic:".length) : trackId;
+  const providerId = trackId.startsWith("ytmusic:")
+    ? trackId.slice("ytmusic:".length)
+    : trackId;
   return {
     id: trackId,
     provider: "ytmusic",
@@ -114,13 +134,15 @@ function playlistNeedsYtDetailFetch(pl: Playlist): boolean {
 
   const nTracks = pl.tracks?.length ?? 0;
   const nIds = pl.trackIds.length;
+  const hasTracksArray = Array.isArray(pl.tracks);
   const target = pl.listedItemCount ?? 0;
 
   const rich =
-    pl.tracks?.some((t) => t.duration > 0 || Boolean(t.artist?.trim())) ?? false;
+    pl.tracks?.some((t) => t.duration > 0 || Boolean(t.artist?.trim())) ??
+    false;
 
   if (nIds === 0 && nTracks === 0) {
-    return target > 0;
+    return !hasTracksArray;
   }
 
   if (!rich) {
@@ -152,7 +174,10 @@ function collectPlaylistTracks(playlists: Playlist[]): Track[] {
   return groups.length > 0 ? mergeUniqueTracks(...groups) : [];
 }
 
-async function pLimit<T, R>(items: T[], fn: (x: T) => Promise<R>): Promise<R[]> {
+async function pLimit<T, R>(
+  items: T[],
+  fn: (x: T) => Promise<R>,
+): Promise<R[]> {
   const results: R[] = [];
   let idx = 0;
 
@@ -164,7 +189,10 @@ async function pLimit<T, R>(items: T[], fn: (x: T) => Promise<R>): Promise<R[]> 
     }
   }
 
-  const workers = Array.from({ length: Math.min(CONCURRENCY, items.length) }, () => worker());
+  const workers = Array.from(
+    { length: Math.min(CONCURRENCY, items.length) },
+    () => worker(),
+  );
   await Promise.all(workers);
   return results;
 }
@@ -226,6 +254,7 @@ export interface PlayerState {
     items: Playlist[];
     localItems: Playlist[];
     remoteItems: Playlist[];
+    transientItems: Playlist[];
     activeId: string | null;
     hydratingById: Record<string, boolean>;
     hydrationErrors: Record<string, string | null>;
@@ -244,7 +273,19 @@ export interface PlayerState {
   settings: { watchFolders: string[] };
   theme: { accentColor: string; palette: string[] };
   themeName: string;
-  search: { query: string; results: Track[]; loading: boolean; error: string | null };
+  search: {
+    query: string;
+    results: Track[];
+    albums: Playlist[];
+    playlists: Playlist[];
+    loading: boolean;
+    error: string | null;
+  };
+  homeFeed: {
+    sections: { title: string; items: (Track | Playlist)[] }[];
+    loading: boolean;
+    error: string | null;
+  };
   recentlyPlayed: Track[];
   favorites: Set<string>;
 }
@@ -282,1065 +323,1522 @@ interface PlayerActions {
   renamePlaylist: (playlistId: string, newName: string) => Promise<void>;
   deletePlaylist: (playlistId: string) => Promise<void>;
   addTrackToPlaylist: (playlistId: string, track: Track) => Promise<void>;
-  removeTrackFromPlaylist: (playlistId: string, trackId: string) => Promise<void>;
+  removeTrackFromPlaylist: (
+    playlistId: string,
+    trackId: string,
+  ) => Promise<void>;
   loadPlaylistTracks: (playlistId: string) => Track[];
   getQueueFromLibrary: () => Track[];
   toggleShuffle: () => void;
   cycleRepeat: () => void;
+  syncFavoritesFromTracks: (tracks: Track[]) => void;
   setSearchQuery: (query: string) => Promise<void>;
+  loadHomeFeed: () => Promise<void>;
   addToRecentlyPlayed: (track: Track) => void;
   toggleFavorite: (trackId: string) => Promise<void>;
   isFavorite: (trackId: string) => boolean;
   getFavoriteTracks: () => Track[];
+  savePlaylistToLibrary: (playlistId: string) => Promise<void>;
+  unsavePlaylistFromLibrary: (playlistId: string) => Promise<void>;
   updateQueue: (newQueue: Track[]) => void;
   playNext: (track: Track) => void;
   addToQueue: (track: Track) => void;
 }
 
-export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => ({
-  rpc: null,
-  auth: {
-    loggedIn: false,
-    provider: "ytmusic",
-    persistent: false,
-  },
-  authLogin: {
-    pending: null,
-    loading: false,
-    error: null,
-  },
-  library: {
-    tracks: [],
-    localTracks: [],
-    remoteTracks: [],
-    loading: false,
-    syncingRemote: false,
-    error: null,
-    scanProgress: 0,
-    source: "local",
-  },
-  playlists: {
-    items: [],
-    localItems: [],
-    remoteItems: [],
-    activeId: null,
-    hydratingById: {},
-    hydrationErrors: {},
-  },
-  player: {
-    currentTrack: null,
-    queue: [],
-    originalQueue: [],
-    isPlaying: false,
-    currentTime: 0,
-    volume: loadVolume(),
-    playbackUrl: null,
-    shuffle: false,
-    repeat: "off",
-  },
-  settings: { watchFolders: [] },
-  theme: defaultTheme,
-  themeName: loadThemeName(),
-  search: { query: "", results: [], loading: false, error: null },
-  recentlyPlayed: [],
-  favorites: loadFavorites(),
+export const usePlayerStore = create<PlayerState & PlayerActions>(
+  (set, get) => ({
+    rpc: null,
+    auth: {
+      loggedIn: false,
+      provider: "ytmusic",
+      persistent: false,
+    },
+    authLogin: {
+      pending: null,
+      loading: false,
+      error: null,
+    },
+    library: {
+      tracks: [],
+      localTracks: [],
+      remoteTracks: [],
+      loading: false,
+      syncingRemote: false,
+      error: null,
+      scanProgress: 0,
+      source: "local",
+    },
+    playlists: {
+      items: [],
+      localItems: [],
+      remoteItems: [],
+      transientItems: [],
+      activeId: null,
+      hydratingById: {},
+      hydrationErrors: {},
+    },
+    player: {
+      currentTrack: null,
+      queue: [],
+      originalQueue: [],
+      isPlaying: false,
+      currentTime: 0,
+      volume: loadVolume(),
+      playbackUrl: null,
+      shuffle: false,
+      repeat: "off",
+    },
+    settings: { watchFolders: [] },
+    theme: defaultTheme,
+    themeName: loadThemeName(),
+    search: {
+      query: "",
+      results: [],
+      albums: [],
+      playlists: [],
+      loading: false,
+      error: null,
+    },
+    homeFeed: { sections: [], loading: false, error: null },
+    recentlyPlayed: [],
+    favorites: loadFavorites(),
 
-  setRpc: (rpc) => set({ rpc }),
+    setRpc: (rpc) => set({ rpc }),
 
-  loadAuthStatus: async () => {
-    const { rpc } = get();
-    if (!rpc) return;
+    loadAuthStatus: async () => {
+      const { rpc } = get();
+      if (!rpc) return;
 
-    const auth = await rpc.request.authGetStatus();
-    set((s) => ({
-      auth,
-      authLogin: auth.loggedIn
-        ? { pending: null, loading: false, error: null }
-        : s.authLogin,
-      library: {
-        ...s.library,
-        source: auth.loggedIn ? "ytmusic" : s.library.source,
-        tracks: mergeTracks(auth.loggedIn ? "ytmusic" : s.library.source, s.library.localTracks, s.library.remoteTracks),
-      },
-    }));
-  },
-
-  loginToYtMusic: async () => {
-    const { rpc } = get();
-    if (!rpc) return;
-
-    set((s) => ({
-      authLogin: { ...s.authLogin, loading: true, error: null },
-    }));
-
-    const result: AuthLoginStartResult = await rpc.request.authLogin();
-
-    if (result.kind === "pending_verification") {
-      set(() => ({
-        authLogin: {
-          pending: {
-            verificationUrl: result.verificationUrl,
-            userCode: result.userCode,
-            expiresAt: result.expiresAt,
-            pollIntervalMs: result.pollIntervalMs,
-          },
-          loading: false,
-          error: null,
+      const auth = await rpc.request.authGetStatus();
+      set((s) => ({
+        auth,
+        authLogin: auth.loggedIn
+          ? { pending: null, loading: false, error: null }
+          : s.authLogin,
+        library: {
+          ...s.library,
+          source: auth.loggedIn ? "ytmusic" : s.library.source,
+          tracks: mergeTracks(
+            auth.loggedIn ? "ytmusic" : s.library.source,
+            s.library.localTracks,
+            s.library.remoteTracks,
+          ),
         },
       }));
-      return;
-    }
+    },
 
-    if (result.kind === "completed" || result.kind === "already_logged_in") {
-      const auth = result.auth;
-      set({
-        auth,
-        authLogin: { pending: null, loading: false, error: null },
-      });
+    loginToYtMusic: async () => {
+      const { rpc } = get();
+      if (!rpc) return;
 
-      if (auth.loggedIn) {
+      set((s) => ({
+        authLogin: { ...s.authLogin, loading: true, error: null },
+      }));
+
+      const result: AuthLoginStartResult = await rpc.request.authLogin();
+
+      if (result.kind === "pending_verification") {
+        set(() => ({
+          authLogin: {
+            pending: {
+              verificationUrl: result.verificationUrl,
+              userCode: result.userCode,
+              expiresAt: result.expiresAt,
+              pollIntervalMs: result.pollIntervalMs,
+            },
+            loading: false,
+            error: null,
+          },
+        }));
+        return;
+      }
+
+      if (result.kind === "completed" || result.kind === "already_logged_in") {
+        const auth = result.auth;
+        set({
+          auth,
+          authLogin: { pending: null, loading: false, error: null },
+        });
+
+        if (auth.loggedIn) {
+          set((s) => ({
+            library: { ...s.library, source: "ytmusic" },
+          }));
+          await get().hydrateYtMusicFromCache();
+          void get().syncYtMusicLibrary();
+        }
+        return;
+      }
+
+      set(() => ({
+        authLogin: { pending: null, loading: false, error: result.message },
+      }));
+    },
+
+    importYtMusicSession: async (cookie) => {
+      const { rpc } = get();
+      if (!rpc) return false;
+
+      set((s) => ({
+        authLogin: { ...s.authLogin, loading: true, error: null },
+      }));
+
+      const result = await rpc.request.authImportSession({ cookie });
+      if (!result.success || !result.auth) {
         set((s) => ({
+          authLogin: {
+            ...s.authLogin,
+            loading: false,
+            error: result.error ?? "Failed to import YouTube Music session.",
+          },
+        }));
+        return false;
+      }
+
+      set((s) => ({
+        auth: result.auth!,
+        authLogin: { pending: null, loading: false, error: null },
+        library: { ...s.library, source: "ytmusic" },
+      }));
+
+      await get().hydrateYtMusicFromCache();
+      void get().syncYtMusicLibrary();
+      return true;
+    },
+
+    completeYtMusicLogin: async () => {
+      const { rpc, authLogin } = get();
+      if (!rpc || !authLogin.pending) return;
+
+      set((s) => ({
+        authLogin: { ...s.authLogin, loading: true, error: null },
+      }));
+
+      const result = await rpc.request.authCompleteLogin();
+      if (result.kind === "completed") {
+        set((s) => ({
+          auth: result.auth,
+          authLogin: { pending: null, loading: false, error: null },
           library: { ...s.library, source: "ytmusic" },
         }));
         await get().hydrateYtMusicFromCache();
         void get().syncYtMusicLibrary();
+        return;
       }
-      return;
-    }
 
-    set(() => ({
-      authLogin: { pending: null, loading: false, error: result.message },
-    }));
-  },
-
-  importYtMusicSession: async (cookie) => {
-    const { rpc } = get();
-    if (!rpc) return false;
-
-    set((s) => ({
-      authLogin: { ...s.authLogin, loading: true, error: null },
-    }));
-
-    const result = await rpc.request.authImportSession({ cookie });
-    if (!result.success || !result.auth) {
       set((s) => ({
-        authLogin: { ...s.authLogin, loading: false, error: result.error ?? "Failed to import YouTube Music session." },
+        authLogin: {
+          pending: s.authLogin.pending,
+          loading: false,
+          error: result.message,
+        },
       }));
-      return false;
-    }
+    },
 
-    set((s) => ({
-      auth: result.auth!,
-      authLogin: { pending: null, loading: false, error: null },
-      library: { ...s.library, source: "ytmusic" },
-    }));
+    cancelYtMusicLogin: async () => {
+      const { rpc } = get();
+      if (!rpc) return;
 
-    await get().hydrateYtMusicFromCache();
-    void get().syncYtMusicLibrary();
-    return true;
-  },
-
-  completeYtMusicLogin: async () => {
-    const { rpc, authLogin } = get();
-    if (!rpc || !authLogin.pending) return;
-
-    set((s) => ({
-      authLogin: { ...s.authLogin, loading: true, error: null },
-    }));
-
-    const result = await rpc.request.authCompleteLogin();
-    if (result.kind === "completed") {
-      set((s) => ({
-        auth: result.auth,
+      await rpc.request.authCancelLogin();
+      set(() => ({
         authLogin: { pending: null, loading: false, error: null },
-        library: { ...s.library, source: "ytmusic" },
       }));
-      await get().hydrateYtMusicFromCache();
-      void get().syncYtMusicLibrary();
-      return;
-    }
+    },
 
-    set((s) => ({
-      authLogin: { pending: s.authLogin.pending, loading: false, error: result.message },
-    }));
-  },
-
-  cancelYtMusicLogin: async () => {
-    const { rpc } = get();
-    if (!rpc) return;
-
-    await rpc.request.authCancelLogin();
-    set(() => ({
-      authLogin: { pending: null, loading: false, error: null },
-    }));
-  },
-
-  clearAuthLoginError: () => {
-    set((s) => ({
-      authLogin: { ...s.authLogin, error: null },
-    }));
-  },
-
-  logoutFromYtMusic: async () => {
-    const { rpc } = get();
-    if (!rpc) return;
-
-    const auth = await rpc.request.authLogout();
-    set((s) => ({
-      auth,
-      authLogin: { pending: null, loading: false, error: null },
-      library: {
-        ...s.library,
-        remoteTracks: [],
-        tracks: mergeTracks("local", s.library.localTracks, []),
-        source: "local",
-      },
-      playlists: {
-        ...s.playlists,
-        remoteItems: [],
-        items: mergePlaylists("local", s.playlists.localItems, []),
-        hydratingById: {},
-        hydrationErrors: {},
-      },
-    }));
-  },
-
-  setLibrarySource: (source) =>
-    set((s) => ({
-      library: {
-        ...s.library,
-        source,
-        tracks: mergeTracks(source, s.library.localTracks, s.library.remoteTracks),
-      },
-      playlists: {
-        ...s.playlists,
-        items: mergePlaylists(source, s.playlists.localItems, s.playlists.remoteItems),
-      },
-    })),
-
-  loadLibrary: async () => {
-    const { rpc } = get();
-    if (!rpc) return;
-
-    set((s) => ({
-      library: { ...s.library, loading: true, error: null, scanProgress: 0 },
-    }));
-
-    try {
-      let folders = await rpc.request.getWatchFolders();
-      if (folders.length === 0) {
-        const defaultPath = await rpc.request.getDefaultMusicPath();
-        const addResult = await rpc.request.addFolder({ path: defaultPath });
-        if (!addResult.success) {
-          set((s) => ({
-            library: {
-              ...s.library,
-              localTracks: [],
-              tracks: mergeTracks(s.library.source, [], s.library.remoteTracks),
-              loading: false,
-              error: addResult.error ?? "Could not add folder",
-              scanProgress: 0,
-            },
-            settings: { watchFolders: [] },
-          }));
-          return;
-        }
-        folders = await rpc.request.getWatchFolders();
-      }
-
-      const { files } = await rpc.request.scanFolders({ paths: folders });
-      let completed = 0;
-
-      const results = await pLimit(files, async (f) => {
-        const meta = await rpc.request.getTrackMetadata({ path: f.path });
-        completed++;
-        if (completed % 10 === 0 || completed === files.length) {
-          set((s) => ({
-            library: {
-              ...s.library,
-              scanProgress: files.length === 0 ? 100 : Math.round((completed / files.length) * 100),
-            },
-          }));
-        }
-        if (!meta) return null;
-        return {
-          id: hashPath(f.path),
-          provider: "local" as const,
-          providerId: f.path,
-          path: f.path,
-          title: meta.title,
-          artist: meta.artist,
-          album: meta.album,
-          time: meta.time,
-          duration: meta.duration || parseTime(meta.time),
-          genre: meta.genre,
-          picture: meta.picture,
-          sourceLabel: "Local Files",
-        } as Track;
-      });
-
-      const localTracks = results.filter((t): t is Track => t != null);
-
+    clearAuthLoginError: () => {
       set((s) => ({
+        authLogin: { ...s.authLogin, error: null },
+      }));
+    },
+
+    logoutFromYtMusic: async () => {
+      const { rpc } = get();
+      if (!rpc) return;
+
+      const auth = await rpc.request.authLogout();
+      set((s) => ({
+        auth,
+        authLogin: { pending: null, loading: false, error: null },
         library: {
           ...s.library,
-          localTracks,
-          tracks: mergeTracks(s.library.source, localTracks, s.library.remoteTracks),
-          loading: false,
-          error: null,
-          scanProgress: 100,
-        },
-        settings: { watchFolders: folders },
-      }));
-    } catch (err) {
-      set((s) => ({
-        library: {
-          ...s.library,
-          loading: false,
-          error: err instanceof Error ? err.message : "Failed to load library",
-          scanProgress: 0,
-        },
-      }));
-    }
-  },
-
-  hydrateYtMusicFromCache: async () => {
-    const { rpc, auth } = get();
-    if (!rpc || !auth.loggedIn) return;
-
-    let useDisk = true;
-    try {
-      const desktopSettings = await rpc.request.getSettings();
-      useDisk = desktopSettings.ytmusicUseLibraryDiskCache !== false;
-    } catch {
-      useDisk = true;
-    }
-    if (!useDisk) return;
-
-    const cached = await rpc.request.ytmusicLoadCachedLibrary();
-    if (!cached) return;
-
-    const remoteItems = cached.playlists.map(toPlaylist);
-    const remoteTracks = mergeUniqueTracks(
-      cached.tracks.map(toTrack),
-      collectPlaylistTracks(remoteItems),
-    );
-
-    set((s) => ({
-      auth: {
-        ...s.auth,
-        lastSyncedAt: cached.lastSyncedAt || s.auth.lastSyncedAt,
-      },
-      library: {
-        ...s.library,
-        remoteTracks,
-        tracks: mergeTracks(s.library.source, s.library.localTracks, remoteTracks),
-        lastSyncedAt: cached.lastSyncedAt ?? s.library.lastSyncedAt,
-      },
-      playlists: {
-        ...s.playlists,
-        remoteItems,
-        items: mergePlaylists(s.library.source, s.playlists.localItems, remoteItems),
-      },
-    }));
-
-    void get().loadCachedPlaylist();
-  },
-
-  syncYtMusicLibrary: async () => {
-    const { rpc, auth } = get();
-    if (!rpc || !auth.loggedIn) return;
-
-    set((s) => ({
-      library: { ...s.library, syncingRemote: true, error: null },
-    }));
-
-    try {
-      const synced = await rpc.request.ytmusicSyncLibrary();
-      const remoteItems = synced.playlists.map(toPlaylist);
-      const remoteTracks = mergeUniqueTracks(
-        synced.tracks.map(toTrack),
-        collectPlaylistTracks(remoteItems),
-      );
-
-      set((s) => ({
-        auth: { ...s.auth, lastSyncedAt: synced.lastSyncedAt },
-        library: {
-          ...s.library,
-          remoteTracks,
-          tracks: mergeTracks(s.library.source, s.library.localTracks, remoteTracks),
-          syncingRemote: false,
-          lastSyncedAt: synced.lastSyncedAt,
+          remoteTracks: [],
+          tracks: mergeTracks("local", s.library.localTracks, []),
+          source: "local",
         },
         playlists: {
           ...s.playlists,
-          remoteItems,
-          items: mergePlaylists(s.library.source, s.playlists.localItems, remoteItems),
+          remoteItems: [],
+          transientItems: [],
+          items: mergePlaylists("local", s.playlists.localItems, []),
+          hydratingById: {},
+          hydrationErrors: {},
         },
+        search: {
+          query: "",
+          results: [],
+          albums: [],
+          playlists: [],
+          loading: false,
+          error: null,
+        },
+        homeFeed: { sections: [], loading: false, error: null },
       }));
+    },
 
-      void get().loadCachedPlaylist();
-    } catch (error) {
+    setLibrarySource: (source) =>
       set((s) => ({
         library: {
           ...s.library,
-          syncingRemote: false,
-          error: error instanceof Error ? error.message : "Failed to sync YouTube Music.",
+          source,
+          tracks: mergeTracks(
+            source,
+            s.library.localTracks,
+            s.library.remoteTracks,
+          ),
         },
+        playlists: {
+          ...s.playlists,
+          items: mergePlaylists(
+            source,
+            s.playlists.localItems,
+            s.playlists.remoteItems,
+          ),
+        },
+      })),
+
+    loadLibrary: async () => {
+      const { rpc } = get();
+      if (!rpc) return;
+
+      set((s) => ({
+        library: { ...s.library, loading: true, error: null, scanProgress: 0 },
       }));
-    }
-  },
 
-  loadCachedPlaylist: async () => {
-    const { rpc, library, recentlyPlayed } = get();
-    if (!rpc) return;
+      try {
+        let folders = await rpc.request.getWatchFolders();
+        if (folders.length === 0) {
+          const defaultPath = await rpc.request.getDefaultMusicPath();
+          const addResult = await rpc.request.addFolder({ path: defaultPath });
+          if (!addResult.success) {
+            set((s) => ({
+              library: {
+                ...s.library,
+                localTracks: [],
+                tracks: mergeTracks(
+                  s.library.source,
+                  [],
+                  s.library.remoteTracks,
+                ),
+                loading: false,
+                error: addResult.error ?? "Could not add folder",
+                scanProgress: 0,
+              },
+              settings: { watchFolders: [] },
+            }));
+            return;
+          }
+          folders = await rpc.request.getWatchFolders();
+        }
 
-    try {
-      const cachedTrackIds = await rpc.request.getFullyCachedTrackIds();
-      if (!cachedTrackIds) return;
+        const { files } = await rpc.request.scanFolders({ paths: folders });
+        let completed = 0;
 
-      const allKnownTracks = Object.values(
-        [...library.tracks, ...recentlyPlayed].reduce((acc, t) => {
-          acc[t.id] = t;
-          return acc;
-        }, {} as Record<string, Track>)
+        const results = await pLimit(files, async (f) => {
+          const meta = await rpc.request.getTrackMetadata({ path: f.path });
+          completed++;
+          if (completed % 10 === 0 || completed === files.length) {
+            set((s) => ({
+              library: {
+                ...s.library,
+                scanProgress:
+                  files.length === 0
+                    ? 100
+                    : Math.round((completed / files.length) * 100),
+              },
+            }));
+          }
+          if (!meta) return null;
+          return {
+            id: hashPath(f.path),
+            provider: "local" as const,
+            providerId: f.path,
+            path: f.path,
+            title: meta.title,
+            artist: meta.artist,
+            album: meta.album,
+            time: meta.time,
+            duration: meta.duration || parseTime(meta.time),
+            genre: meta.genre,
+            picture: meta.picture,
+            sourceLabel: "Local Files",
+          } as Track;
+        });
+
+        const localTracks = results.filter((t): t is Track => t != null);
+
+        set((s) => ({
+          library: {
+            ...s.library,
+            localTracks,
+            tracks: mergeTracks(
+              s.library.source,
+              localTracks,
+              s.library.remoteTracks,
+            ),
+            loading: false,
+            error: null,
+            scanProgress: 100,
+          },
+          settings: { watchFolders: folders },
+        }));
+      } catch (err) {
+        set((s) => ({
+          library: {
+            ...s.library,
+            loading: false,
+            error:
+              err instanceof Error ? err.message : "Failed to load library",
+            scanProgress: 0,
+          },
+        }));
+      }
+    },
+
+    hydrateYtMusicFromCache: async () => {
+      const { rpc, auth } = get();
+      if (!rpc || !auth.loggedIn) return;
+
+      let useDisk = true;
+      try {
+        const desktopSettings = await rpc.request.getSettings();
+        useDisk = desktopSettings.ytmusicUseLibraryDiskCache !== false;
+      } catch {
+        useDisk = true;
+      }
+      if (!useDisk) return;
+
+      const cached = await rpc.request.ytmusicLoadCachedLibrary();
+      if (!cached) return;
+
+      const remoteItems = cached.playlists.map(toPlaylist);
+      const remoteTracks = mergeUniqueTracks(
+        cached.tracks.map(toTrack),
+        collectPlaylistTracks(remoteItems),
       );
 
-      const cachedTracks = allKnownTracks.filter((t) => cachedTrackIds.includes(t.providerId));
-
-      const cachedPlaylist: Playlist = {
-        id: "ytmusic-cached",
-        provider: "ytmusic",
-        providerId: "ytmusic-cached",
-        name: "Cached",
-        path: "ytmusic-cached",
-        editable: false,
-        trackIds: cachedTracks.map((t) => t.id),
-        tracks: cachedTracks,
-      };
-
       set((s) => {
-        const withoutCached = s.playlists.remoteItems.filter((p) => p.id !== "ytmusic-cached");
-        const nextRemoteItems = [cachedPlaylist, ...withoutCached];
+        const nextFavorites = new Set(s.favorites);
+        for (const track of remoteTracks) {
+          if (track.liked) {
+            nextFavorites.add(track.id);
+          }
+        }
+        if (nextFavorites.size !== s.favorites.size) {
+          saveFavorites(nextFavorites);
+        }
+
         return {
-          playlists: {
-            ...s.playlists,
-            remoteItems: nextRemoteItems,
-            items: mergePlaylists(s.library.source, s.playlists.localItems, nextRemoteItems),
+          auth: {
+            ...s.auth,
+            lastSyncedAt: cached.lastSyncedAt || s.auth.lastSyncedAt,
           },
-        };
-      });
-    } catch {}
-  },
-
-  ensurePlaylistHydrated: async (playlistId) => {
-    const { rpc, playlists } = get();
-    if (!rpc) return;
-
-    const playlist = playlists.items.find((item) => item.id === playlistId);
-    if (!playlist || !playlistNeedsYtDetailFetch(playlist)) {
-      return;
-    }
-
-    if (playlists.hydratingById[playlistId]) {
-      return;
-    }
-
-    set((s) => ({
-      playlists: {
-        ...s.playlists,
-        hydratingById: { ...s.playlists.hydratingById, [playlistId]: true },
-        hydrationErrors: { ...s.playlists.hydrationErrors, [playlistId]: null },
-      },
-    }));
-
-    try {
-      const detailed = await rpc.request.ytmusicGetPlaylist({ playlistId: playlist.providerId });
-      if (!detailed) {
-        throw new Error("Playlist tracks could not be loaded from YouTube Music.");
-      }
-
-      const updated = toPlaylist(detailed);
-      set((s) => {
-        const remoteItems = s.playlists.remoteItems.map((item) =>
-          item.id === updated.id ? updated : item,
-        );
-        const remoteTracks = mergeUniqueTracks(s.library.remoteTracks, collectPlaylistTracks(remoteItems));
-
-        return {
+          favorites: nextFavorites,
           library: {
             ...s.library,
             remoteTracks,
-            tracks: mergeTracks(s.library.source, s.library.localTracks, remoteTracks),
+            tracks: mergeTracks(
+              s.library.source,
+              s.library.localTracks,
+              remoteTracks,
+            ),
+            lastSyncedAt: cached.lastSyncedAt ?? s.library.lastSyncedAt,
           },
           playlists: {
             ...s.playlists,
             remoteItems,
-            items: mergePlaylists(s.library.source, s.playlists.localItems, remoteItems),
-            hydratingById: { ...s.playlists.hydratingById, [playlistId]: false },
-            hydrationErrors: { ...s.playlists.hydrationErrors, [playlistId]: null },
+            items: mergePlaylists(
+              s.library.source,
+              s.playlists.localItems,
+              remoteItems,
+            ),
           },
         };
       });
-    } catch (error) {
+
+      void get().loadCachedPlaylist();
+    },
+
+    syncYtMusicLibrary: async () => {
+      const { rpc, auth } = get();
+      if (!rpc || !auth.loggedIn) return;
+
+      set((s) => ({
+        library: { ...s.library, syncingRemote: true, error: null },
+      }));
+
+      try {
+        const synced = await rpc.request.ytmusicSyncLibrary();
+        const remoteItems = synced.playlists.map(toPlaylist);
+        const remoteTracks = mergeUniqueTracks(
+          synced.tracks.map(toTrack),
+          collectPlaylistTracks(remoteItems),
+        );
+
+        set((s) => {
+          const nextFavorites = new Set(s.favorites);
+          for (const track of remoteTracks) {
+            if (track.liked) {
+              nextFavorites.add(track.id);
+            }
+          }
+          if (nextFavorites.size !== s.favorites.size) {
+            saveFavorites(nextFavorites);
+          }
+
+          return {
+            auth: { ...s.auth, lastSyncedAt: synced.lastSyncedAt },
+            favorites: nextFavorites,
+            library: {
+              ...s.library,
+              remoteTracks,
+              tracks: mergeTracks(
+                s.library.source,
+                s.library.localTracks,
+                remoteTracks,
+              ),
+              syncingRemote: false,
+              lastSyncedAt: synced.lastSyncedAt,
+            },
+            playlists: {
+              ...s.playlists,
+              remoteItems,
+              items: mergePlaylists(
+                s.library.source,
+                s.playlists.localItems,
+                remoteItems,
+              ),
+            },
+          };
+        });
+
+        void get().loadCachedPlaylist();
+      } catch (error) {
+        set((s) => ({
+          library: {
+            ...s.library,
+            syncingRemote: false,
+            error:
+              error instanceof Error
+                ? error.message
+                : "Failed to sync YouTube Music.",
+          },
+        }));
+      }
+    },
+
+    loadCachedPlaylist: async () => {
+      const { rpc, library, recentlyPlayed } = get();
+      if (!rpc) return;
+
+      try {
+        const cachedTrackIds = await rpc.request.getFullyCachedTrackIds();
+        if (!cachedTrackIds) return;
+
+        const allKnownTracks = Object.values(
+          [...library.tracks, ...recentlyPlayed].reduce(
+            (acc, t) => {
+              acc[t.id] = t;
+              return acc;
+            },
+            {} as Record<string, Track>,
+          ),
+        );
+
+        const cachedTracks = allKnownTracks.filter((t) =>
+          cachedTrackIds.includes(t.providerId),
+        );
+
+        const cachedPlaylist: Playlist = {
+          id: "ytmusic-cached",
+          provider: "ytmusic",
+          providerId: "ytmusic-cached",
+          name: "Cached",
+          path: "ytmusic-cached",
+          editable: false,
+          trackIds: cachedTracks.map((t) => t.id),
+          tracks: cachedTracks,
+        };
+
+        set((s) => {
+          const withoutCached = s.playlists.remoteItems.filter(
+            (p) => p.id !== "ytmusic-cached",
+          );
+          const nextRemoteItems = [cachedPlaylist, ...withoutCached];
+          return {
+            playlists: {
+              ...s.playlists,
+              remoteItems: nextRemoteItems,
+              items: mergePlaylists(
+                s.library.source,
+                s.playlists.localItems,
+                nextRemoteItems,
+              ),
+            },
+          };
+        });
+      } catch {}
+    },
+
+    ensurePlaylistHydrated: async (playlistId) => {
+      const { rpc, playlists, homeFeed, library, search } = get();
+      if (!rpc) return;
+
+      let playlist = playlists.items.find((item) => item.id === playlistId);
+
+      // If not in standard playlists, check transient browse/search sources.
+      if (!playlist) {
+        const candidates = [
+          ...homeFeed.sections.flatMap((section) =>
+            section.items.filter(
+              (item): item is Playlist => !("title" in item),
+            ),
+          ),
+          ...(search.albums ?? []),
+          ...(search.playlists ?? []),
+        ];
+        const found = candidates.find((item) => item.id === playlistId);
+        if (found) {
+          playlist = found;
+          set((s) => {
+            const transientItems = s.playlists.transientItems.some(
+              (item) => item.id === found.id,
+            )
+              ? s.playlists.transientItems
+              : [...s.playlists.transientItems, found];
+            return {
+              playlists: {
+                ...s.playlists,
+                transientItems,
+                items: mergePlaylists(
+                  library.source,
+                  s.playlists.localItems,
+                  s.playlists.remoteItems,
+                  transientItems,
+                ),
+              },
+            };
+          });
+        }
+      }
+
+      if (!playlist || !playlistNeedsYtDetailFetch(playlist)) {
+        return;
+      }
+
+      if (playlists.hydratingById[playlistId]) {
+        return;
+      }
+
       set((s) => ({
         playlists: {
           ...s.playlists,
-          hydratingById: { ...s.playlists.hydratingById, [playlistId]: false },
+          hydratingById: { ...s.playlists.hydratingById, [playlistId]: true },
           hydrationErrors: {
             ...s.playlists.hydrationErrors,
-            [playlistId]:
-              error instanceof Error ? error.message : "Failed to load YouTube Music playlist.",
+            [playlistId]: null,
           },
         },
       }));
-    }
-  },
 
-  addFolder: async (folderPath) => {
-    const { rpc } = get();
-    if (!rpc) {
-      set((s) => ({
-        library: { ...s.library, error: "App not ready. Please try again." },
-      }));
-      return;
-    }
+      try {
+        const detailed = await rpc.request.ytmusicGetPlaylist({
+          playlistId: playlist.providerId,
+        });
+        if (!detailed) {
+          throw new Error(
+            "Playlist tracks could not be loaded from YouTube Music.",
+          );
+        }
 
-    const result = await rpc.request.addFolder({ path: folderPath });
-    if (!result.success) {
-      const msg = result.error ?? "Failed to add folder";
-      set((s) => ({ library: { ...s.library, loading: false, error: msg } }));
-      return;
-    }
-
-    const folders = await rpc.request.getWatchFolders();
-    set((s) => ({
-      settings: { watchFolders: folders },
-      library: { ...s.library, error: null },
-    }));
-    await get().loadLibrary();
-  },
-
-  removeFolder: async (folderPath) => {
-    const { rpc } = get();
-    if (!rpc) return;
-
-    await rpc.request.removeFolder({ path: folderPath });
-    const sep = folderPath.includes("\\") ? "\\" : "/";
-    const prefix = folderPath.endsWith(sep) ? folderPath : `${folderPath}${sep}`;
-
-    set((s) => {
-      const localTracks = s.library.localTracks.filter((t) => !t.path?.startsWith(prefix));
-      return {
-        settings: {
-          watchFolders: s.settings.watchFolders.filter((p) => p !== folderPath),
-        },
-        library: {
-          ...s.library,
-          localTracks,
-          tracks: mergeTracks(s.library.source, localTracks, s.library.remoteTracks),
-          loading: false,
-          error: null,
-        },
-      };
-    });
-  },
-
-  playTrack: (track, queue = null) => {
-    const state = get();
-    const q = queue ?? state.player.queue;
-    state.addToRecentlyPlayed(track);
-
-    set({
-      player: {
-        ...state.player,
-        currentTrack: track,
-        queue: state.player.shuffle && queue ? shuffleArray(q) : q,
-        originalQueue: queue ?? state.player.originalQueue,
-        isPlaying: true,
-        currentTime: 0,
-      },
-    });
-  },
-
-  togglePlay: () =>
-    set((s) => ({ player: { ...s.player, isPlaying: !s.player.isPlaying } })),
-
-  handleNext: () => {
-    const { queue, currentTrack, repeat } = get().player;
-    if (queue.length === 0) return;
-
-    if (repeat === "one") {
-      set((s) => ({ player: { ...s.player, currentTime: 0 } }));
-      return;
-    }
-
-    const idx = queue.findIndex((t) => t.id === currentTrack?.id);
-    if (idx >= 0 && idx < queue.length - 1) {
-      get().playTrack(queue[idx + 1]);
-    } else if (repeat === "all") {
-      get().playTrack(queue[0]);
-    } else if (idx === queue.length - 1) {
-      set((s) => ({
-        player: { ...s.player, isPlaying: false, currentTime: 0 },
-      }));
-    }
-  },
-
-  handlePrev: () => {
-    const { queue, currentTrack, currentTime } = get().player;
-    if (queue.length === 0) return;
-
-    if (currentTime > 3 && currentTrack) {
-      document.dispatchEvent(new CustomEvent("player-seek", { detail: 0 }));
-      set((s) => ({ player: { ...s.player, currentTime: 0 } }));
-      return;
-    }
-
-    const idx = queue.findIndex((t) => t.id === currentTrack?.id);
-    const prev = idx > 0 ? queue[idx - 1] : queue[queue.length - 1];
-    if (prev) get().playTrack(prev);
-  },
-
-  setCurrentTime: (seconds) =>
-    set((s) => ({ player: { ...s.player, currentTime: seconds } })),
-
-  setVolume: (value) => {
-    const v = Math.max(0, Math.min(1, value));
-    try {
-      localStorage.setItem("muxics-volume", String(v));
-    } catch {}
-    set((s) => ({ player: { ...s.player, volume: v } }));
-  },
-
-  setPlaybackUrl: (url) =>
-    set((s) => ({ player: { ...s.player, playbackUrl: url } })),
-
-  updateTheme: (accentColor, palette) =>
-    set({ theme: { accentColor, palette } }),
-
-  resetTheme: () => set({ theme: defaultTheme }),
-
-  setThemeName: (name) => {
-    try { localStorage.setItem("muxics-theme", name); } catch {}
-    set({ themeName: name });
-  },
-
-  loadPlaylists: async () => {
-    const { rpc, library } = get();
-    if (!rpc) return;
-
-    const localList = await rpc.request.listPlaylists();
-    const localItems = localList.map(toPlaylist);
-
-    set((s) => ({
-      playlists: {
-        ...s.playlists,
-        localItems,
-        items: mergePlaylists(library.source, localItems, s.playlists.remoteItems),
-      },
-    }));
-  },
-
-  setActivePlaylist: (id) =>
-    set((s) => ({ playlists: { ...s.playlists, activeId: id } })),
-
-  createPlaylist: async (name) => {
-    const { rpc, library } = get();
-    if (!rpc) return;
-
-    if (library.source === "ytmusic") {
-      await rpc.request.ytmusicCreatePlaylist({ name });
-      await get().syncYtMusicLibrary();
-      return;
-    }
-
-    const dir = await rpc.request.getPlaylistsDir();
-    await rpc.request.savePlaylist({ path: dir, name, entries: [] });
-    await get().loadPlaylists();
-  },
-
-  renamePlaylist: async (playlistId, newName) => {
-    const { rpc, playlists } = get();
-    if (!rpc) return;
-    const pl = playlists.items.find((p) => p.id === playlistId);
-    if (!pl) return;
-
-    if (pl.provider === "ytmusic") {
-      await rpc.request.ytmusicRenamePlaylist({
-        playlistId: pl.providerId,
-        name: newName.trim(),
-      });
-      await get().syncYtMusicLibrary();
-      return;
-    }
-
-    await rpc.request.renamePlaylist({
-      oldPath: pl.path ?? pl.providerId,
-      newName: newName.trim(),
-    });
-    await get().loadPlaylists();
-  },
-
-  deletePlaylist: async (playlistId) => {
-    const { rpc, playlists } = get();
-    if (!rpc) return;
-    const pl = playlists.items.find((p) => p.id === playlistId);
-    if (!pl) return;
-
-    if (pl.provider === "ytmusic") {
-      await rpc.request.ytmusicDeletePlaylist({ playlistId: pl.providerId });
-      await get().syncYtMusicLibrary();
-      return;
-    }
-
-    if (pl.path) {
-      await rpc.request.deletePlaylist({ path: pl.path });
-      await get().loadPlaylists();
-    }
-  },
-
-  addTrackToPlaylist: async (playlistId, track) => {
-    const { rpc, playlists } = get();
-    if (!rpc) return;
-    const pl = playlists.items.find((p) => p.id === playlistId);
-    if (!pl) return;
-
-    if (pl.provider !== track.provider) {
-      showToast(
-        `Cannot add a ${track.provider} track to a ${pl.provider} playlist.`,
-        "error",
-      );
-      return;
-    }
-
-    if (pl.provider === "ytmusic") {
-      await rpc.request.ytmusicAddTrackToPlaylist({
-        playlistId: pl.providerId,
-        videoId: track.providerId,
-      });
-      const detailed = await rpc.request.ytmusicGetPlaylist({ playlistId: pl.providerId });
-      if (detailed) {
         const updated = toPlaylist(detailed);
+        get().syncFavoritesFromTracks(updated.tracks ?? []);
         set((s) => {
+          // Update both remoteItems and transientItems if the playlist exists in them
           const remoteItems = s.playlists.remoteItems.map((item) =>
             item.id === updated.id ? updated : item,
           );
+          const transientItems = s.playlists.transientItems.map((item) =>
+            item.id === updated.id ? updated : item,
+          );
+
+          // Collect all tracks from all playlists to ensure we have metadata for everything in library
+          const allPlaylistTracks = collectPlaylistTracks([
+            ...remoteItems,
+            ...transientItems,
+          ]);
           const remoteTracks = mergeUniqueTracks(
             s.library.remoteTracks,
-            collectPlaylistTracks(remoteItems),
+            allPlaylistTracks,
           );
+
           return {
             library: {
               ...s.library,
               remoteTracks,
-              tracks: mergeTracks(s.library.source, s.library.localTracks, remoteTracks),
+              tracks: mergeTracks(
+                s.library.source,
+                s.library.localTracks,
+                remoteTracks,
+              ),
             },
             playlists: {
               ...s.playlists,
               remoteItems,
-              items: mergePlaylists(s.library.source, s.playlists.localItems, remoteItems),
+              transientItems,
+              items: mergePlaylists(
+                s.library.source,
+                s.playlists.localItems,
+                remoteItems,
+                transientItems,
+              ),
+              hydratingById: {
+                ...s.playlists.hydratingById,
+                [playlistId]: false,
+              },
+              hydrationErrors: {
+                ...s.playlists.hydrationErrors,
+                [playlistId]: null,
+              },
             },
           };
         });
-      }
-      return;
-    }
-
-    const entries = [...pl.trackIds, track.id]
-      .map((id) => get().library.localTracks.find((localTrack) => localTrack.id === id)?.path)
-      .filter((value): value is string => Boolean(value));
-    const dir = (pl.path ?? "").replace(/[/\\][^/\\]+$/, "");
-    const name = pl.name.replace(/\.m3u8?$/, "");
-    await rpc.request.savePlaylist({ path: dir, name, entries });
-    await get().loadPlaylists();
-  },
-
-  removeTrackFromPlaylist: async (playlistId, trackId) => {
-    const { rpc, playlists } = get();
-    if (!rpc) return;
-    const pl = playlists.items.find((p) => p.id === playlistId);
-    if (!pl) return;
-
-    if (pl.provider === "ytmusic") {
-      const track = get().library.remoteTracks.find((item) => item.id === trackId);
-      if (!track) return;
-      await rpc.request.ytmusicRemoveTrackFromPlaylist({
-        playlistId: pl.providerId,
-        videoId: track.providerId,
-      });
-      const detailed = await rpc.request.ytmusicGetPlaylist({ playlistId: pl.providerId });
-      if (detailed) {
-        const updated = toPlaylist(detailed);
-        set((s) => {
-          const remoteItems = s.playlists.remoteItems.map((item) =>
-            item.id === updated.id ? updated : item,
-          );
-          const remoteTracks = mergeUniqueTracks(
-            s.library.remoteTracks,
-            collectPlaylistTracks(remoteItems),
-          );
-          return {
-            library: {
-              ...s.library,
-              remoteTracks,
-              tracks: mergeTracks(s.library.source, s.library.localTracks, remoteTracks),
+      } catch (error) {
+        set((s) => ({
+          playlists: {
+            ...s.playlists,
+            hydratingById: {
+              ...s.playlists.hydratingById,
+              [playlistId]: false,
             },
-            playlists: {
-              ...s.playlists,
-              remoteItems,
-              items: mergePlaylists(s.library.source, s.playlists.localItems, remoteItems),
+            hydrationErrors: {
+              ...s.playlists.hydrationErrors,
+              [playlistId]:
+                error instanceof Error
+                  ? error.message
+                  : "Failed to load YouTube Music playlist.",
             },
-          };
-        });
+          },
+        }));
       }
-      return;
-    }
+    },
 
-    const entries = pl.trackIds
-      .filter((id) => id !== trackId)
-      .map((id) => get().library.localTracks.find((localTrack) => localTrack.id === id)?.path)
-      .filter((value): value is string => Boolean(value));
-    const dir = (pl.path ?? "").replace(/[/\\][^/\\]+$/, "");
-    const name = pl.name.replace(/\.m3u8?$/, "");
-    await rpc.request.savePlaylist({ path: dir, name, entries });
-    await get().loadPlaylists();
-  },
+    addFolder: async (folderPath) => {
+      const { rpc } = get();
+      if (!rpc) {
+        set((s) => ({
+          library: { ...s.library, error: "App not ready. Please try again." },
+        }));
+        return;
+      }
 
-  loadPlaylistTracks: (playlistId) => {
-    const { playlists, library } = get();
-    const pl = playlists.items.find((p) => p.id === playlistId);
-    if (!pl) return [];
+      const result = await rpc.request.addFolder({ path: folderPath });
+      if (!result.success) {
+        const msg = result.error ?? "Failed to add folder";
+        set((s) => ({ library: { ...s.library, loading: false, error: msg } }));
+        return;
+      }
 
-    if (pl.tracks && pl.tracks.length > 0) {
-      return pl.tracks;
-    }
-
-    const trackMap = new Map([...library.localTracks, ...library.remoteTracks].map((track) => [track.id, track]));
-    const fromLibrary = pl.trackIds.map((id) => trackMap.get(id)).filter((t): t is Track => t != null);
-    if (fromLibrary.length > 0) {
-      return fromLibrary;
-    }
-
-    if (pl.provider === "ytmusic" && playlists.hydrationErrors[playlistId] && !pl.tracks?.length) {
-      return [];
-    }
-
-    if (pl.provider === "ytmusic" && pl.trackIds.length > 0) {
-      return pl.trackIds.map((id) => ytTrackStubFromId(id));
-    }
-
-    return [];
-  },
-
-  getQueueFromLibrary: () => get().library.tracks,
-
-  toggleShuffle: () => {
-    const { player } = get();
-    const newShuffle = !player.shuffle;
-    if (newShuffle) {
-      const current = player.currentTrack;
-      const rest = player.queue.filter((t) => t.id !== current?.id);
-      const shuffled = current ? [current, ...shuffleArray(rest)] : shuffleArray(player.queue);
+      const folders = await rpc.request.getWatchFolders();
       set((s) => ({
-        player: {
-          ...s.player,
-          shuffle: true,
-          originalQueue: s.player.queue,
-          queue: shuffled,
-        },
+        settings: { watchFolders: folders },
+        library: { ...s.library, error: null },
       }));
-    } else {
-      set((s) => ({
-        player: {
-          ...s.player,
-          shuffle: false,
-          queue: s.player.originalQueue,
-        },
-      }));
-    }
-  },
+      await get().loadLibrary();
+    },
 
-  cycleRepeat: () => {
-    const modes: RepeatMode[] = ["off", "all", "one"];
-    const current = get().player.repeat;
-    const idx = modes.indexOf(current);
-    set((s) => ({
-      player: { ...s.player, repeat: modes[(idx + 1) % modes.length] },
-    }));
-  },
+    removeFolder: async (folderPath) => {
+      const { rpc } = get();
+      if (!rpc) return;
 
-  setSearchQuery: async (query) => {
-    const trimmed = query.trim();
-    if (!trimmed) {
-      if (ytmSearchDebounceTimer) {
-        clearTimeout(ytmSearchDebounceTimer);
-        ytmSearchDebounceTimer = null;
-      }
-      ytmSearchGeneration += 1;
-      set({ search: { query: "", results: [], loading: false, error: null } });
-      return;
-    }
+      await rpc.request.removeFolder({ path: folderPath });
+      const sep = folderPath.includes("\\") ? "\\" : "/";
+      const prefix = folderPath.endsWith(sep)
+        ? folderPath
+        : `${folderPath}${sep}`;
 
-    const { library, rpc, auth } = get();
-    const q = trimmed.toLowerCase();
-    const localResults = mergeTracks(library.source, library.localTracks, []).filter(
-      (t) =>
-        t.title.toLowerCase().includes(q) ||
-        t.artist.toLowerCase().includes(q) ||
-        t.album.toLowerCase().includes(q),
-    );
-
-    const needsRemote = Boolean(rpc && auth.loggedIn && library.source !== "local");
-
-    if (!needsRemote) {
-      if (ytmSearchDebounceTimer) {
-        clearTimeout(ytmSearchDebounceTimer);
-        ytmSearchDebounceTimer = null;
-      }
-      set({ search: { query: trimmed, results: localResults, loading: false, error: null } });
-      return;
-    }
-
-    set({ search: { query: trimmed, results: localResults, loading: true, error: null } });
-
-    if (ytmSearchDebounceTimer) {
-      clearTimeout(ytmSearchDebounceTimer);
-      ytmSearchDebounceTimer = null;
-    }
-
-    const generation = ++ytmSearchGeneration;
-    ytmSearchDebounceTimer = setTimeout(() => {
-      ytmSearchDebounceTimer = null;
-      void (async () => {
-        if (generation !== ytmSearchGeneration) {
-          return;
-        }
-        const st = get();
-        if (st.search.query.trim() !== trimmed) {
-          return;
-        }
-        const { rpc: rpcNow, auth: authNow, library: libNow } = st;
-        if (!rpcNow || !authNow.loggedIn || libNow.source === "local") {
-          return;
-        }
-
-        const localAgain = mergeTracks(libNow.source, libNow.localTracks, []).filter(
-          (t) =>
-            t.title.toLowerCase().includes(q) ||
-            t.artist.toLowerCase().includes(q) ||
-            t.album.toLowerCase().includes(q),
+      set((s) => {
+        const localTracks = s.library.localTracks.filter(
+          (t) => !t.path?.startsWith(prefix),
         );
+        return {
+          settings: {
+            watchFolders: s.settings.watchFolders.filter(
+              (p) => p !== folderPath,
+            ),
+          },
+          library: {
+            ...s.library,
+            localTracks,
+            tracks: mergeTracks(
+              s.library.source,
+              localTracks,
+              s.library.remoteTracks,
+            ),
+            loading: false,
+            error: null,
+          },
+        };
+      });
+    },
 
-        try {
-          const remoteResults = await rpcNow.request.ytmusicSearch({ query: trimmed });
-          if (generation !== ytmSearchGeneration || get().search.query.trim() !== trimmed) {
-            return;
-          }
-          const normalized = remoteResults.map(toTrack);
-          const combined =
-            libNow.source === "all"
-              ? [...normalized, ...localAgain].filter(
-                  (track, index, list) => list.findIndex((entry) => entry.id === track.id) === index,
-                )
-              : normalized;
-          set({ search: { query: trimmed, results: combined, loading: false, error: null } });
-        } catch (error) {
-          if (generation !== ytmSearchGeneration || get().search.query.trim() !== trimmed) {
-            return;
-          }
-          set({
-            search: {
-              query: trimmed,
-              results: localAgain,
-              loading: false,
-              error: error instanceof Error ? error.message : "Search failed.",
-            },
+    playTrack: (track, queue = null) => {
+      const state = get();
+      const q = queue ?? state.player.queue;
+      state.addToRecentlyPlayed(track);
+
+      set({
+        player: {
+          ...state.player,
+          currentTrack: track,
+          queue: state.player.shuffle && queue ? shuffleArray(q) : q,
+          originalQueue: queue ?? state.player.originalQueue,
+          isPlaying: true,
+          currentTime: 0,
+        },
+      });
+    },
+
+    togglePlay: () =>
+      set((s) => ({ player: { ...s.player, isPlaying: !s.player.isPlaying } })),
+
+    handleNext: () => {
+      const { queue, currentTrack, repeat } = get().player;
+      if (queue.length === 0) return;
+
+      if (repeat === "one") {
+        set((s) => ({ player: { ...s.player, currentTime: 0 } }));
+        return;
+      }
+
+      const idx = queue.findIndex((t) => t.id === currentTrack?.id);
+      if (idx >= 0 && idx < queue.length - 1) {
+        get().playTrack(queue[idx + 1]);
+      } else if (repeat === "all") {
+        get().playTrack(queue[0]);
+      } else if (idx === queue.length - 1) {
+        set((s) => ({
+          player: { ...s.player, isPlaying: false, currentTime: 0 },
+        }));
+      }
+    },
+
+    handlePrev: () => {
+      const { queue, currentTrack, currentTime } = get().player;
+      if (queue.length === 0) return;
+
+      if (currentTime > 3 && currentTrack) {
+        document.dispatchEvent(new CustomEvent("player-seek", { detail: 0 }));
+        set((s) => ({ player: { ...s.player, currentTime: 0 } }));
+        return;
+      }
+
+      const idx = queue.findIndex((t) => t.id === currentTrack?.id);
+      const prev = idx > 0 ? queue[idx - 1] : queue[queue.length - 1];
+      if (prev) get().playTrack(prev);
+    },
+
+    setCurrentTime: (seconds) =>
+      set((s) => ({ player: { ...s.player, currentTime: seconds } })),
+
+    setVolume: (value) => {
+      const v = Math.max(0, Math.min(1, value));
+      try {
+        localStorage.setItem("muxics-volume", String(v));
+      } catch {}
+      set((s) => ({ player: { ...s.player, volume: v } }));
+    },
+
+    setPlaybackUrl: (url) =>
+      set((s) => ({ player: { ...s.player, playbackUrl: url } })),
+
+    updateTheme: (accentColor, palette) =>
+      set({ theme: { accentColor, palette } }),
+
+    resetTheme: () => set({ theme: defaultTheme }),
+
+    setThemeName: (name) => {
+      try {
+        localStorage.setItem("muxics-theme", name);
+      } catch {}
+      set({ themeName: name });
+    },
+
+    loadPlaylists: async () => {
+      const { rpc, library } = get();
+      if (!rpc) return;
+
+      const localList = await rpc.request.listPlaylists();
+      const localItems = localList.map(toPlaylist);
+
+      set((s) => ({
+        playlists: {
+          ...s.playlists,
+          localItems,
+          items: mergePlaylists(
+            library.source,
+            localItems,
+            s.playlists.remoteItems,
+          ),
+        },
+      }));
+    },
+
+    setActivePlaylist: (id) =>
+      set((s) => ({ playlists: { ...s.playlists, activeId: id } })),
+
+    createPlaylist: async (name) => {
+      const { rpc, library } = get();
+      if (!rpc) return;
+
+      if (library.source === "ytmusic") {
+        await rpc.request.ytmusicCreatePlaylist({ name });
+        await get().syncYtMusicLibrary();
+        return;
+      }
+
+      const dir = await rpc.request.getPlaylistsDir();
+      await rpc.request.savePlaylist({ path: dir, name, entries: [] });
+      await get().loadPlaylists();
+    },
+
+    renamePlaylist: async (playlistId, newName) => {
+      const { rpc, playlists } = get();
+      if (!rpc) return;
+      const pl = playlists.items.find((p) => p.id === playlistId);
+      if (!pl) return;
+
+      if (pl.provider === "ytmusic") {
+        await rpc.request.ytmusicRenamePlaylist({
+          playlistId: pl.providerId,
+          name: newName.trim(),
+        });
+        await get().syncYtMusicLibrary();
+        return;
+      }
+
+      await rpc.request.renamePlaylist({
+        oldPath: pl.path ?? pl.providerId,
+        newName: newName.trim(),
+      });
+      await get().loadPlaylists();
+    },
+
+    deletePlaylist: async (playlistId) => {
+      const { rpc, playlists } = get();
+      if (!rpc) return;
+      const pl = playlists.items.find((p) => p.id === playlistId);
+      if (!pl) return;
+
+      if (pl.provider === "ytmusic") {
+        await rpc.request.ytmusicDeletePlaylist({ playlistId: pl.providerId });
+        await get().syncYtMusicLibrary();
+        return;
+      }
+
+      if (pl.path) {
+        await rpc.request.deletePlaylist({ path: pl.path });
+        await get().loadPlaylists();
+      }
+    },
+
+    addTrackToPlaylist: async (playlistId, track) => {
+      const { rpc, playlists } = get();
+      if (!rpc) return;
+      const pl = playlists.items.find((p) => p.id === playlistId);
+      if (!pl) return;
+
+      if (pl.provider !== track.provider) {
+        showToast(
+          `Cannot add a ${track.provider} track to a ${pl.provider} playlist.`,
+          "error",
+        );
+        return;
+      }
+
+      if (pl.provider === "ytmusic") {
+        await rpc.request.ytmusicAddTrackToPlaylist({
+          playlistId: pl.providerId,
+          videoId: track.providerId,
+        });
+        const detailed = await rpc.request.ytmusicGetPlaylist({
+          playlistId: pl.providerId,
+        });
+        if (detailed) {
+          const updated = toPlaylist(detailed);
+          set((s) => {
+            const remoteItems = s.playlists.remoteItems.map((item) =>
+              item.id === updated.id ? updated : item,
+            );
+            const remoteTracks = mergeUniqueTracks(
+              s.library.remoteTracks,
+              collectPlaylistTracks(remoteItems),
+            );
+            return {
+              library: {
+                ...s.library,
+                remoteTracks,
+                tracks: mergeTracks(
+                  s.library.source,
+                  s.library.localTracks,
+                  remoteTracks,
+                ),
+              },
+              playlists: {
+                ...s.playlists,
+                remoteItems,
+                items: mergePlaylists(
+                  s.library.source,
+                  s.playlists.localItems,
+                  remoteItems,
+                ),
+              },
+            };
           });
         }
-      })();
-    }, YTM_REMOTE_SEARCH_DEBOUNCE_MS);
-  },
-
-  addToRecentlyPlayed: (track) => {
-    set((s) => {
-      const filtered = s.recentlyPlayed.filter((t) => t.id !== track.id);
-      return {
-        recentlyPlayed: [track, ...filtered].slice(0, MAX_RECENTLY_PLAYED),
-      };
-    });
-  },
-
-  toggleFavorite: async (trackId) => {
-    const { rpc, library } = get();
-    const track = [...library.localTracks, ...library.remoteTracks].find((item) => item.id === trackId);
-    const previousFavorites = new Set(get().favorites);
-
-    set((s) => {
-      const next = new Set(s.favorites);
-      if (next.has(trackId)) next.delete(trackId);
-      else next.add(trackId);
-      saveFavorites(next);
-      return { favorites: next };
-    });
-
-    if (!rpc || !track || track.provider !== "ytmusic") {
-      return;
-    }
-
-    try {
-      if (get().favorites.has(trackId)) {
-        await rpc.request.ytmusicLike({ videoId: track.providerId });
-      } else {
-        await rpc.request.ytmusicUnlike({ videoId: track.providerId });
+        return;
       }
-    } catch (err) {
-      set({ favorites: previousFavorites });
-      saveFavorites(previousFavorites);
-      showToast(
-        err instanceof Error ? `Failed to update favorites: ${err.message}` : "Failed to update favorites",
-        "error",
+
+      const entries = [...pl.trackIds, track.id]
+        .map(
+          (id) =>
+            get().library.localTracks.find((localTrack) => localTrack.id === id)
+              ?.path,
+        )
+        .filter((value): value is string => Boolean(value));
+      const dir = (pl.path ?? "").replace(/[/\\][^/\\]+$/, "");
+      const name = pl.name.replace(/\.m3u8?$/, "");
+      await rpc.request.savePlaylist({ path: dir, name, entries });
+      await get().loadPlaylists();
+    },
+
+    removeTrackFromPlaylist: async (playlistId, trackId) => {
+      const { rpc, playlists } = get();
+      if (!rpc) return;
+      const pl = playlists.items.find((p) => p.id === playlistId);
+      if (!pl) return;
+
+      if (pl.provider === "ytmusic") {
+        const track = get().library.remoteTracks.find(
+          (item) => item.id === trackId,
+        );
+        if (!track) return;
+        await rpc.request.ytmusicRemoveTrackFromPlaylist({
+          playlistId: pl.providerId,
+          videoId: track.providerId,
+        });
+        const detailed = await rpc.request.ytmusicGetPlaylist({
+          playlistId: pl.providerId,
+        });
+        if (detailed) {
+          const updated = toPlaylist(detailed);
+          set((s) => {
+            const remoteItems = s.playlists.remoteItems.map((item) =>
+              item.id === updated.id ? updated : item,
+            );
+            const remoteTracks = mergeUniqueTracks(
+              s.library.remoteTracks,
+              collectPlaylistTracks(remoteItems),
+            );
+            return {
+              library: {
+                ...s.library,
+                remoteTracks,
+                tracks: mergeTracks(
+                  s.library.source,
+                  s.library.localTracks,
+                  remoteTracks,
+                ),
+              },
+              playlists: {
+                ...s.playlists,
+                remoteItems,
+                items: mergePlaylists(
+                  s.library.source,
+                  s.playlists.localItems,
+                  remoteItems,
+                ),
+              },
+            };
+          });
+        }
+        return;
+      }
+
+      const entries = pl.trackIds
+        .filter((id) => id !== trackId)
+        .map(
+          (id) =>
+            get().library.localTracks.find((localTrack) => localTrack.id === id)
+              ?.path,
+        )
+        .filter((value): value is string => Boolean(value));
+      const dir = (pl.path ?? "").replace(/[/\\][^/\\]+$/, "");
+      const name = pl.name.replace(/\.m3u8?$/, "");
+      await rpc.request.savePlaylist({ path: dir, name, entries });
+      await get().loadPlaylists();
+    },
+
+    loadPlaylistTracks: (playlistId) => {
+      const { playlists, library } = get();
+      const pl = playlists.items.find((p) => p.id === playlistId);
+      if (!pl) return [];
+
+      if (pl.tracks && pl.tracks.length > 0) {
+        return pl.tracks;
+      }
+
+      const trackMap = new Map(
+        [...library.localTracks, ...library.remoteTracks].map((track) => [
+          track.id,
+          track,
+        ]),
       );
-      throw err;
-    }
-  },
+      const fromLibrary = pl.trackIds
+        .map((id) => trackMap.get(id))
+        .filter((t): t is Track => t != null);
+      if (fromLibrary.length > 0) {
+        return fromLibrary;
+      }
 
-  isFavorite: (trackId) => get().favorites.has(trackId),
+      if (
+        pl.provider === "ytmusic" &&
+        playlists.hydrationErrors[playlistId] &&
+        !pl.tracks?.length
+      ) {
+        return [];
+      }
 
-  getFavoriteTracks: () => {
-    const { library, favorites } = get();
-    return [...library.localTracks, ...library.remoteTracks].filter((t) => favorites.has(t.id));
-  },
+      if (pl.provider === "ytmusic" && pl.trackIds.length > 0) {
+        return pl.trackIds.map((id) => ytTrackStubFromId(id));
+      }
 
-  updateQueue: (newQueue) => {
-    set((s) => ({
-      player: { ...s.player, queue: newQueue, originalQueue: newQueue },
-    }));
-  },
+      return [];
+    },
 
-  playNext: (track) => {
-    const { player } = get();
-    const queue = [...player.queue];
-    const idx = queue.findIndex((t) => t.id === player.currentTrack?.id);
-    if (idx >= 0) {
-      queue.splice(idx + 1, 0, track);
-    } else {
-      queue.unshift(track);
-    }
-    if (!player.currentTrack) {
-      get().playTrack(track, queue);
-    } else {
-      set((s) => ({ player: { ...s.player, queue, originalQueue: queue } }));
-    }
-  },
+    getQueueFromLibrary: () => get().library.tracks,
 
-  addToQueue: (track) => {
-    const { player } = get();
-    const queue = [...player.queue, track];
-    if (!player.currentTrack) {
-      get().playTrack(track, queue);
-    } else {
-      set((s) => ({ player: { ...s.player, queue, originalQueue: queue } }));
-    }
-  },
-}));
+    toggleShuffle: () => {
+      const { player } = get();
+      const newShuffle = !player.shuffle;
+      if (newShuffle) {
+        const current = player.currentTrack;
+        const rest = player.queue.filter((t) => t.id !== current?.id);
+        const shuffled = current
+          ? [current, ...shuffleArray(rest)]
+          : shuffleArray(player.queue);
+        set((s) => ({
+          player: {
+            ...s.player,
+            shuffle: true,
+            originalQueue: s.player.queue,
+            queue: shuffled,
+          },
+        }));
+      } else {
+        set((s) => ({
+          player: {
+            ...s.player,
+            shuffle: false,
+            queue: s.player.originalQueue,
+          },
+        }));
+      }
+    },
+
+    cycleRepeat: () => {
+      const modes: RepeatMode[] = ["off", "all", "one"];
+      const current = get().player.repeat;
+      const idx = modes.indexOf(current);
+      set((s) => ({
+        player: { ...s.player, repeat: modes[(idx + 1) % modes.length] },
+      }));
+    },
+
+    setSearchQuery: async (query) => {
+      const trimmed = query.trim();
+      if (!trimmed) {
+        if (ytmSearchDebounceTimer) {
+          clearTimeout(ytmSearchDebounceTimer);
+          ytmSearchDebounceTimer = null;
+        }
+        ytmSearchGeneration += 1;
+        set({
+          search: {
+            query: "",
+            results: [],
+            albums: [],
+            playlists: [],
+            loading: false,
+            error: null,
+          },
+        });
+        return;
+      }
+
+      const { library, rpc, auth } = get();
+      const q = trimmed.toLowerCase();
+      const localResults = mergeTracks(
+        library.source,
+        library.localTracks,
+        library.remoteTracks,
+      ).filter(
+        (t) =>
+          t.title.toLowerCase().includes(q) ||
+          t.artist.toLowerCase().includes(q) ||
+          t.album.toLowerCase().includes(q),
+      );
+
+      const needsRemote = Boolean(
+        rpc && auth.loggedIn && library.source !== "local",
+      );
+
+      if (!needsRemote) {
+        if (ytmSearchDebounceTimer) {
+          clearTimeout(ytmSearchDebounceTimer);
+          ytmSearchDebounceTimer = null;
+        }
+        set({
+          search: {
+            query: trimmed,
+            results: localResults,
+            albums: [],
+            playlists: [],
+            loading: false,
+            error: null,
+          },
+        });
+        return;
+      }
+
+      set({
+        search: {
+          query: trimmed,
+          results: localResults,
+          albums: [],
+          playlists: [],
+          loading: true,
+          error: null,
+        },
+      });
+
+      if (ytmSearchDebounceTimer) {
+        clearTimeout(ytmSearchDebounceTimer);
+        ytmSearchDebounceTimer = null;
+      }
+
+      const generation = ++ytmSearchGeneration;
+      ytmSearchDebounceTimer = setTimeout(() => {
+        ytmSearchDebounceTimer = null;
+        void (async () => {
+          if (generation !== ytmSearchGeneration) {
+            return;
+          }
+          const st = get();
+          if (st.search.query.trim() !== trimmed) {
+            return;
+          }
+          const { rpc: rpcNow, auth: authNow, library: libNow } = st;
+          if (!rpcNow || !authNow.loggedIn || libNow.source === "local") {
+            return;
+          }
+
+          const localAgain = mergeTracks(
+            libNow.source,
+            libNow.localTracks,
+            libNow.remoteTracks,
+          ).filter(
+            (t) =>
+              t.title.toLowerCase().includes(q) ||
+              t.artist.toLowerCase().includes(q) ||
+              t.album.toLowerCase().includes(q),
+          );
+
+          try {
+            const remoteResults = await rpcNow.request.ytmusicSearch({
+              query: trimmed,
+            });
+            if (
+              generation !== ytmSearchGeneration ||
+              get().search.query.trim() !== trimmed
+            ) {
+              return;
+            }
+            const normalizedTracks = remoteResults.tracks.map(toTrack);
+            const normalizedAlbums = remoteResults.albums.map(toPlaylist);
+            const normalizedPlaylists = remoteResults.playlists.map(toPlaylist);
+
+            get().syncFavoritesFromTracks(normalizedTracks);
+
+            // Add search results to remoteTracks so that UI components like TrackTable
+            // can find the full track metadata (artist, duration, etc)
+            set((s) => {
+              const newRemoteTracks = mergeUniqueTracks(
+                s.library.remoteTracks,
+                normalizedTracks,
+              );
+              return {
+                library: {
+                  ...s.library,
+                  remoteTracks: newRemoteTracks,
+                  tracks: mergeTracks(
+                    s.library.source,
+                    s.library.localTracks,
+                    newRemoteTracks,
+                  ),
+                },
+              };
+            });
+
+            const combinedTracks =
+              libNow.source === "all"
+                ? [...normalizedTracks, ...localAgain].filter(
+                    (track, index, list) =>
+                      list.findIndex((entry) => entry.id === track.id) ===
+                      index,
+                  )
+                : normalizedTracks;
+
+            set({
+              search: {
+                query: trimmed,
+                results: combinedTracks,
+                albums: normalizedAlbums,
+                playlists: normalizedPlaylists,
+                loading: false,
+                error: null,
+              },
+            });
+          } catch (error) {
+            if (
+              generation !== ytmSearchGeneration ||
+              get().search.query.trim() !== trimmed
+            ) {
+              return;
+            }
+            set({
+              search: {
+                query: trimmed,
+                results: localAgain,
+                albums: [],
+                playlists: [],
+                loading: false,
+                error:
+                  error instanceof Error ? error.message : "Search failed.",
+              },
+            });
+          }
+        })();
+      }, YTM_REMOTE_SEARCH_DEBOUNCE_MS);
+    },
+
+    loadHomeFeed: async () => {
+      const { rpc, auth } = get();
+      if (!rpc || !auth.loggedIn) return;
+
+      if (get().homeFeed.loading) return;
+
+      console.log("[playerStore] Loading home feed...");
+      set((s) => ({ homeFeed: { ...s.homeFeed, loading: true, error: null } }));
+
+      try {
+        const result = await rpc.request.ytmusicGetHomeFeed();
+        console.log(
+          `[playerStore] Got home feed with ${result.sections.length} sections`,
+        );
+
+        const sections = result.sections.map((sec) => {
+          const items = sec.items.map((item) => {
+            if ("title" in item) {
+              return toTrack(item);
+            }
+            return toPlaylist(item);
+          });
+          return {
+            title: sec.title,
+            items,
+          };
+        });
+
+        const allHomeTracks = sections.flatMap((sec) =>
+          sec.items.filter((i): i is Track => "title" in i),
+        );
+        get().syncFavoritesFromTracks(allHomeTracks);
+
+        set((s) => {
+          const remoteTracks = mergeUniqueTracks(
+            s.library.remoteTracks,
+            allHomeTracks,
+          );
+          return {
+            library: {
+              ...s.library,
+              remoteTracks,
+              tracks: mergeTracks(
+                s.library.source,
+                s.library.localTracks,
+                remoteTracks,
+              ),
+            },
+            homeFeed: {
+              sections,
+              loading: false,
+              error: null,
+            },
+          };
+        });
+      } catch (error) {
+        console.error("[playerStore] Failed to load home feed", error);
+        set((s) => ({
+          homeFeed: {
+            ...s.homeFeed,
+            loading: false,
+            error:
+              error instanceof Error
+                ? error.message
+                : "Failed to load home feed",
+          },
+        }));
+      }
+    },
+
+    addToRecentlyPlayed: (track) => {
+      set((s) => {
+        const filtered = s.recentlyPlayed.filter((t) => t.id !== track.id);
+        return {
+          recentlyPlayed: [track, ...filtered].slice(0, MAX_RECENTLY_PLAYED),
+        };
+      });
+    },
+
+    syncFavoritesFromTracks: (tracks: Track[]) => {
+      set((s) => {
+        const next = new Set(s.favorites);
+        let changed = false;
+        for (const t of tracks) {
+          if (t.liked === true && !next.has(t.id)) {
+            next.add(t.id);
+            changed = true;
+          } else if (t.liked === false && next.delete(t.id)) {
+            changed = true;
+          }
+        }
+        if (changed) {
+          saveFavorites(next);
+          return { favorites: next };
+        }
+        return {};
+      });
+    },
+
+    toggleFavorite: async (trackId) => {
+      const { rpc, library } = get();
+      const track = [...library.localTracks, ...library.remoteTracks].find(
+        (item) => item.id === trackId,
+      );
+      const previousFavorites = new Set(get().favorites);
+
+      set((s) => {
+        const next = new Set(s.favorites);
+        if (next.has(trackId)) next.delete(trackId);
+        else next.add(trackId);
+        saveFavorites(next);
+        return { favorites: next };
+      });
+
+      if (!rpc || !track || track.provider !== "ytmusic") {
+        return;
+      }
+
+      try {
+        if (get().favorites.has(trackId)) {
+          await rpc.request.ytmusicLike({ videoId: track.providerId });
+        } else {
+          await rpc.request.ytmusicUnlike({ videoId: track.providerId });
+        }
+      } catch (err) {
+        set({ favorites: previousFavorites });
+        saveFavorites(previousFavorites);
+        showToast(
+          err instanceof Error
+            ? `Failed to update favorites: ${err.message}`
+            : "Failed to update favorites",
+          "error",
+        );
+        throw err;
+      }
+    },
+
+    isFavorite: (trackId) => get().favorites.has(trackId),
+
+    getFavoriteTracks: () => {
+      const { library, favorites } = get();
+      return [...library.localTracks, ...library.remoteTracks].filter((t) =>
+        favorites.has(t.id),
+      );
+    },
+
+    savePlaylistToLibrary: async (playlistId) => {
+      const { rpc } = get();
+      if (!rpc) return;
+      const providerId = playlistId.startsWith("ytmusic:")
+        ? playlistId.slice(8)
+        : playlistId;
+      await rpc.request.ytmusicSavePlaylist({ playlistId: providerId });
+      showToast("Playlist saved to your library");
+      void get().syncYtMusicLibrary();
+    },
+
+    unsavePlaylistFromLibrary: async (playlistId) => {
+      const { rpc } = get();
+      if (!rpc) return;
+      const providerId = playlistId.startsWith("ytmusic:")
+        ? playlistId.slice(8)
+        : playlistId;
+      await rpc.request.ytmusicUnsavePlaylist({ playlistId: providerId });
+      showToast("Playlist removed from your library");
+      void get().syncYtMusicLibrary();
+    },
+
+    updateQueue: (newQueue) => {
+      set((s) => ({
+        player: { ...s.player, queue: newQueue, originalQueue: newQueue },
+      }));
+    },
+
+    playNext: (track) => {
+      const { player } = get();
+      const queue = [...player.queue];
+      const idx = queue.findIndex((t) => t.id === player.currentTrack?.id);
+      if (idx >= 0) {
+        queue.splice(idx + 1, 0, track);
+      } else {
+        queue.unshift(track);
+      }
+      if (!player.currentTrack) {
+        get().playTrack(track, queue);
+      } else {
+        set((s) => ({ player: { ...s.player, queue, originalQueue: queue } }));
+      }
+    },
+
+    addToQueue: (track) => {
+      const { player } = get();
+      const queue = [...player.queue, track];
+      if (!player.currentTrack) {
+        get().playTrack(track, queue);
+      } else {
+        set((s) => ({ player: { ...s.player, queue, originalQueue: queue } }));
+      }
+    },
+  }),
+);

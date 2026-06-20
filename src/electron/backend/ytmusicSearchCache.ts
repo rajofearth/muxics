@@ -1,10 +1,22 @@
 import fs from "node:fs";
-import type { TrackResult } from "../../shared/desktop-contract";
+import type {
+  TrackResult,
+  PlaylistResult,
+} from "../../shared/desktop-contract";
 import { YTMUSIC_SEARCH_CACHE_PATH, ensureAppDataDirs } from "./paths";
+
+type SearchCacheEntry = {
+  savedAt: number;
+  results: {
+    tracks: TrackResult[];
+    albums: PlaylistResult[];
+    playlists: PlaylistResult[];
+  };
+};
 
 type SearchCacheFile = {
   epoch: number;
-  entries: Record<string, { savedAt: number; results: TrackResult[] }>;
+  entries: Record<string, SearchCacheEntry>;
 };
 
 function normalizeQuery(query: string): string {
@@ -18,7 +30,10 @@ function loadRaw(): SearchCacheFile {
     const parsed = JSON.parse(raw) as Partial<SearchCacheFile>;
     return {
       epoch: typeof parsed.epoch === "number" ? parsed.epoch : 0,
-      entries: parsed.entries && typeof parsed.entries === "object" ? parsed.entries : {},
+      entries:
+        parsed.entries && typeof parsed.entries === "object"
+          ? parsed.entries
+          : {},
     };
   } catch {
     return { epoch: 0, entries: {} };
@@ -28,7 +43,11 @@ function loadRaw(): SearchCacheFile {
 function saveRaw(data: SearchCacheFile): void {
   try {
     ensureAppDataDirs();
-    fs.writeFileSync(YTMUSIC_SEARCH_CACHE_PATH, JSON.stringify(data, null, 2), "utf-8");
+    fs.writeFileSync(
+      YTMUSIC_SEARCH_CACHE_PATH,
+      JSON.stringify(data, null, 2),
+      "utf-8",
+    );
   } catch (error) {
     console.error("[muxics:ytmusic] Failed to write search cache:", error);
   }
@@ -45,7 +64,11 @@ export function bumpYtMusicSearchCacheSession(): void {
 export function getCachedYtMusicSearch(
   query: string,
   ttlMs: number,
-): TrackResult[] | null {
+): {
+  tracks: TrackResult[];
+  albums: PlaylistResult[];
+  playlists: PlaylistResult[];
+} | null {
   const key = normalizeQuery(query);
   if (!key) return null;
 
@@ -59,7 +82,11 @@ export function getCachedYtMusicSearch(
 
 export function setCachedYtMusicSearch(
   query: string,
-  results: TrackResult[],
+  results: {
+    tracks: TrackResult[];
+    albums: PlaylistResult[];
+    playlists: PlaylistResult[];
+  },
   maxEntries: number,
 ): void {
   const key = normalizeQuery(query);
