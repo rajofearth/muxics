@@ -44,16 +44,20 @@ function mergeTracks(source: LibrarySource, localTracks: Track[], remoteTracks: 
   return [...remoteTracks, ...localTracks];
 }
 
-function mergePlaylists(source: LibrarySource, localItems: Playlist[], remoteItems: Playlist[]): Playlist[] {
-  if (source === "local") {
-    return localItems;
-  }
+function mergePlaylists(source: LibrarySource, localItems: Playlist[], remoteItems: Playlist[], transientItems: Playlist[] = []): Playlist[] {
+  const base =
+    source === "local"
+      ? localItems
+      : source === "ytmusic"
+        ? remoteItems
+        : [...remoteItems, ...localItems];
 
-  if (source === "ytmusic") {
-    return remoteItems;
-  }
+  // Include transient items (browsed from home/search but not in library)
+  // that are not already in the library base
+  const libraryIds = new Set(base.map((p) => p.id));
+  const uniqueTransient = transientItems.filter((p) => !libraryIds.has(p.id));
 
-  return [...remoteItems, ...localItems];
+  return [...base, ...uniqueTransient];
 }
 
 function toTrack(track: TrackResult): Track {
@@ -248,7 +252,14 @@ export interface PlayerState {
   settings: { watchFolders: string[] };
   theme: { accentColor: string; palette: string[] };
   themeName: string;
-  search: { query: string; results: Track[]; loading: boolean; error: string | null };
+  search: {
+    query: string;
+    results: Track[];
+    albums: Playlist[];
+    playlists: Playlist[];
+    loading: boolean;
+    error: string | null;
+  };
   homeFeed: {
     sections: { title: string; items: (Track | Playlist)[] }[];
     loading: boolean;
@@ -302,6 +313,8 @@ interface PlayerActions {
   toggleFavorite: (trackId: string) => Promise<void>;
   isFavorite: (trackId: string) => boolean;
   getFavoriteTracks: () => Track[];
+  savePlaylistToLibrary: (playlistId: string) => Promise<void>;
+  unsavePlaylistFromLibrary: (playlistId: string) => Promise<void>;
   updateQueue: (newQueue: Track[]) => void;
   playNext: (track: Track) => void;
   addToQueue: (track: Track) => void;
@@ -333,6 +346,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
     items: [],
     localItems: [],
     remoteItems: [],
+    transientItems: [],
     activeId: null,
     hydratingById: {},
     hydrationErrors: {},
@@ -771,10 +785,33 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
   },
 
   ensurePlaylistHydrated: async (playlistId) => {
-    const { rpc, playlists } = get();
+    const { rpc, playlists, homeFeed, library } = get();
     if (!rpc) return;
 
-    const playlist = playlists.items.find((item) => item.id === playlistId);
+    let playlist = playlists.items.find((item) => item.id === playlistId);
+
+    // If not in standard playlists, check the home feed (for albums/playlists the user hasn't saved yet)
+    if (!playlist) {
+      for (const section of homeFeed.sections) {
+        const found = section.items.find((item): item is Playlist => !("title" in item) && item.id === playlistId);
+        if (found) {
+          playlist = found;
+          // Add it to transientItems so it can be hydrated and managed without cluttering the sidebar
+          set((s) => ({
+            playlists: {
+              ...s.playlists,
+              transientItems: [...s.playlists.transientItems, found],
+              items: mergePlaylists(library.source, s.playlists.localItems, s.playlists.remoteItems, [...s.playlists.transientItems, found]),
+            },
+          }));
+          // IMPORTANT: Refresh our local playlist reference from the newly updated state
+          // to ensure we have the most current object for the rest of the function.
+          playlist = found;
+          break;
+        }
+      }
+    }
+
     if (!playlist || !playlistNeedsYtDetailFetch(playlist)) {
       return;
     }
@@ -800,10 +837,17 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
       const updated = toPlaylist(detailed);
       get().syncFavoritesFromTracks(updated.tracks ?? []);
       set((s) => {
+        // Update both remoteItems and transientItems if the playlist exists in them
         const remoteItems = s.playlists.remoteItems.map((item) =>
           item.id === updated.id ? updated : item,
         );
-        const remoteTracks = mergeUniqueTracks(s.library.remoteTracks, collectPlaylistTracks(remoteItems));
+        const transientItems = s.playlists.transientItems.map((item) =>
+          item.id === updated.id ? updated : item,
+        );
+        
+        // Collect all tracks from all playlists to ensure we have metadata for everything in library
+        const allPlaylistTracks = collectPlaylistTracks([...remoteItems, ...transientItems]);
+        const remoteTracks = mergeUniqueTracks(s.library.remoteTracks, allPlaylistTracks);
 
         return {
           library: {
@@ -814,7 +858,8 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
           playlists: {
             ...s.playlists,
             remoteItems,
-            items: mergePlaylists(s.library.source, s.playlists.localItems, remoteItems),
+            transientItems,
+            items: mergePlaylists(s.library.source, s.playlists.localItems, remoteItems, transientItems),
             hydratingById: { ...s.playlists.hydratingById, [playlistId]: false },
             hydrationErrors: { ...s.playlists.hydrationErrors, [playlistId]: null },
           },
@@ -1275,15 +1320,42 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
           if (generation !== ytmSearchGeneration || get().search.query.trim() !== trimmed) {
             return;
           }
-          const normalized = remoteResults.map(toTrack);
-          get().syncFavoritesFromTracks(normalized);
-          const combined =
+          const normalizedTracks = remoteResults.tracks.map(toTrack);
+          const normalizedAlbums = remoteResults.albums.map(toPlaylist);
+          const normalizedPlaylists = remoteResults.playlists.map(toPlaylist);
+
+          get().syncFavoritesFromTracks(normalizedTracks);
+
+          // Add search results to remoteTracks so that UI components like TrackTable 
+          // can find the full track metadata (artist, duration, etc)
+          set((s) => {
+            const newRemoteTracks = mergeUniqueTracks(s.library.remoteTracks, normalizedTracks);
+            return {
+              library: {
+                ...s.library,
+                remoteTracks: newRemoteTracks,
+                tracks: mergeTracks(s.library.source, s.library.localTracks, newRemoteTracks),
+              },
+            };
+          });
+
+          const combinedTracks =
             libNow.source === "all"
-              ? [...normalized, ...localAgain].filter(
+              ? [...normalizedTracks, ...localAgain].filter(
                   (track, index, list) => list.findIndex((entry) => entry.id === track.id) === index,
                 )
-              : normalized;
-          set({ search: { query: trimmed, results: combined, loading: false, error: null } });
+              : normalizedTracks;
+
+          set({ 
+            search: { 
+              query: trimmed, 
+              results: combinedTracks, 
+              albums: normalizedAlbums,
+              playlists: normalizedPlaylists,
+              loading: false, 
+              error: null 
+            } 
+          });
         } catch (error) {
           if (generation !== ytmSearchGeneration || get().search.query.trim() !== trimmed) {
             return;
@@ -1299,7 +1371,6 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
         }
       })();
     }, YTM_REMOTE_SEARCH_DEBOUNCE_MS);
-    void get().loadHomeFeed();
   },
 
   loadHomeFeed: async () => {
@@ -1316,39 +1387,35 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
       console.log(`[playerStore] Got home feed with ${result.sections.length} sections`);
       
       set((s) => {
-        const homePlaylists = result.sections.flatMap((sec) =>
-          sec.items.filter((i): i is PlaylistResult => !("title" in i)),
+        const sections = result.sections.map((sec) => {
+          const items = sec.items.map((item) => {
+            if ("title" in item) {
+              return toTrack(item);
+            }
+            return toPlaylist(item);
+          });
+          get().syncFavoritesFromTracks(items.filter((i): i is Track => "liked" in i));
+          return {
+            title: sec.title,
+            items,
+          };
+        });
+
+        const allHomeTracks = sections.flatMap((sec) => 
+          sec.items.filter((i): i is Track => "title" in i)
         );
 
-        const existingIds = new Set(s.playlists.remoteItems.map((p) => p.id));
-        const newRemoteItems = [...s.playlists.remoteItems];
-        for (const hp of homePlaylists) {
-          if (!existingIds.has(hp.id)) {
-            newRemoteItems.push(toPlaylist(hp));
-            existingIds.add(hp.id);
-          }
-        }
+        // Add home feed tracks to remoteTracks so their metadata (duration, artist) is available
+        const newRemoteTracks = mergeUniqueTracks(s.library.remoteTracks, allHomeTracks);
 
         return {
-          playlists: {
-            ...s.playlists,
-            remoteItems: newRemoteItems,
-            items: mergePlaylists(s.library.source, s.playlists.localItems, newRemoteItems),
+          library: {
+            ...s.library,
+            remoteTracks: newRemoteTracks,
+            tracks: mergeTracks(s.library.source, s.library.localTracks, newRemoteTracks),
           },
           homeFeed: {
-            sections: result.sections.map((sec) => {
-              const items = sec.items.map((item) => {
-                if ("title" in item) {
-                  return toTrack(item);
-                }
-                return toPlaylist(item);
-              });
-              get().syncFavoritesFromTracks(items.filter((i): i is Track => "liked" in i));
-              return {
-                title: sec.title,
-                items,
-              };
-            }),
+            sections,
             loading: false,
             error: null,
           },
@@ -1432,6 +1499,24 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
   getFavoriteTracks: () => {
     const { library, favorites } = get();
     return [...library.localTracks, ...library.remoteTracks].filter((t) => favorites.has(t.id));
+  },
+
+  savePlaylistToLibrary: async (playlistId) => {
+    const { rpc } = get();
+    if (!rpc) return;
+    const providerId = playlistId.startsWith("ytmusic:") ? playlistId.slice(8) : playlistId;
+    await rpc.request.ytmusicSavePlaylist({ playlistId: providerId });
+    showToast("Playlist saved to your library");
+    void get().syncYtMusicLibrary();
+  },
+
+  unsavePlaylistFromLibrary: async (playlistId) => {
+    const { rpc } = get();
+    if (!rpc) return;
+    const providerId = playlistId.startsWith("ytmusic:") ? playlistId.slice(8) : playlistId;
+    await rpc.request.ytmusicUnsavePlaylist({ playlistId: providerId });
+    showToast("Playlist removed from your library");
+    void get().syncYtMusicLibrary();
   },
 
   updateQueue: (newQueue) => {

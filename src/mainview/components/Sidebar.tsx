@@ -1,4 +1,4 @@
-import { useState, memo } from "react";
+import { useState, memo, useMemo } from "react";
 import {
   Library,
   Mic2,
@@ -75,6 +75,10 @@ export const Sidebar = memo(function Sidebar({ navState, playlists, onNavigate }
     );
   };
 
+  const transientItems = usePlayerStore((s) => s.playlists.transientItems);
+  const transientIds = useMemo(() => new Set(transientItems.map((p) => p.id)), [transientItems]);
+  const libraryPlaylists = playlists.filter((p) => !transientIds.has(p.id));
+
   return (
     <nav className="w-56 border-r border-app-border bg-app-surface-alt flex flex-col shrink-0 select-none" aria-label="Navigation">
       <div className="p-3 pt-2 flex-1 overflow-y-auto no-scrollbar">
@@ -109,9 +113,9 @@ export const Sidebar = memo(function Sidebar({ navState, playlists, onNavigate }
           </div>
         </div>
 
-        {playlists.length > 0 && (
+        {libraryPlaylists.length > 0 && (
           <div className="mt-2 space-y-0.5">
-            {playlists.map((pl) => {
+            {libraryPlaylists.map((pl) => {
               const isActive = navState.view === "playlist_detail" && navState.id === pl.id;
               return (
                 <button

@@ -69,6 +69,7 @@
 - **Bug Fixes**
   - Context Menu's UI should have scroll view for the playlists.
   - the like(favorite) btn should also like the track in thier yt account.
+  
 ## Useful Files
 - `src/electron/backend/ytmusic.ts`
 - `src/electron/backend/ytmusicHomeSnapshot.ts`

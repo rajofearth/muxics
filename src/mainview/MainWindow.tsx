@@ -165,12 +165,28 @@ export function MainWindow({
     return () => document.removeEventListener("app-navigate", navHandler);
   }, [handleNavigate]);
 
-  const activePlaylist = useMemo(
-    () => navState.view === "playlist_detail" && navState.id
-      ? playlists.items.find((playlist) => playlist.id === navState.id) ?? null
-      : null,
-    [navState.view, navState.id, playlists.items],
-  );
+  const activePlaylist = useMemo(() => {
+    if ((navState.view !== "playlist_detail" && navState.view !== "album_detail") || !navState.id) {
+      return null;
+    }
+    const fromLibrary = playlists.items.find((p) => p.id === navState.id);
+    if (fromLibrary) return fromLibrary;
+
+    // Check home feed sections for transient items
+    for (const section of usePlayerStore.getState().homeFeed.sections) {
+      const found = section.items.find(
+        (item): item is Playlist => !("title" in item) && item.id === navState.id,
+      );
+      if (found) return found;
+    }
+
+    // Check search results for albums/playlists
+    const search = usePlayerStore.getState().search;
+    const fromSearch = [...(search.albums || []), ...(search.playlists || [])].find(p => p.id === navState.id);
+    if (fromSearch) return fromSearch;
+
+    return null;
+  }, [navState.view, navState.id, playlists.items]);
 
   useEffect(() => {
     if (!activePlaylist || activePlaylist.provider !== "ytmusic") {

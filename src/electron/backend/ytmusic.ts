@@ -437,11 +437,23 @@ function toPlaylist(item: any): PlaylistResult | null {
   const name = itemAny.title?.toString() || itemAny.name?.toString();
   if (!name) return null;
 
-  const id = itemAny.id || itemAny.endpoint?.payload?.browseId || itemAny.browseId;
-  if (!id) return null;
+  if (itemAny.item_type === "artist" || itemAny.item_type === "library_artist") {
+    return null;
+  }
+
+  const id =
+    readBrowseIdFromYtmusicSearchItem(itemAny) ||
+    itemAny.endpoint?.payload?.browseEndpoint?.browseId ||
+    itemAny.id ||
+    itemAny.endpoint?.payload?.browseId ||
+    itemAny.browseId;
+  if (!id || !isPlausibleYtMusicPlaylistOrAlbumId(id)) {
+    return null;
+  }
 
   // YT Music Album IDs usually start with MPRE or OLAK
-  const itemType = itemAny.item_type || (id.startsWith("MPRE") || id.startsWith("OLAK") ? "album" : "playlist");
+  const isAlbum = id.startsWith("MPRE") || id.startsWith("OLAK") || itemAny.item_type === "album";
+  const itemType = isAlbum ? "album" : "playlist";
 
   return {
     id: `ytmusic:${id}`,
@@ -450,14 +462,47 @@ function toPlaylist(item: any): PlaylistResult | null {
     name: sanitizeText(name, "Unknown Playlist"),
     author: itemAny.author?.name || itemAny.subtitle?.toString() || "YouTube Music",
     picture: getThumbnailUrl(itemAny),
-    type: itemType === "album" ? "album" : "playlist",
+    type: itemType,
     listedItemCount: typeof itemAny.item_count === "number" ? itemAny.item_count : undefined,
     entries: [],
+    // Home feed items (Mixes, Albums) should generally not show edit/delete icons
+    editable: false,
   };
+}
+
+function collectWatchVideoIdsFromParsedFlexColumns(item: Record<string, any>): string[] {
+  const cols = item.flex_columns;
+  if (!Array.isArray(cols)) {
+    return [];
+  }
+  const out: string[] = [];
+  for (const col of cols) {
+    const runs = col?.title?.runs ?? [];
+    for (const run of runs) {
+      const ep = run?.endpoint ?? run?.navigationEndpoint;
+      const vid = ep?.payload?.videoId ?? ep?.payload?.watchEndpoint?.videoId;
+      if (typeof vid === "string") {
+        out.push(vid);
+      }
+    }
+  }
+  return out;
 }
 
 function readParsedItemPlayableVideoId(item: MusicResponsiveListItem | MusicTwoRowItem): string | undefined {
   const parsed = item as unknown as Record<string, any>;
+  
+  // Try direct properties first
+  const directId = findFirstVideoId([
+    parsed.id,
+    parsed.videoId,
+    ...collectWatchVideoIdsFromParsedFlexColumns(parsed),
+    parsed.video_id,
+    parsed.videoId_,
+    parsed.playlistItemData?.videoId,
+  ]);
+  if (directId) return directId;
+
   const menuItems = parsed?.menu?.items ?? parsed?.menu?.menu_renderer?.items ?? [];
   const topLevelButtons =
     parsed?.menu?.top_level_buttons
@@ -465,7 +510,7 @@ function readParsedItemPlayableVideoId(item: MusicResponsiveListItem | MusicTwoR
     ?? [];
   const subtitleRuns = parsed?.subtitle?.runs ?? [];
 
-  const id = findFirstVideoId([
+  return findFirstVideoId([
     parsed.id,
     parsed.videoId,
     parsed.video_id,
@@ -492,20 +537,10 @@ function readParsedItemPlayableVideoId(item: MusicResponsiveListItem | MusicTwoR
     ),
     ...topLevelButtons.map((item: any) => 
       item?.navigation_endpoint?.watch_endpoint?.video_id ||
-      item?.navigation_endpoint?.watch_endpoint?.videoId
+      item?.navigation_endpoint?.watch_endpoint?.videoId ||
+      item?.button_renderer?.navigation_endpoint?.watch_endpoint?.video_id
     ),
   ]);
-
-  if (!id) {
-    // Last ditch: check if there's an id in the raw data if available
-    const raw = (item as any).raw_data;
-    if (raw) {
-       // Deeply search for 11-char strings that look like video IDs? No, too risky.
-       // But we can check common raw paths
-    }
-  }
-
-  return id;
 }
 
 function toTrack(item: MusicResponsiveListItem | MusicTwoRowItem): TrackResult | null {
@@ -800,8 +835,121 @@ function isLikelyVideoId(value: unknown): value is string {
     && !/^(VL|PL|LM|MPR|FEmusic_)/.test(value);
 }
 
+/** Strip app / browse prefixes so InnerTube gets a bare list id (e.g. PL…, LM…). */
+function normalizeBareYtMusicPlaylistId(playlistId: string): string {
+  let id = playlistId.trim();
+  id = id.replace(/^ytmusic-playlist:/i, "").replace(/^ytmusic:/i, "").trim();
+  if (id.startsWith("VL") && id.length > 2) {
+    id = id.slice(2);
+  }
+  return id;
+}
+
+/**
+ * Reject channel rows, UI tokens, and other non-list browse ids that sometimes appear on shelves.
+ * Prefer failing closed so we do not call /browse with ids like "SE".
+ */
+function isPlausibleYtMusicPlaylistOrAlbumId(id: string): boolean {
+  const t = id.trim();
+  if (t.length < 4) {
+    return false;
+  }
+  if (/^[A-Z]{1,3}$/.test(t)) {
+    return false;
+  }
+  if (t.startsWith("UC")) {
+    return false;
+  }
+  if (t.startsWith("FEmusic") || t.startsWith("FE")) {
+    return false;
+  }
+  if (t.startsWith("MPRE") || t.startsWith("OLAK")) {
+    return t.length >= 8;
+  }
+  if (t.startsWith("PL") || t.startsWith("LM")) {
+    return t.length >= 6;
+  }
+  if (t.startsWith("RD")) {
+    return t.length >= 8;
+  }
+  if (t.startsWith("VL")) {
+    return t.length >= 10;
+  }
+  return t.length >= 12;
+}
+
+function ytmShelfContentsToArray(contents: unknown): any[] {
+  if (!contents) {
+    return [];
+  }
+  if (Array.isArray(contents)) {
+    return contents;
+  }
+  const anyC = contents as { toArray?: () => any[] };
+  if (typeof anyC.toArray === "function") {
+    return anyC.toArray();
+  }
+  try {
+    return [...(contents as Iterable<any>)];
+  } catch {
+    return [];
+  }
+}
+
+/** VL prefix is for list-style browse ids; album/release pages use bare MPRE/OLAK. */
+function browseIdForMusicBrowseRequest(playlistId: string): string {
+  if (playlistId.startsWith("VL")) {
+    return playlistId;
+  }
+  if (playlistId.startsWith("MPRE") || playlistId.startsWith("OLAK")) {
+    return playlistId;
+  }
+  return `VL${playlistId}`;
+}
+
+/** InnerTube sometimes expects the browse-style id (VL + list id) for edit/delete. */
+function playlistIdsToTryOnInnertube(bareId: string): string[] {
+  if (bareId.startsWith("VL")) {
+    return [bareId];
+  }
+  const withVl = `VL${bareId}`;
+  if (bareId.startsWith("PL") || bareId.startsWith("LM") || bareId.startsWith("OL")) {
+    return [bareId, withVl];
+  }
+  return [bareId];
+}
+
+function readBrowseIdFromYtmusicSearchItem(item: any): string | undefined {
+  const ep = item?.endpoint as { payload?: Record<string, any> } | undefined;
+  const p = ep?.payload;
+  if (!p || typeof p !== "object") {
+    return undefined;
+  }
+  const nested = typeof p.browseEndpoint?.browseId === "string" ? p.browseEndpoint.browseId : undefined;
+  const flat = typeof p.browseId === "string" ? p.browseId : undefined;
+  return nested || flat || undefined;
+}
+
 function findFirstVideoId(values: unknown[]): string | undefined {
   return values.find((value): value is string => isLikelyVideoId(value));
+}
+
+function collectWatchVideoIdsFromFlexColumns(renderer: RawNode): string[] {
+  const cols = renderer?.flexColumns;
+  if (!Array.isArray(cols)) {
+    return [];
+  }
+  const out: string[] = [];
+  for (const col of cols) {
+    const runs = col?.musicResponsiveListItemFlexColumnRenderer?.text?.runs ?? [];
+    for (const run of runs) {
+      const vid = run?.navigationEndpoint?.watchEndpoint?.videoId;
+      if (typeof vid === "string") {
+        out.push(vid);
+      }
+    }
+  }
+  return out;
 }
 
 function readRendererPlayableVideoId(renderer: RawNode): string | undefined {
@@ -815,6 +963,7 @@ function readRendererPlayableVideoId(renderer: RawNode): string | undefined {
   return findFirstVideoId([
     renderer?.playlistItemData?.videoId,
     renderer?.navigationEndpoint?.watchEndpoint?.videoId,
+    ...collectWatchVideoIdsFromFlexColumns(renderer),
     renderer?.navigationEndpoint?.watchPlaylistEndpoint?.videoId,
     renderer?.navigationEndpoint?.browseEndpoint?.browseId,
     renderer?.navigationEndpoint?.watchEndpointMusicSupportedConfigs?.watchEndpointMusicConfig?.musicVideoType === "MUSIC_VIDEO_TYPE_ATV"
@@ -974,7 +1123,7 @@ function toPlaylistFromRaw(renderer: RawNode): PlaylistResult | null {
 
   const name = readText(renderer.title) || readText(renderer.flexColumns?.[0]?.musicResponsiveListItemFlexColumnRenderer?.text) || "Playlist";
   return {
-    id: `ytmusic-playlist:${providerId.replace(/^VL/, "")}`,
+    id: `ytmusic:${providerId.replace(/^VL/, "")}`,
     provider: "ytmusic",
     providerId: providerId.replace(/^VL/, ""),
     name,
@@ -1025,7 +1174,7 @@ function toPlaylistEntries(tracks: TrackResult[]) {
 
 async function getYtMusicPlaylistFromRaw(client: Innertube, playlistId: string): Promise<PlaylistResult | null> {
   const raw = await client.actions.execute("/browse", {
-    browseId: playlistId.startsWith("VL") ? playlistId : `VL${playlistId}`,
+    browseId: browseIdForMusicBrowseRequest(playlistId),
     client: "YTMUSIC",
   });
   const payload = raw.data;
@@ -1051,7 +1200,7 @@ async function getYtMusicPlaylistFromRaw(client: Innertube, playlistId: string):
     "Playlist";
 
   return {
-    id: `ytmusic-playlist:${playlistId}`,
+    id: `ytmusic:${playlistId}`,
     provider: "ytmusic",
     providerId: playlistId,
     name: headerTitle,
@@ -1066,16 +1215,34 @@ async function collectPlaylistItems(playlist: Awaited<ReturnType<Innertube["musi
   const items = [...playlist.items];
   let current = playlist;
 
+  log("ytmusic", "info", `collectPlaylistItems: starting with ${items.length} initial items`);
+
   while (current.has_continuation) {
-    current = await current.getContinuation();
-    items.push(...current.items);
+    try {
+      current = await current.getContinuation();
+      items.push(...current.items);
+      log("ytmusic", "info", `collectPlaylistItems: fetched continuation, now have ${items.length} items`);
+    } catch (err) {
+      log("ytmusic", "error", "collectPlaylistItems: failed to fetch continuation", err);
+      break;
+    }
   }
 
-  return uniqueById(
-    items
-      .map((item) => toTrack(item as MusicResponsiveListItem | MusicTwoRowItem))
-      .filter((item): item is TrackResult => item != null),
-  );
+  const tracks = items
+    .map((item, idx) => {
+      const track = toTrack(item as MusicResponsiveListItem | MusicTwoRowItem);
+      if (!track) {
+        log("ytmusic", "warn", `collectPlaylistItems: failed to parse item at index ${idx}`, {
+          type: (item as any).type,
+          keys: Object.keys(item),
+        });
+      }
+      return track;
+    })
+    .filter((item): item is TrackResult => item != null);
+
+  log("ytmusic", "info", `collectPlaylistItems: finished with ${tracks.length} parsed tracks out of ${items.length} total items`);
+  return uniqueById(tracks);
 }
 
 function collectRenderers(node: any, key: string, results: RawNode[] = []): RawNode[] {
@@ -1510,89 +1677,200 @@ export async function getYtMusicHome(): Promise<YTMusicHomeResult> {
 
 export async function getYtMusicHomeFeed(): Promise<YTMusicHomeFeedResult> {
   const client = await getClient();
-  const homeFeed = await client.music.getHomeFeed();
+  let homeFeed = await client.music.getHomeFeed();
   const sections: YTMusicHomeSectionResult[] = [];
 
-  const rawSections = homeFeed.sections || [];
-  log("ytmusic", "info", `Parsing home feed with ${rawSections.length} raw sections`);
+  const processSections = (feedSections: any[]) => {
+    for (const section of feedSections) {
+      try {
+        let title = "";
+        let shelfContents: any[] = [];
 
-  for (const section of rawSections) {
-    try {
-      log("ytmusic", "info", `Section type: ${section.type}`);
-      let title = "";
-      let shelfContents: any[] = [];
-
-      if (section.type === "MusicCarouselShelf") {
-        const shelf = section.as(YTNodes.MusicCarouselShelf);
-        title = shelf.header?.title?.toString() || "Recommended";
-        shelfContents = shelf.contents || [];
-      } else if (section.type === "MusicShelf") {
-        const shelf = section.as(YTNodes.MusicShelf);
-        title = shelf.title?.toString() || "Recommended";
-        shelfContents = shelf.contents || [];
-      } else if (section.type === "MusicResponsiveListItemShelf") {
-        // Broaden to other shelf types if they exist in future versions
-        const shelf = section as any;
-        title = shelf.header?.title?.toString() || shelf.title?.toString() || "Recommended";
-        shelfContents = shelf.contents || [];
-      } else {
-        continue;
-      }
-
-      log("ytmusic", "info", `Processing shelf: ${title} with ${shelfContents.length} items`);
-
-      const items: (TrackResult | PlaylistResult)[] = [];
-      for (const rawItem of shelfContents) {
-        const track = toTrack(rawItem);
-        if (track) {
-          items.push(track);
-          log("ytmusic", "info", `Parsed track in ${title}: ${track.title} [${track.providerId}]`);
+        if (section.type === "MusicCarouselShelf") {
+          const shelf = section.as(YTNodes.MusicCarouselShelf);
+          title = shelf.header?.title?.toString() || "Recommended";
+          shelfContents = shelf.contents || [];
+        } else if (section.type === "MusicShelf") {
+          const shelf = section.as(YTNodes.MusicShelf);
+          title = shelf.title?.toString() || "Recommended";
+          shelfContents = shelf.contents || [];
+        } else if (section.type === "MusicResponsiveListItemShelf") {
+          const shelf = section as any;
+          title = shelf.header?.title?.toString() || shelf.title?.toString() || "Recommended";
+          shelfContents = shelf.contents || [];
         } else {
-          const playlist = toPlaylist(rawItem);
-          if (playlist) {
-            items.push(playlist);
-            log("ytmusic", "info", `Parsed playlist in ${title}: ${playlist.name} [${playlist.providerId}]`);
+          continue;
+        }
+
+        const items: (TrackResult | PlaylistResult)[] = [];
+        for (const rawItem of shelfContents) {
+          const track = toTrack(rawItem);
+          if (track) {
+            items.push(track);
           } else {
-            const itemAny = rawItem as any;
-            log("ytmusic", "info", `Rejected item in ${title}: ${itemAny.type}`, {
-              id: itemAny.id,
-              keys: Object.keys(itemAny),
-              item_type: itemAny.item_type,
-              hasEndpoint: !!itemAny.endpoint,
-              endpointType: itemAny.endpoint?.type,
-              hasNavEndpoint: !!itemAny.navigationEndpoint,
-              hasRawData: !!itemAny.raw_data
-            });
+            const playlist = toPlaylist(rawItem);
+            if (playlist) {
+              items.push(playlist);
+            }
           }
         }
-      }
 
-      if (items.length > 0) {
-        sections.push({ title, items });
+        if (items.length > 0) {
+          sections.push({ title, items });
+        }
+      } catch (err) {
+        log("ytmusic", "warn", "Failed to parse home feed section", err);
       }
+    }
+  };
+
+  if (homeFeed.sections) {
+    processSections(homeFeed.sections);
+  }
+
+  // Fetch more sections if available to get a richer feed (Listen again, Quick picks, etc.)
+  // We try up to 3 continuations or until we have a good number of sections
+  let continuationCount = 0;
+  while (homeFeed.has_continuation && continuationCount < 3 && sections.length < 15) {
+    try {
+      log("ytmusic", "info", `Fetching home feed continuation ${continuationCount + 1}`);
+      homeFeed = await homeFeed.getContinuation();
+      if (homeFeed.sections) {
+        processSections(homeFeed.sections);
+      }
+      continuationCount++;
     } catch (err) {
-      log("ytmusic", "warn", "Failed to parse home feed section", err);
+      log("ytmusic", "warn", "Failed to fetch home feed continuation", err);
+      break;
     }
   }
 
-  log("ytmusic", "info", `Returning home feed with ${sections.length} sections`);
+  log("ytmusic", "info", `Returning home feed with ${sections.length} sections after ${continuationCount} continuations`);
   return { sections };
 }
 
-export async function searchYtMusic(query: string): Promise<TrackResult[]> {
+export async function searchYtMusic(query: string): Promise<{ tracks: TrackResult[]; albums: PlaylistResult[]; playlists: PlaylistResult[] }> {
   const client = await getClient();
-  const results = await client.music.search(query, { type: "song" });
-  const songs = results.songs?.contents ?? [];
+  
+  // Search for different types in parallel for efficiency
+  const [songResults, albumResults, playlistResults] = await Promise.all([
+    client.music.search(query, { type: "song" }),
+    client.music.search(query, { type: "album" }),
+    client.music.search(query, { type: "playlist" }),
+  ]);
 
-  return uniqueById(
-    songs.map((item) => toTrack(item)).filter((item): item is TrackResult => item != null),
-  );
+  const tracks = (songResults.songs?.contents ?? [])
+    .map((item) => toTrack(item))
+    .filter((item): item is TrackResult => item != null);
+
+  const albums = (albumResults.albums?.contents ?? [])
+    .map((item) => toPlaylist(item))
+    .filter((item): item is PlaylistResult => item != null);
+
+  const playlists = (playlistResults.playlists?.contents ?? [])
+    .map((item) => toPlaylist(item))
+    .filter((item): item is PlaylistResult => item != null);
+
+  return {
+    tracks: uniqueById(tracks),
+    albums: uniqueById(albums),
+    playlists: uniqueById(playlists),
+  };
 }
 
 export async function getYtMusicPlaylist(playlistId: string): Promise<PlaylistResult | null> {
   const client = await getClient();
+  const bareId = normalizeBareYtMusicPlaylistId(playlistId);
+  if (!isPlausibleYtMusicPlaylistOrAlbumId(bareId)) {
+    log("ytmusic", "warn", "Rejected implausible playlist / album browse id", { playlistId: bareId });
+    return null;
+  }
+
+  // Try to fetch as an album if the ID looks like one
+  if (bareId.startsWith("MPRE") || bareId.startsWith("OLAK")) {
+    try {
+      log("ytmusic", "info", `Attempting to fetch as album: ${bareId}`);
+      const album = await client.music.getAlbum(bareId);
+
+      const tracks: TrackResult[] = [];
+      const seen = new Set<string>();
+      const pushTrack = (t: TrackResult | null) => {
+        if (!t || seen.has(t.id)) {
+          return;
+        }
+        seen.add(t.id);
+        tracks.push(t);
+      };
+
+      for (const item of ytmShelfContentsToArray((album as any).contents)) {
+        pushTrack(toTrack(item));
+      }
+
+      for (const section of album.sections || []) {
+        for (const item of ytmShelfContentsToArray((section as any).contents)) {
+          pushTrack(toTrack(item));
+        }
+      }
+
+      if (tracks.length > 0) {
+        const albumHeader = album.header as any;
+        const detailed = {
+          id: `ytmusic:${bareId}`,
+          provider: "ytmusic" as const,
+          providerId: bareId,
+          name: album.header?.title?.toString() || "Album",
+          author: albumHeader?.author?.name || "YouTube Music",
+          picture: albumHeader?.thumbnail?.contents?.[0]?.url,
+          type: "album" as const,
+          editable: false,
+          entries: toPlaylistEntries(tracks),
+          tracks,
+          listedItemCount: tracks.length,
+        };
+        upsertCachedPlaylist(detailed);
+        return detailed;
+      }
+
+      const rawAlbum = await getYtMusicPlaylistFromRaw(client, bareId);
+      if (rawAlbum) {
+        const withType: PlaylistResult = {
+          ...rawAlbum,
+          id: `ytmusic:${bareId}`,
+          providerId: bareId,
+          type: "album",
+          editable: false,
+        };
+        upsertCachedPlaylist(withType);
+        return withType;
+      }
+    } catch (error) {
+      log("ytmusic", "warn", "Album fetch failed, trying raw browse fallback", {
+        playlistId: bareId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      try {
+        const rawAlbum = await getYtMusicPlaylistFromRaw(client, bareId);
+        if (rawAlbum) {
+          const withType: PlaylistResult = {
+            ...rawAlbum,
+            id: `ytmusic:${bareId}`,
+            providerId: bareId,
+            type: "album",
+            editable: false,
+          };
+          upsertCachedPlaylist(withType);
+          return withType;
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    return null;
+  }
+
   try {
-    const playlist = await client.music.getPlaylist(playlistId);
+    const playlist = await client.music.getPlaylist(bareId);
     const tracks = await collectPlaylistItems(playlist);
 
     if (tracks.length === 0) {
@@ -1606,11 +1884,14 @@ export async function getYtMusicPlaylist(playlistId: string): Promise<PlaylistRe
       "Playlist";
 
     const detailed = {
-      id: `ytmusic-playlist:${playlistId}`,
+      id: `ytmusic:${bareId}`,
       provider: "ytmusic" as const,
-      providerId: playlistId,
+      providerId: bareId,
       name,
-      editable: true,
+      author: (header as any)?.author?.name || "YouTube Music",
+      picture: (header as any)?.thumbnail?.contents?.[0]?.url,
+      type: (bareId.startsWith("MPRE") || bareId.startsWith("OLAK")) ? ("album" as const) : ("playlist" as const),
+      editable: false,
       entries: toPlaylistEntries(tracks),
       tracks,
       listedItemCount: tracks.length,
@@ -1620,11 +1901,11 @@ export async function getYtMusicPlaylist(playlistId: string): Promise<PlaylistRe
     return detailed;
   } catch (error) {
     log("ytmusic", "warn", "Parsed playlist fetch failed, falling back to raw extraction", {
-      playlistId,
+      playlistId: bareId,
       error: error instanceof Error ? error.message : String(error),
     });
 
-    const detailed = await getYtMusicPlaylistFromRaw(client, playlistId);
+    const detailed = await getYtMusicPlaylistFromRaw(client, bareId);
     if (detailed) {
       upsertCachedPlaylist(detailed);
     }
@@ -1759,14 +2040,44 @@ export async function createYtMusicPlaylist(name: string, trackProviderIds: stri
 
 export async function renameYtMusicPlaylist(playlistId: string, name: string) {
   const client = await getClient();
-  await client.playlist.setName(playlistId, name);
-  return { success: true };
+  const bareId = normalizeBareYtMusicPlaylistId(playlistId);
+  // youtubei.js PlaylistManager.setName sends `playlist_id` inside playlistEditEndpoint; the
+  // library's PlaylistEditEndpoint only serializes `playlistId`, so the request body was invalid.
+  const actions = [{ action: "ACTION_SET_PLAYLIST_NAME", playlistName: name }];
+  let lastError: unknown;
+  for (const pid of playlistIdsToTryOnInnertube(bareId)) {
+    try {
+      await client.actions.execute("/browse/edit_playlist", {
+        playlistId: pid,
+        actions,
+        client: "YTMUSIC",
+      });
+      return { success: true };
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError;
 }
 
 export async function deleteYtMusicPlaylist(playlistId: string) {
   const client = await getClient();
-  await client.playlist.delete(playlistId);
-  return { success: true };
+  const bareId = normalizeBareYtMusicPlaylistId(playlistId);
+  // client.playlist.delete builds deletePlaylistServiceEndpoint, which NavigationEndpoint cannot
+  // route (no api_url / parsed command). Call InnerTube directly like other YT Music actions.
+  let lastError: unknown;
+  for (const pid of playlistIdsToTryOnInnertube(bareId)) {
+    try {
+      await client.actions.execute("/playlist/delete", {
+        playlistId: pid,
+        client: "YTMUSIC",
+      });
+      return { success: true };
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError;
 }
 
 export async function addTrackToYtMusicPlaylist(playlistId: string, videoId: string) {
@@ -1778,6 +2089,35 @@ export async function addTrackToYtMusicPlaylist(playlistId: string, videoId: str
 export async function removeTrackFromYtMusicPlaylist(playlistId: string, videoId: string) {
   const client = await getClient();
   await client.playlist.removeVideos(playlistId, [videoId]);
+  return { success: true };
+}
+
+export async function saveYtMusicPlaylist(playlistId: string) {
+  const client = await getClient();
+  const bareId = normalizeBareYtMusicPlaylistId(playlistId);
+
+  // Albums use the like/unlike system in YT Music library
+  if (bareId.startsWith("MPRE") || bareId.startsWith("OLAK")) {
+    await client.actions.execute("/like/like", {
+      target: { playlistId: bareId },
+    });
+  } else {
+    await client.playlist.addToLibrary(bareId);
+  }
+  return { success: true };
+}
+
+export async function unsaveYtMusicPlaylist(playlistId: string) {
+  const client = await getClient();
+  const bareId = normalizeBareYtMusicPlaylistId(playlistId);
+
+  if (bareId.startsWith("MPRE") || bareId.startsWith("OLAK")) {
+    await client.actions.execute("/like/removerating", {
+      target: { playlistId: bareId },
+    });
+  } else {
+    await client.playlist.removeFromLibrary(bareId);
+  }
   return { success: true };
 }
 

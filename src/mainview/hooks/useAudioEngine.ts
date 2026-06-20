@@ -144,6 +144,32 @@ export function useAudioEngine() {
       }
     };
 
+    const onLoadedMetadata = () => {
+      if (audioRef.current) {
+        const duration = Math.floor(audioRef.current.duration);
+        const { currentTrack } = usePlayerStore.getState().player;
+        if (currentTrack && duration > 0 && (!currentTrack.duration || currentTrack.duration === 0)) {
+          console.log(`[AudioEngine] Updating missing duration for "${currentTrack.title}": ${duration}s`);
+          usePlayerStore.setState((s) => {
+            if (s.player.currentTrack?.id !== currentTrack.id) return s;
+            const updatedTrack = { ...s.player.currentTrack, duration };
+            
+            // Also update it in the library if found
+            const remoteTracks = s.library.remoteTracks.map(t => t.id === updatedTrack.id ? updatedTrack : t);
+            const tracks = s.library.tracks.map(t => t.id === updatedTrack.id ? updatedTrack : t);
+
+            return {
+              library: { ...s.library, remoteTracks, tracks },
+              player: {
+                ...s.player,
+                currentTrack: updatedTrack,
+              }
+            };
+          });
+        }
+      }
+    };
+
     const onError = () => {
       console.warn("Audio element error", el.error);
       const rpc = usePlayerStore.getState().rpc;
@@ -207,6 +233,7 @@ export function useAudioEngine() {
 
     el.addEventListener("ended", onEnded);
     el.addEventListener("timeupdate", onTimeUpdate);
+    el.addEventListener("loadedmetadata", onLoadedMetadata);
     el.addEventListener("error", onError);
     document.addEventListener("player-seek", onSeekRequest);
 
@@ -214,6 +241,7 @@ export function useAudioEngine() {
       clearStreamRefreshTimer();
       el.removeEventListener("ended", onEnded);
       el.removeEventListener("timeupdate", onTimeUpdate);
+      el.removeEventListener("loadedmetadata", onLoadedMetadata);
       el.removeEventListener("error", onError);
       document.removeEventListener("player-seek", onSeekRequest);
       el.pause();

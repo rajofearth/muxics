@@ -407,15 +407,65 @@ export function MainWindowContent({
       );
 
     case "album_detail": {
-      const albumTracks = library.tracks.filter((t) => t.album === navState.id);
-      const albumPic = albumTracks.find((t) => t.picture)?.picture;
+      const isYt = navState.id?.startsWith("ytmusic:");
+      const activeAlbum = isYt ? playlists.items.find((p) => p.id === navState.id) : null;
+      const albumTracks = isYt 
+        ? (activeAlbum ? loadPlaylistTracks(activeAlbum.id) : [])
+        : library.tracks.filter((t) => t.album === navState.id);
+      
+      const albumLoading = activeAlbum ? playlists.hydratingById[activeAlbum.id] : false;
+      const albumError = activeAlbum ? playlists.hydrationErrors[activeAlbum.id] : null;
+      const albumPic = isYt ? activeAlbum?.picture : albumTracks.find((t) => t.picture)?.picture;
+
+      if (isYt && albumLoading && !(activeAlbum?.tracks && activeAlbum.tracks.length > 0)) {
+        return (
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <HeroHeader
+              title={activeAlbum?.name ?? "Album"}
+              subtitle="YouTube Music"
+              meta="Loading album tracks..."
+              icon={<Disc3 size={40} className="text-app-text-tertiary" />}
+              onBack={() => handleNavigate("albums")}
+            />
+            <div className="flex-1 flex items-center justify-center px-8">
+              <div className="w-full max-w-xl rounded-3xl border border-app-border bg-app-surface-alt/70 px-6 py-8 text-center">
+                <div className="mx-auto mb-4 h-10 w-10 rounded-full border-2 border-app-text-tertiary border-t-app-text-primary animate-spin" />
+                <div className="text-[15px] font-medium text-app-text-primary">Loading album details...</div>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      if (isYt && albumError && !(activeAlbum?.tracks && activeAlbum.tracks.length > 0)) {
+        return (
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <HeroHeader
+              title={activeAlbum?.name ?? "Album"}
+              subtitle="YouTube Music"
+              meta="Album unavailable"
+              icon={<Disc3 size={40} className="text-app-text-tertiary" />}
+              onBack={() => handleNavigate("albums")}
+              actions={
+                <PlaylistHeaderActions playlist={activeAlbum!} onNavigate={handleNavigate} />
+              }
+            />
+            <div className="flex-1 px-8 pb-8">
+              <div className="rounded-3xl border border-red-400/30 bg-red-500/10 px-5 py-4 text-[13px] text-red-200">
+                {albumError}
+              </div>
+            </div>
+          </div>
+        );
+      }
+
       return renderTrackView(
-        navState.id ?? "Album",
-        albumTracks[0]?.artist ?? "Album",
+        isYt ? (activeAlbum?.name ?? "Album") : (navState.id ?? "Album"),
+        isYt ? (activeAlbum?.author ?? "YouTube Music") : (albumTracks[0]?.artist ?? "Album"),
         albumTracks,
         albumPic ? <img src={albumPic} alt="" className="w-full h-full object-cover" /> : <Disc3 size={40} className="text-app-text-tertiary" />,
-        undefined,
-        undefined,
+        isYt && activeAlbum ? <PlaylistHeaderActions playlist={activeAlbum} onNavigate={handleNavigate} /> : undefined,
+        isYt ? activeAlbum?.id : undefined,
         () => handleNavigate("albums"),
       );
     }

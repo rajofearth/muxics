@@ -98,6 +98,10 @@ const desktopBridge: DesktopBridge = {
       ipcRenderer.invoke("desktop:request:ytmusicAddTrackToPlaylist", params),
     ytmusicRemoveTrackFromPlaylist: (params) =>
       ipcRenderer.invoke("desktop:request:ytmusicRemoveTrackFromPlaylist", params),
+    ytmusicSavePlaylist: (params) =>
+      ipcRenderer.invoke("desktop:request:ytmusicSavePlaylist", params),
+    ytmusicUnsavePlaylist: (params) =>
+      ipcRenderer.invoke("desktop:request:ytmusicUnsavePlaylist", params),
     getAppVersion: () =>
       ipcRenderer.invoke("desktop:request:getAppVersion"),
     checkForUpdates: () =>

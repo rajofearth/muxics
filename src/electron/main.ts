@@ -47,9 +47,11 @@ import {
   logoutFromYtMusic,
   removeTrackFromYtMusicPlaylist,
   renameYtMusicPlaylist,
+  saveYtMusicPlaylist,
   searchYtMusic,
   syncYtMusicLibrary,
   unlikeYtMusicTrack,
+  unsaveYtMusicPlaylist,
 } from "./backend/ytmusic";
 
 let mainWindow: BrowserWindow | null = null;
@@ -611,7 +613,10 @@ const requestHandlers: RequestHandlerMap = {
   ytmusicRenamePlaylist: ({ playlistId, name }) => renameYtMusicPlaylist(playlistId, name),
   ytmusicDeletePlaylist: ({ playlistId }) => deleteYtMusicPlaylist(playlistId),
   ytmusicAddTrackToPlaylist: ({ playlistId, videoId }) => addTrackToYtMusicPlaylist(playlistId, videoId),
-  ytmusicRemoveTrackFromPlaylist: ({ playlistId, videoId }) => removeTrackFromYtMusicPlaylist(playlistId, videoId),
+  ytmusicRemoveTrackFromPlaylist: ({ playlistId, videoId }) =>
+    removeTrackFromYtMusicPlaylist(playlistId, videoId),
+  ytmusicSavePlaylist: ({ playlistId }) => saveYtMusicPlaylist(playlistId),
+  ytmusicUnsavePlaylist: ({ playlistId }) => unsaveYtMusicPlaylist(playlistId),
   getAppVersion: () => app.getVersion(),
   checkForUpdates: () => {
     autoUpdater.checkForUpdates().catch(handleUpdateCheckError);

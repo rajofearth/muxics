@@ -225,7 +225,10 @@ export interface DesktopRequestMap {
   openPath: { params: { path: string }; response: { success: boolean } };
   ytmusicSyncLibrary: { params: void; response: YTMusicLibrarySyncResult };
   ytmusicLoadCachedLibrary: { params: void; response: YTMusicLibrarySyncResult | null };
-  ytmusicSearch: { params: { query: string }; response: TrackResult[] };
+  ytmusicSearch: {
+    params: { query: string };
+    response: { tracks: TrackResult[]; albums: PlaylistResult[]; playlists: PlaylistResult[] };
+  };
   ytmusicGetHomeFeed: { params: void; response: YTMusicHomeFeedResult };
   ytmusicGetPlaylist: { params: { playlistId: string }; response: PlaylistResult | null };
   ytmusicGetPlayback: { params: { trackId: string; providerId: string }; response: TrackPlaybackResult };
@@ -249,6 +252,14 @@ export interface DesktopRequestMap {
   };
   ytmusicRemoveTrackFromPlaylist: {
     params: { playlistId: string; videoId: string };
+    response: { success: boolean };
+  };
+  ytmusicSavePlaylist: {
+    params: { playlistId: string };
+    response: { success: boolean };
+  };
+  ytmusicUnsavePlaylist: {
+    params: { playlistId: string };
     response: { success: boolean };
   };
   getAppVersion: { params: void; response: string };
