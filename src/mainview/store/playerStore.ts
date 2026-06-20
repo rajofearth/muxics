@@ -1517,11 +1517,14 @@ export const usePlayerStore = create<PlayerState & PlayerActions>(
 
     setSearchQuery: async (query) => {
       const trimmed = query.trim();
+
+      // Cancel any pending remote search immediately
+      if (ytmSearchDebounceTimer) {
+        clearTimeout(ytmSearchDebounceTimer);
+        ytmSearchDebounceTimer = null;
+      }
+
       if (!trimmed) {
-        if (ytmSearchDebounceTimer) {
-          clearTimeout(ytmSearchDebounceTimer);
-          ytmSearchDebounceTimer = null;
-        }
         ytmSearchGeneration += 1;
         set({
           search: {
@@ -1536,45 +1539,12 @@ export const usePlayerStore = create<PlayerState & PlayerActions>(
         return;
       }
 
-      const { library, rpc, auth } = get();
-      const q = trimmed.toLowerCase();
-      const localResults = mergeTracks(
-        library.source,
-        library.localTracks,
-        library.remoteTracks,
-      ).filter(
-        (t) =>
-          t.title.toLowerCase().includes(q) ||
-          t.artist.toLowerCase().includes(q) ||
-          t.album.toLowerCase().includes(q),
-      );
-
-      const needsRemote = Boolean(
-        rpc && auth.loggedIn && library.source !== "local",
-      );
-
-      if (!needsRemote) {
-        if (ytmSearchDebounceTimer) {
-          clearTimeout(ytmSearchDebounceTimer);
-          ytmSearchDebounceTimer = null;
-        }
-        set({
-          search: {
-            query: trimmed,
-            results: localResults,
-            albums: [],
-            playlists: [],
-            loading: false,
-            error: null,
-          },
-        });
-        return;
-      }
-
+      // Immediately update the query so the input feels responsive,
+      // then compute search results asynchronously after the render
       set({
         search: {
-          query: trimmed,
-          results: localResults,
+          query,
+          results: [],
           albums: [],
           playlists: [],
           loading: true,
@@ -1582,114 +1552,156 @@ export const usePlayerStore = create<PlayerState & PlayerActions>(
         },
       });
 
-      if (ytmSearchDebounceTimer) {
-        clearTimeout(ytmSearchDebounceTimer);
-        ytmSearchDebounceTimer = null;
-      }
+      // Schedule the heavy search work after React has painted the new input value
+      void setTimeout(() => {
+        const { library, rpc, auth } = get();
+        const q = trimmed.toLowerCase();
+        const localResults = mergeTracks(
+          library.source,
+          library.localTracks,
+          library.remoteTracks,
+        ).filter(
+          (t) =>
+            t.title.toLowerCase().includes(q) ||
+            t.artist.toLowerCase().includes(q) ||
+            t.album.toLowerCase().includes(q),
+        );
 
-      const generation = ++ytmSearchGeneration;
-      ytmSearchDebounceTimer = setTimeout(() => {
-        ytmSearchDebounceTimer = null;
-        void (async () => {
-          if (generation !== ytmSearchGeneration) {
-            return;
-          }
-          const st = get();
-          if (st.search.query.trim() !== trimmed) {
-            return;
-          }
-          const { rpc: rpcNow, auth: authNow, library: libNow } = st;
-          if (!rpcNow || !authNow.loggedIn || libNow.source === "local") {
-            return;
-          }
+        const needsRemote = Boolean(
+          rpc && auth.loggedIn && library.source !== "local",
+        );
 
-          const localAgain = mergeTracks(
-            libNow.source,
-            libNow.localTracks,
-            libNow.remoteTracks,
-          ).filter(
-            (t) =>
-              t.title.toLowerCase().includes(q) ||
-              t.artist.toLowerCase().includes(q) ||
-              t.album.toLowerCase().includes(q),
-          );
+        if (!needsRemote) {
+          set({
+            search: {
+              query,
+              results: localResults,
+              albums: [],
+              playlists: [],
+              loading: false,
+              error: null,
+            },
+          });
+          return;
+        }
 
-          try {
-            const remoteResults = await rpcNow.request.ytmusicSearch({
-              query: trimmed,
-            });
-            if (
-              generation !== ytmSearchGeneration ||
-              get().search.query.trim() !== trimmed
-            ) {
+        // Update with local results while remote search is pending
+        set({
+          search: {
+            query,
+            results: localResults,
+            albums: [],
+            playlists: [],
+            loading: true,
+            error: null,
+          },
+        });
+
+        const generation = ++ytmSearchGeneration;
+        ytmSearchDebounceTimer = setTimeout(() => {
+          ytmSearchDebounceTimer = null;
+          void (async () => {
+            if (generation !== ytmSearchGeneration) {
               return;
             }
-            const normalizedTracks = remoteResults.tracks.map(toTrack);
-            const normalizedAlbums = remoteResults.albums.map(toPlaylist);
-            const normalizedPlaylists = remoteResults.playlists.map(toPlaylist);
+            const st = get();
+            if (st.search.query.trim() !== trimmed) {
+              return;
+            }
+            const { rpc: rpcNow, auth: authNow, library: libNow } = st;
+            if (!rpcNow || !authNow.loggedIn || libNow.source === "local") {
+              return;
+            }
 
-            get().syncFavoritesFromTracks(normalizedTracks);
+            const localAgain = mergeTracks(
+              libNow.source,
+              libNow.localTracks,
+              libNow.remoteTracks,
+            ).filter(
+              (t) =>
+                t.title.toLowerCase().includes(q) ||
+                t.artist.toLowerCase().includes(q) ||
+                t.album.toLowerCase().includes(q),
+            );
 
-            // Add search results to remoteTracks so that UI components like TrackTable
-            // can find the full track metadata (artist, duration, etc)
-            set((s) => {
-              const newRemoteTracks = mergeUniqueTracks(
-                s.library.remoteTracks,
-                normalizedTracks,
-              );
-              return {
-                library: {
-                  ...s.library,
-                  remoteTracks: newRemoteTracks,
-                  tracks: mergeTracks(
-                    s.library.source,
-                    s.library.localTracks,
-                    newRemoteTracks,
-                  ),
+            try {
+              const remoteResults = await rpcNow.request.ytmusicSearch({
+                query: trimmed,
+              });
+              if (
+                generation !== ytmSearchGeneration ||
+                get().search.query.trim() !== trimmed
+              ) {
+                return;
+              }
+              const normalizedTracks = remoteResults.tracks.map(toTrack);
+              const normalizedAlbums = remoteResults.albums.map(toPlaylist);
+              const normalizedPlaylists =
+                remoteResults.playlists.map(toPlaylist);
+
+              get().syncFavoritesFromTracks(normalizedTracks);
+
+              // Add search results to remoteTracks so that UI components like TrackTable
+              // can find the full track metadata (artist, duration, etc)
+              set((s) => {
+                const newRemoteTracks = mergeUniqueTracks(
+                  s.library.remoteTracks,
+                  normalizedTracks,
+                );
+                return {
+                  library: {
+                    ...s.library,
+                    remoteTracks: newRemoteTracks,
+                    tracks: mergeTracks(
+                      s.library.source,
+                      s.library.localTracks,
+                      newRemoteTracks,
+                    ),
+                  },
+                };
+              });
+
+              const combinedTracks =
+                libNow.source === "all"
+                  ? [...normalizedTracks, ...localAgain].filter(
+                      (track, index, list) =>
+                        list.findIndex((entry) => entry.id === track.id) ===
+                        index,
+                    )
+                  : normalizedTracks;
+
+              set({
+                search: {
+                  query: query,
+                  results: combinedTracks,
+                  albums: normalizedAlbums,
+                  playlists: normalizedPlaylists,
+                  loading: false,
+                  error: null,
                 },
-              };
-            });
-
-            const combinedTracks =
-              libNow.source === "all"
-                ? [...normalizedTracks, ...localAgain].filter(
-                    (track, index, list) =>
-                      list.findIndex((entry) => entry.id === track.id) ===
-                      index,
-                  )
-                : normalizedTracks;
-
-            set({
-              search: {
-                query: trimmed,
-                results: combinedTracks,
-                albums: normalizedAlbums,
-                playlists: normalizedPlaylists,
-                loading: false,
-                error: null,
-              },
-            });
-          } catch (error) {
-            if (
-              generation !== ytmSearchGeneration ||
-              get().search.query.trim() !== trimmed
-            ) {
-              return;
+              });
+            } catch (error) {
+              if (
+                generation !== ytmSearchGeneration ||
+                get().search.query.trim() !== trimmed
+              ) {
+                return;
+              }
+              set({
+                search: {
+                  query: query,
+                  results: localAgain,
+                  albums: [],
+                  playlists: [],
+                  loading: false,
+                  error:
+                    error instanceof Error ? error.message : "Search failed.",
+                },
+              });
             }
-            set({
-              search: {
-                query: trimmed,
-                results: localAgain,
-                albums: [],
-                playlists: [],
-                loading: false,
-                error:
-                  error instanceof Error ? error.message : "Search failed.",
-              },
-            });
-          }
-        })();
-      }, YTM_REMOTE_SEARCH_DEBOUNCE_MS);
+          })();
+        }, YTM_REMOTE_SEARCH_DEBOUNCE_MS);
+      });
     },
 
     loadHomeFeed: async () => {
