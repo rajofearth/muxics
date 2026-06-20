@@ -6,8 +6,14 @@ import {
 } from "node:http";
 import path from "node:path";
 import { Readable } from "node:stream";
+import { log } from "./logger";
 import { AUDIO_SERVER_PORT, MIME_TYPES } from "../../shared/constants";
-import { getYtMusicAuthStatus, importYtMusicSession } from "./ytmusic";
+import {
+  createSapisdHash,
+  getYtMusicAuthStatus,
+  getYtMusicSessionCookie,
+  importYtMusicSession,
+} from "./ytmusic";
 import {
   ensureArtworkCached,
   getAudioPathByKey,
@@ -244,11 +250,14 @@ async function handleYtCache(
   }
 
   if (url.pathname === "/yt-cache/audio") {
-    const cached = getAudioPathByKey(key);
-    if (cached) {
-      touchAudioEntry(key);
-      streamLocalFile(req, res, cached, null);
-      return true;
+    // ── Cache hit: serve directly from disk ──────────────────────
+    {
+      const cached = getAudioPathByKey(key);
+      if (cached) {
+        touchAudioEntry(key);
+        streamLocalFile(req, res, cached, null);
+        return true;
+      }
     }
 
     if (!sourceUrl) {
@@ -256,79 +265,150 @@ async function handleYtCache(
       return true;
     }
 
-    try {
-      const upstream = await fetch(sourceUrl, {
-        headers: {
-          ...(req.headers.range ? { Range: req.headers.range } : {}),
-          "User-Agent":
-            req.headers["user-agent"] ??
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
-          Accept: req.headers.accept ?? "*/*",
-          Referer: "https://music.youtube.com",
-          Origin: "https://music.youtube.com",
-        },
-      });
+    // ── Cache miss: proxy the upstream URL directly ─────────────
+    // The upstream URL may be from yt-dlp (self-authenticating with PoT,
+    // signature, expire params) or from old cached Innertube entries.
+    // yt-dlp URLs don't need session cookies (they carry their own auth),
+    // while old Innertube URLs may still need them.
+    //
+    // Strategy: try without cookies first, then with cookies if 403.
+    const PROXY_TIMEOUT_MS = 20_000;
 
-      if (!upstream.ok && upstream.status !== 206) {
-        sendText(
-          res,
-          upstream.status,
-          `Upstream request failed (${upstream.status})`,
-        );
-        return true;
+    async function tryProxy(withCookies: boolean): Promise<Response | null> {
+      const ac = new AbortController();
+      const timeout = setTimeout(() => ac.abort(), PROXY_TIMEOUT_MS);
+      try {
+        if (!sourceUrl) return null;
+
+        const sessionCookie = withCookies
+          ? getYtMusicSessionCookie()
+          : undefined;
+        const authHeader =
+          sessionCookie && withCookies
+            ? createSapisdHash(sessionCookie)
+            : undefined;
+
+        const resp = await fetch(sourceUrl, {
+          signal: ac.signal,
+          headers: {
+            "User-Agent":
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
+            Accept: "*/*",
+            Referer: "https://www.youtube.com",
+            Origin: "https://www.youtube.com",
+            ...(sessionCookie ? { Cookie: sessionCookie } : {}),
+            ...(authHeader ? { Authorization: authHeader } : {}),
+            "X-Goog-Authuser": "0",
+          },
+        });
+
+        if (!resp.ok) {
+          log(
+            "audio-server",
+            withCookies ? "warn" : "info",
+            `Proxy attempt (cookies=${withCookies}) returned ${resp.status}`,
+            { sourceUrl: sourceUrl?.slice(0, 80) },
+          );
+          return null;
+        }
+
+        return resp;
+      } finally {
+        clearTimeout(timeout);
+      }
+    }
+
+    try {
+      // 1. Try without session cookies first (yt-dlp URLs are self-auth)
+      let upstream = await tryProxy(false);
+
+      // 2. If 403, retry with session cookies (legacy Innertube URLs)
+      if (!upstream) {
+        upstream = await tryProxy(true);
       }
 
-      void warmAudioCache(key, sourceUrl, trackId || undefined).catch(() => {});
+      if (!upstream) {
+        // Both attempts failed — try warmAudioCache fallback
+        log(
+          "audio-server",
+          "warn",
+          "Proxy fetch failed both attempts, falling back to warmAudioCache",
+          { sourceUrl: sourceUrl?.slice(0, 80) },
+        );
+        throw new Error("Proxy fetch failed (all attempts)");
+      }
 
-      const headers: Record<string, string> = {
-        "Access-Control-Allow-Origin": "*",
-        "Accept-Ranges": upstream.headers.get("accept-ranges") ?? "bytes",
-      };
-
-      const contentType = upstream.headers.get("content-type");
+      const contentType = upstream.headers.get("content-type") || "audio/mp4";
       const contentLength = upstream.headers.get("content-length");
-      const contentRange = upstream.headers.get("content-range");
 
-      if (contentType) headers["Content-Type"] = contentType;
-      if (contentLength) headers["Content-Length"] = contentLength;
-      if (contentRange) headers["Content-Range"] = contentRange;
+      log("audio-server", "info", "Proxy stream started", {
+        sourceUrl: sourceUrl?.slice(0, 80),
+        contentType,
+      });
 
-      res.writeHead(upstream.status, headers);
+      // Write 200 with CORS headers, then pipe the upstream body through
+      const head: Record<string, string> = {
+        "Content-Type": contentType,
+        "Accept-Ranges": "bytes",
+        "Access-Control-Allow-Origin": "*",
+      };
+      if (contentLength) {
+        head["Content-Length"] = contentLength;
+      }
+      res.writeHead(200, head);
 
-      if (!upstream.body) {
+      const body = upstream.body;
+      if (!body) {
         if (!res.headersSent) {
           sendText(res, 502, "Upstream returned empty body");
         }
         return true;
       }
 
-      // Electron's global fetch may return a Node.js Readable (not a web ReadableStream)
-      // in some environments. Handle both cases.
-      if (typeof (upstream.body as any).pipe === "function") {
-        (upstream.body as any)
-          .on("error", () => {
-            try {
-              res.end();
-            } catch {}
-          })
-          .pipe(res);
+      // Handle both Node.js Readable and web ReadableStream
+      if (typeof (body as any).pipe === "function") {
+        (body as any).on("error", () => {
+          if (!res.headersSent) res.destroy();
+        });
+        (body as any).pipe(res);
       } else {
-        Readable.fromWeb(
-          upstream.body as Parameters<typeof Readable.fromWeb>[0],
-        )
+        Readable.fromWeb(body as any)
           .on("error", () => {
-            try {
-              res.end();
-            } catch {}
+            if (!res.headersSent) res.destroy();
           })
           .pipe(res);
       }
+
+      // Fire-and-forget background cache for next play
+      warmAudioCache(key, sourceUrl, trackId || undefined).catch(() => {
+        // Background cache failure is non-fatal
+      });
+
       return true;
-    } catch {
-      if (!res.headersSent) {
-        sendText(res, 502, "Upstream audio fetch failed");
+    } catch (err) {
+      // Fallback: try the old warm-to-cache path
+      try {
+        await warmAudioCache(key, sourceUrl, trackId || undefined);
+
+        const cached = getAudioPathByKey(key);
+        if (cached) {
+          touchAudioEntry(key);
+          streamLocalFile(req, res, cached, null);
+          return true;
+        }
+
+        sendText(res, 502, "Audio cache warm completed but file not found");
+        return true;
+      } catch (warmErr) {
+        const msg =
+          warmErr instanceof Error
+            ? warmErr.message
+            : "Audio cache warm failed";
+        if (!res.headersSent) {
+          sendText(res, 502, msg);
+        }
+        return true;
       }
-      return true;
     }
   }
 

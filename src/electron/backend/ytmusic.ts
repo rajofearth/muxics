@@ -1,15 +1,11 @@
 import fs from "node:fs";
 import crypto from "node:crypto";
-import path from "node:path";
-import { createRequire } from "node:module";
-import { pathToFileURL } from "node:url";
-import { Innertube, Misc, YTNodes } from "youtubei.js";
+import { Innertube, YTNodes } from "youtubei.js";
 
 type MusicResponsiveListItem = InstanceType<
   typeof YTNodes.MusicResponsiveListItem
 >;
 type MusicTwoRowItem = InstanceType<typeof YTNodes.MusicTwoRowItem>;
-type Format = InstanceType<typeof Misc.Format>;
 import type {
   AuthLoginCompleteResult,
   AuthLoginStartResult,
@@ -36,6 +32,7 @@ import {
   clearYtMusicSearchCacheFile,
 } from "./ytmusicSearchCache";
 import { log } from "./logger";
+import { getYtDlpStreamUrl } from "./ytdlp";
 import {
   getCachedArtworkUrl,
   getCachedAudioUrl,
@@ -81,9 +78,15 @@ let cachedClient: Innertube | null = null;
 let cachedAuthStatus: AuthStatusResult | null = null;
 let pendingLogin: PendingLoginState | null = null;
 let loggedLibraryAuthDebug = false;
-let installedPlayerEvaluator = false;
-const require = createRequire(__filename);
 
+/**
+ * Returns the YouTube Music session cookie from the cached Innertube client.
+ * Used by the audio server proxy and cache warm paths to pass auth context
+ * to googlevideo CDN requests that would otherwise return 403.
+ */
+export function getYtMusicSessionCookie(): string | undefined {
+  return cachedClient?.session.cookie;
+}
 const YTMUSIC_ORIGIN = "https://music.youtube.com";
 const YTMUSIC_CLIENT_NAME = "WEB_REMIX";
 const YTMUSIC_CLIENT_ID = "67";
@@ -99,38 +102,6 @@ const DIAGNOSTIC_COOKIE_NAMES = [
   "HSID",
   "SSID",
 ] as const;
-
-async function ensurePlayerEvaluator(): Promise<void> {
-  if (installedPlayerEvaluator) {
-    return;
-  }
-
-  const packageJsonPath = require.resolve("youtubei.js/package.json");
-  const utilsPath = path.join(
-    path.dirname(packageJsonPath),
-    "dist",
-    "src",
-    "utils",
-    "Utils.js",
-  );
-  const { Platform } = await import(pathToFileURL(utilsPath).href);
-
-  // youtubei.js appends `return process(...)` to the extracted player script (see getNsigProcessorFn).
-  // vm.runInContext treats that as script code, where top-level `return` is a SyntaxError.
-  // Match https://ytjs.dev/guide/getting-started.html — run as a function body via `Function`.
-  Platform.shim.eval = async (
-    data: { output?: string },
-    env: Record<string, unknown>,
-  ) => {
-    const names = Object.keys(env);
-    const values = names.map((key) => env[key]);
-    const body = String(data.output ?? "");
-    const runner = new Function(...names, body);
-    return runner(...values);
-  };
-
-  installedPlayerEvaluator = true;
-}
 
 function getCookieValue(
   cookie: string | undefined,
@@ -148,7 +119,7 @@ function getCookieValue(
   return part ? part.slice(name.length + 1) : undefined;
 }
 
-function createSapisdHash(cookie: string): string | null {
+export function createSapisdHash(cookie: string): string | null {
   const sid =
     getCookieValue(cookie, "SAPISID") ||
     getCookieValue(cookie, "__Secure-3PAPISID") ||
@@ -332,45 +303,6 @@ function getCachedTrackPicture(
   return getCachedArtworkUrl(providerId, sourceUrl);
 }
 
-function summarizePlaybackCandidate(format: Format) {
-  return {
-    itag: format.itag,
-    mimeType: format.mime_type,
-    hasAudio: format.has_audio,
-    hasVideo: format.has_video,
-    bitrate: format.average_bitrate ?? format.bitrate ?? 0,
-    hasUrl: Boolean(format.url),
-    hasSignatureCipher: Boolean(format.signature_cipher),
-    hasCipher: Boolean(format.cipher),
-  };
-}
-
-function sortPlaybackFormats(formats: Format[]): Format[] {
-  return [...formats].sort((left, right) => {
-    const leftAudioOnly = left.has_audio && !left.has_video ? 1 : 0;
-    const rightAudioOnly = right.has_audio && !right.has_video ? 1 : 0;
-    if (leftAudioOnly !== rightAudioOnly) {
-      return rightAudioOnly - leftAudioOnly;
-    }
-
-    const leftDirectUrl = left.url ? 1 : 0;
-    const rightDirectUrl = right.url ? 1 : 0;
-    if (leftDirectUrl !== rightDirectUrl) {
-      return rightDirectUrl - leftDirectUrl;
-    }
-
-    const leftNonCipher = left.signature_cipher || left.cipher ? 0 : 1;
-    const rightNonCipher = right.signature_cipher || right.cipher ? 0 : 1;
-    if (leftNonCipher !== rightNonCipher) {
-      return rightNonCipher - leftNonCipher;
-    }
-
-    const leftBitrate = left.average_bitrate ?? left.bitrate ?? 0;
-    const rightBitrate = right.average_bitrate ?? right.bitrate ?? 0;
-    return rightBitrate - leftBitrate;
-  });
-}
-
 function expiresAtFromStreamUrl(url: string): number | undefined {
   try {
     const parsed = new URL(url);
@@ -387,116 +319,6 @@ function expiresAtFromStreamUrl(url: string): number | undefined {
   } catch {
     return undefined;
   }
-}
-
-/**
- * WEB_REMIX / WEB streams increasingly expect a Proof-of-Origin token (`pot` on googlevideo URLs).
- * Mobile/TV InnerTube clients often still return playable URLs without browser BotGuard (YouTube.js #724).
- * @see https://github.com/LuanRT/YouTube.js/issues/724
- */
-const PLAYBACK_INNERTUBE_CLIENTS = [
-  "ANDROID",
-  "YTMUSIC_ANDROID",
-  "IOS",
-  "TV",
-  "WEB",
-  "MWEB",
-  "YTMUSIC",
-] as const;
-
-type PlaybackInnertubeClient = (typeof PLAYBACK_INNERTUBE_CLIENTS)[number];
-
-async function resolvePlaybackUrlFromFormats(
-  client: Innertube,
-  videoId: string,
-  context: { source: string },
-  innertubeClient: PlaybackInnertubeClient,
-): Promise<{ url: string; loudnessDb?: number } | null> {
-  const clientOpts = { client: innertubeClient };
-  let streamingData:
-    | Awaited<ReturnType<typeof client.getBasicInfo>>["streaming_data"]
-    | undefined;
-
-  try {
-    const full = await client.getInfo(videoId, clientOpts);
-    streamingData = full.streaming_data;
-  } catch (error) {
-    log(
-      "ytmusic",
-      "info",
-      "getInfo failed for playback, falling back to getBasicInfo",
-      {
-        videoId,
-        innerClient: innertubeClient,
-        error: error instanceof Error ? error.message : String(error),
-      },
-    );
-  }
-
-  if (!streamingData) {
-    try {
-      const basic = await client.getBasicInfo(videoId, clientOpts);
-      streamingData = basic.streaming_data;
-    } catch (error) {
-      log("ytmusic", "warn", "getBasicInfo failed for playback", {
-        videoId,
-        innerClient: innertubeClient,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
-
-  if (!streamingData) {
-    log("ytmusic", "warn", "Playback info missing streaming data", {
-      videoId,
-      innerClient: innertubeClient,
-    });
-    return null;
-  }
-
-  const candidateFormats = sortPlaybackFormats(
-    [...streamingData.adaptive_formats, ...streamingData.formats].filter(
-      (format) => format.has_audio && !format.is_type_otf,
-    ),
-  );
-
-  if (candidateFormats.length === 0) {
-    log("ytmusic", "warn", "No audio playback formats available", {
-      videoId,
-      innerClient: innertubeClient,
-    });
-    return null;
-  }
-
-  const failures: string[] = [];
-  for (const format of candidateFormats) {
-    try {
-      const url = format.url ?? (await format.decipher(client.session.player));
-      if (!url) {
-        failures.push(`itag:${format.itag}:empty-url`);
-        continue;
-      }
-
-      return {
-        url,
-        loudnessDb: format.loudness_db,
-      };
-    } catch (error) {
-      failures.push(
-        `itag:${format.itag}:${error instanceof Error ? error.message : "decipher-failed"}`,
-      );
-    }
-  }
-
-  log("ytmusic", "warn", "Failed every playback format candidate for client", {
-    videoId,
-    source: context.source,
-    innerClient: innertubeClient,
-    candidates: candidateFormats.slice(0, 5).map(summarizePlaybackCandidate),
-    failures: failures.slice(0, 5),
-  });
-
-  return null;
 }
 
 function toPlaylist(item: any): PlaylistResult | null {
@@ -813,13 +635,15 @@ function writeDebugJson(name: string, payload: unknown): string | null {
 
 async function createClient(cookie?: string): Promise<Innertube> {
   loggedLibraryAuthDebug = false;
-  await ensurePlayerEvaluator();
-  return Innertube.create({
+
+  const client = await Innertube.create({
     cookie,
     fetch: createFetchWithYtMusicAuth(cookie),
     retrieve_player: true,
     generate_session_locally: true,
   });
+
+  return client;
 }
 
 function attachCredentialPersistence(
@@ -2381,52 +2205,26 @@ export async function getYtMusicPlaylist(
 export async function resolveYtMusicDirectStream(
   videoId: string,
 ): Promise<{ url: string; loudnessDb?: number } | null> {
-  const source = "ytmusic";
-
   try {
-    const client = await getClient();
+    // Get the session cookie so yt-dlp can make authenticated requests
+    const cookie = getYtMusicSessionCookie();
 
-    for (const innerClient of PLAYBACK_INNERTUBE_CLIENTS) {
-      try {
-        const format = await client.getStreamingData(videoId, {
-          type: "audio",
-          quality: "best",
-          client: innerClient,
-        });
-        if (format.url) {
-          log("ytmusic", "info", "Playback URL via getStreamingData", {
-            videoId,
-            innerClient,
-            itag: format.itag,
-          });
-          return { url: format.url, loudnessDb: format.loudness_db };
-        }
-      } catch (error) {
-        log("ytmusic", "info", "getStreamingData failed for client", {
-          videoId,
-          innerClient,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
-
-    for (const innerClient of PLAYBACK_INNERTUBE_CLIENTS) {
-      const resolved = await resolvePlaybackUrlFromFormats(
-        client,
+    // yt-dlp handles PoT generation, client rotation, cipher/deciphering,
+    // format negotiation, and cookie-based auth in a single call.
+    const result = await getYtDlpStreamUrl(videoId, cookie);
+    if (!result) {
+      log("ytmusic", "warn", "yt-dlp could not resolve stream URL", {
         videoId,
-        { source },
-        innerClient,
-      );
-      if (resolved) {
-        log("ytmusic", "info", "Playback URL via format scan", {
-          videoId,
-          innerClient,
-        });
-        return resolved;
-      }
+      });
+      return null;
     }
 
-    return null;
+    log("ytmusic", "info", "Playback URL via yt-dlp", {
+      videoId,
+      urlLength: result.url.length,
+    });
+
+    return result;
   } catch (error) {
     log("ytmusic", "warn", "resolveYtMusicDirectStream failed", {
       videoId,
@@ -2443,6 +2241,7 @@ export async function getYtMusicPlayback(
   const videoId = providerId || trackId.replace(/^ytmusic:/, "");
   const fallbackExpiresAt = () => Date.now() + 1000 * 60 * 20;
 
+  // ── Cache hit: serve from disk ──────────────────────────────────
   const cacheKey = getAudioCacheKey(videoId);
   const cachedPath = getAudioPathByKey(cacheKey);
   if (cachedPath) {
@@ -2455,20 +2254,36 @@ export async function getYtMusicPlayback(
   }
 
   try {
+    // ── Get stream URL from yt-dlp ──────────────────────────────
+    // yt-dlp handles PoT generation, client rotation, cipher breaking,
+    // format negotiation, and cookie-based auth in a single subprocess call.
     const resolved = await resolveYtMusicDirectStream(videoId);
-    if (resolved?.url) {
+    if (!resolved?.url) {
+      log("ytmusic", "info", "No stream URL from yt-dlp", { videoId });
       return {
-        mode: "direct",
+        mode: "unavailable",
         targetId: videoId,
-        url: getCachedAudioUrl(videoId, resolved.url),
-        expiresAt: expiresAtFromStreamUrl(resolved.url) ?? fallbackExpiresAt(),
-        loudnessDb: resolved.loudnessDb,
+        error: "No direct audio stream is available for this track.",
       };
     }
 
-    log("ytmusic", "info", "Innertube playback had no usable URL", { videoId });
+    // ── Return playable URL immediately via audio server proxy ─
+    // The audio server streams the googlevideo URL with CORS headers so
+    // the <audio crossOrigin="anonymous"> element can access it. It also
+    // passes session cookies for authenticated CDN requests.
+    //
+    // Cache warmup happens asynchronously in the background: the audio
+    // server's /yt-cache/audio handler will proxy the stream through
+    // and optionally cache it via warmAudioCache on subsequent requests.
+    return {
+      mode: "direct",
+      targetId: videoId,
+      url: getCachedAudioUrl(videoId, resolved.url),
+      expiresAt: expiresAtFromStreamUrl(resolved.url) ?? fallbackExpiresAt(),
+      loudnessDb: resolved.loudnessDb,
+    };
   } catch (error) {
-    log("ytmusic", "warn", "Innertube playback resolution failed", {
+    log("ytmusic", "warn", "Playback resolution failed", {
       videoId,
       error: error instanceof Error ? error.message : String(error),
     });

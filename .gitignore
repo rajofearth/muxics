@@ -7,3 +7,5 @@
 /linux-x64-extracted
 /linux-arm64-extracted
 /app.tar
+/bin
+/yt-dlp-cookies.txt
