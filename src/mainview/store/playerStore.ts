@@ -17,6 +17,8 @@ import type {
   TrackResult,
 } from "../../shared/desktop-contract";
 
+export const INIT_STATUS_SESSION_REJECTED = "session_rejected";
+
 const CONCURRENCY = 10;
 const MAX_RECENTLY_PLAYED = 50;
 const YTM_REMOTE_SEARCH_DEBOUNCE_MS = 280;
@@ -356,6 +358,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>(
     rpc: null,
     auth: {
       loggedIn: false,
+      sessionExpired: false,
       provider: "ytmusic",
       persistent: false,
     },
@@ -411,7 +414,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>(
     _initReady: false,
     _initStatus: "",
 
-    setInitReady: () => set({ _initReady: true }),
+    setInitReady: () => set({ _initReady: true, _initStatus: "" }),
     setInitStatus: (status) => set({ _initStatus: status }),
 
     setRpc: (rpc) => set({ rpc }),
@@ -422,7 +425,10 @@ export const usePlayerStore = create<PlayerState & PlayerActions>(
 
       const auth = await rpc.request.authGetStatus();
       set((s) => ({
-        auth,
+        auth: {
+          ...auth,
+          sessionExpired: auth.loggedIn ? s.auth.sessionExpired : false,
+        },
         authLogin: auth.loggedIn
           ? { pending: null, loading: false, error: null }
           : s.authLogin,
@@ -467,7 +473,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>(
       if (result.kind === "completed" || result.kind === "already_logged_in") {
         const auth = result.auth;
         set({
-          auth,
+          auth: { ...auth, sessionExpired: false },
           authLogin: { pending: null, loading: false, error: null },
         });
 
@@ -507,7 +513,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>(
       }
 
       set((s) => ({
-        auth: result.auth!,
+        auth: { ...result.auth!, sessionExpired: false },
         authLogin: { pending: null, loading: false, error: null },
         library: { ...s.library, source: "ytmusic" },
       }));
@@ -528,7 +534,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>(
       const result = await rpc.request.authCompleteLogin();
       if (result.kind === "completed") {
         set((s) => ({
-          auth: result.auth,
+          auth: { ...result.auth, sessionExpired: false },
           authLogin: { pending: null, loading: false, error: null },
           library: { ...s.library, source: "ytmusic" },
         }));
@@ -568,7 +574,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>(
 
       const auth = await rpc.request.authLogout();
       set((s) => ({
-        auth,
+        auth: { ...auth, sessionExpired: false },
         authLogin: { pending: null, loading: false, error: null },
         library: {
           ...s.library,
@@ -599,6 +605,8 @@ export const usePlayerStore = create<PlayerState & PlayerActions>(
 
     setLibrarySource: (source) =>
       set((s) => ({
+        auth:
+          source === "local" ? { ...s.auth, sessionExpired: false } : s.auth,
         library: {
           ...s.library,
           source,
@@ -844,7 +852,11 @@ export const usePlayerStore = create<PlayerState & PlayerActions>(
           }
 
           return {
-            auth: { ...s.auth, lastSyncedAt: synced.lastSyncedAt },
+            auth: {
+              ...s.auth,
+              sessionExpired: false,
+              lastSyncedAt: synced.lastSyncedAt,
+            },
             favorites: nextFavorites,
             library: {
               ...s.library,
@@ -874,14 +886,17 @@ export const usePlayerStore = create<PlayerState & PlayerActions>(
         // Hydrate all YT Music playlists in background after sync.
         void get().hydrateAllYtPlaylists();
       } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Failed to sync YouTube Music.";
+        const isRejected = message.includes("Imported browser session");
         set((s) => ({
+          auth: isRejected ? { ...s.auth, sessionExpired: true } : s.auth,
           library: {
             ...s.library,
             syncingRemote: false,
-            error:
-              error instanceof Error
-                ? error.message
-                : "Failed to sync YouTube Music.",
+            error: message,
           },
         }));
       }

@@ -76,6 +76,8 @@ export interface AuthStatus {
   lastSyncedAt?: number;
   persistent: boolean;
   error?: string;
+  /** Set when the stored YT Music session is rejected by the server during sync. */
+  sessionExpired?: boolean;
 }
 
 export interface PendingAuthLogin {
