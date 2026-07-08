@@ -78,6 +78,8 @@ export interface AuthStatus {
   error?: string;
   /** Set when the stored YT Music session is rejected by the server during sync. */
   sessionExpired?: boolean;
+  /** Set when the session has expired but we're attempting auto-recovery via the browser extension. */
+  recovering?: boolean;
 }
 
 export interface PendingAuthLogin {

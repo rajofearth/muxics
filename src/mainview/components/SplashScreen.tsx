@@ -3,21 +3,26 @@ import appLogo from "../../../assets/muzics-dark.svg";
 import {
   usePlayerStore,
   INIT_STATUS_SESSION_REJECTED,
+  INIT_STATUS_RECOVERING,
 } from "../store/playerStore";
-import { AlertTriangle, RefreshCw, Music } from "lucide-react";
+import { AlertTriangle, RefreshCw, Music, Wifi } from "lucide-react";
 
 export function SplashScreen() {
   const status = usePlayerStore((s) => s._initStatus);
   const scanProgress = usePlayerStore((s) => s.library.scanProgress);
   const libraryLoading = usePlayerStore((s) => s.library.loading);
   const sessionExpired = usePlayerStore((s) => s.auth.sessionExpired);
+  const recovering = usePlayerStore((s) => s.auth.recovering);
   const setLibrarySource = usePlayerStore((s) => s.setLibrarySource);
   const setInitReady = usePlayerStore((s) => s.setInitReady);
+  const cancelSessionRecovery = usePlayerStore((s) => s.cancelSessionRecovery);
+  const cancelYtMusicLogin = usePlayerStore((s) => s.cancelYtMusicLogin);
 
   const showProgress = libraryLoading && scanProgress > 0 && scanProgress < 100;
 
   const isSessionRejected =
     status === INIT_STATUS_SESSION_REJECTED || sessionExpired;
+  const isRecovering = status === INIT_STATUS_RECOVERING || recovering;
 
   // ---------- Session rejected / signed out state ----------
   if (isSessionRejected) {
@@ -115,6 +120,69 @@ export function SplashScreen() {
                 library: { ...s.library, error: null },
               }));
               setInitReady();
+            }}
+            className="inline-flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-xl bg-app-elevated text-app-text-primary text-[13px] font-medium hover:bg-app-active border border-app-border-strong transition-all"
+          >
+            <Music size={14} />
+            Continue with Local Files
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ---------- Auto-recovery in progress ----------
+  if (isRecovering) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center gap-6 select-none px-8">
+        {/* Animated signal icon */}
+        <div className="relative animate-fade-in">
+          <div className="w-18 h-18 rounded-2xl bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center">
+            <Wifi size={30} className="text-yellow-400 animate-pulse" />
+          </div>
+          <div className="absolute inset-0 bg-yellow-500/5 blur-xl rounded-2xl" />
+        </div>
+
+        {/* Heading */}
+        <div className="text-center max-w-sm animate-slide-up">
+          <h1 className="text-xl font-bold text-app-text-primary tracking-tight mb-2">
+            Session Expired
+          </h1>
+          <p className="text-[13px] text-app-text-secondary leading-relaxed">
+            Your YouTube Music session has expired. The app is trying to
+            reconnect automatically using your browser extension...
+          </p>
+        </div>
+
+        {/* Progress indicator */}
+        <div className="bg-app-elevated rounded-xl p-5 border border-app-border-strong w-full max-w-xs animate-slide-up text-center">
+          <div className="flex items-center justify-center gap-2 mb-3">
+            <RefreshCw size={16} className="text-app-accent animate-spin" />
+            <span className="text-[13px] font-medium text-app-text-primary">
+              Attempting to reconnect
+            </span>
+          </div>
+          <p className="text-[11px] text-app-text-tertiary">
+            Keep the browser extension active and signed into YouTube Music.
+            <br />
+            Auto-retrying for up to 30 seconds.
+          </p>
+        </div>
+
+        {/* Cancel button */}
+        <div className="flex flex-col gap-2 w-full max-w-xs animate-fade-in">
+          <button
+            onClick={() => {
+              cancelSessionRecovery();
+              void cancelYtMusicLogin();
+              usePlayerStore.setState((s) => ({
+                auth: {
+                  ...s.auth,
+                  sessionExpired: true,
+                  recovering: false,
+                },
+                library: { ...s.library, error: null },
+              }));
             }}
             className="inline-flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-xl bg-app-elevated text-app-text-primary text-[13px] font-medium hover:bg-app-active border border-app-border-strong transition-all"
           >

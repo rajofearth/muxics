@@ -8,7 +8,10 @@ import { AudioEngineProvider } from "./context/AudioEngineContext";
 import { ThemeProvider } from "./components/ThemeProvider";
 import { ToastContainer } from "./components/Toast";
 import { SplashScreen } from "./components/SplashScreen";
-import { INIT_STATUS_SESSION_REJECTED } from "./store/playerStore";
+import {
+  INIT_STATUS_SESSION_REJECTED,
+  INIT_STATUS_RECOVERING,
+} from "./store/playerStore";
 import type { DesktopBridge } from "../shared/desktop-contract";
 
 const MINI_WIDTH = 380;
@@ -88,10 +91,15 @@ export default function App({ desktop }: AppProps) {
           await syncYtMusicLibrary();
 
           // If sync failed because the YouTube Music session was rejected,
-          // stay on the splash screen so the user sees the logged-out message
-          // with clear reconnect instructions.
-          if (usePlayerStore.getState().auth.sessionExpired) {
+          // try auto-recovery via the browser extension background worker.
+          // If recovery starts, stay on the splash screen.
+          const authState = usePlayerStore.getState().auth;
+          if (authState.sessionExpired) {
             setInitStatus(INIT_STATUS_SESSION_REJECTED);
+            return;
+          }
+          if (authState.recovering) {
+            setInitStatus(INIT_STATUS_RECOVERING);
             return;
           }
         }

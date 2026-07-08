@@ -18,12 +18,16 @@ import type {
 } from "../../shared/desktop-contract";
 
 export const INIT_STATUS_SESSION_REJECTED = "session_rejected";
+export const INIT_STATUS_RECOVERING = "session_recovering";
 
 const CONCURRENCY = 10;
 const MAX_RECENTLY_PLAYED = 50;
 const YTM_REMOTE_SEARCH_DEBOUNCE_MS = 280;
+const SESSION_RECOVERY_TIMEOUT_MS = 30_000;
+const SESSION_RECOVERY_POLL_MS = 2_000;
 
 let ytmSearchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+let sessionRecoveryTimer: ReturnType<typeof setTimeout> | null = null;
 let ytmSearchGeneration = 0;
 
 function hashPath(p: string): string {
@@ -349,6 +353,8 @@ interface PlayerActions {
   updateQueue: (newQueue: Track[]) => void;
   playNext: (track: Track) => void;
   addToQueue: (track: Track) => void;
+  startSessionRecovery: () => Promise<void>;
+  cancelSessionRecovery: () => void;
   setInitReady: () => void;
   setInitStatus: (status: string) => void;
 }
@@ -359,6 +365,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>(
     auth: {
       loggedIn: false,
       sessionExpired: false,
+      recovering: false,
       provider: "ytmusic",
       persistent: false,
     },
@@ -512,8 +519,14 @@ export const usePlayerStore = create<PlayerState & PlayerActions>(
         return false;
       }
 
+      // Cancel any active session recovery since we have fresh credentials
+      if (sessionRecoveryTimer !== null) {
+        clearTimeout(sessionRecoveryTimer);
+        sessionRecoveryTimer = null;
+      }
+
       set((s) => ({
-        auth: { ...result.auth!, sessionExpired: false },
+        auth: { ...result.auth!, sessionExpired: false, recovering: false },
         authLogin: { pending: null, loading: false, error: null },
         library: { ...s.library, source: "ytmusic" },
       }));
@@ -572,9 +585,15 @@ export const usePlayerStore = create<PlayerState & PlayerActions>(
       const { rpc } = get();
       if (!rpc) return;
 
+      // Cancel any active session recovery
+      if (sessionRecoveryTimer !== null) {
+        clearTimeout(sessionRecoveryTimer);
+        sessionRecoveryTimer = null;
+      }
+
       const auth = await rpc.request.authLogout();
       set((s) => ({
-        auth: { ...auth, sessionExpired: false },
+        auth: { ...auth, sessionExpired: false, recovering: false },
         authLogin: { pending: null, loading: false, error: null },
         library: {
           ...s.library,
@@ -606,7 +625,9 @@ export const usePlayerStore = create<PlayerState & PlayerActions>(
     setLibrarySource: (source) =>
       set((s) => ({
         auth:
-          source === "local" ? { ...s.auth, sessionExpired: false } : s.auth,
+          source === "local"
+            ? { ...s.auth, sessionExpired: false, recovering: false }
+            : s.auth,
         library: {
           ...s.library,
           source,
@@ -891,15 +912,124 @@ export const usePlayerStore = create<PlayerState & PlayerActions>(
             ? error.message
             : "Failed to sync YouTube Music.";
         const isRejected = message.includes("Imported browser session");
-        set((s) => ({
-          auth: isRejected ? { ...s.auth, sessionExpired: true } : s.auth,
-          library: {
-            ...s.library,
-            syncingRemote: false,
-            error: message,
-          },
-        }));
+        if (isRejected) {
+          // Don't immediately surface the error — try auto-recovery
+          // via the browser extension background worker.
+          await get().startSessionRecovery();
+        } else {
+          set((s) => ({
+            auth: isRejected ? { ...s.auth, sessionExpired: true } : s.auth,
+            library: {
+              ...s.library,
+              syncingRemote: false,
+              error: message,
+            },
+          }));
+        }
       }
+    },
+
+    startSessionRecovery: async () => {
+      // Clear any previous recovery timer
+      if (sessionRecoveryTimer !== null) {
+        clearTimeout(sessionRecoveryTimer);
+        sessionRecoveryTimer = null;
+      }
+
+      const { rpc, auth } = get();
+      if (!rpc || auth.recovering) return;
+
+      set((s) => ({
+        auth: {
+          ...s.auth,
+          sessionExpired: false,
+          recovering: true,
+        },
+        library: {
+          ...s.library,
+          syncingRemote: false,
+          error: null,
+        },
+      }));
+
+      // If we're still on the splash screen, update status
+      if (!get()._initReady) {
+        set({ _initStatus: INIT_STATUS_RECOVERING });
+      }
+
+      const startedAt = Date.now();
+
+      const poll = async () => {
+        if (!get().auth.recovering) return; // Recovery was cancelled
+
+        const elapsed = Date.now() - startedAt;
+        if (elapsed >= SESSION_RECOVERY_TIMEOUT_MS) {
+          // Recovery timed out — surface the expired session
+          set((s) => ({
+            auth: {
+              ...s.auth,
+              sessionExpired: true,
+              recovering: false,
+            },
+          }));
+          return;
+        }
+
+        try {
+          const status = await rpc.request.authGetStatus();
+          if (status.loggedIn) {
+            // Extension refreshed the session — recovery succeeded!
+            const wasOnSplash = !get()._initReady;
+
+            set((s) => ({
+              auth: {
+                ...status,
+                sessionExpired: false,
+                recovering: false,
+              },
+              library: {
+                ...s.library,
+                source: "ytmusic",
+              },
+            }));
+
+            // If we were on the splash screen, re-sync and transition to main UI
+            if (wasOnSplash) {
+              set({ _initStatus: "Syncing YouTube Music..." });
+              await get().syncYtMusicLibrary();
+              const updatedAuth = get().auth;
+              if (!updatedAuth.sessionExpired) {
+                set({ _initStatus: "Almost ready..." });
+                await new Promise((r) => setTimeout(r, 200));
+                get().setInitReady();
+              }
+            }
+
+            return;
+          }
+        } catch {
+          // Poll failed, will retry
+        }
+
+        // Schedule next poll
+        sessionRecoveryTimer = setTimeout(poll, SESSION_RECOVERY_POLL_MS);
+      };
+
+      // Start polling
+      sessionRecoveryTimer = setTimeout(poll, SESSION_RECOVERY_POLL_MS);
+    },
+
+    cancelSessionRecovery: () => {
+      if (sessionRecoveryTimer !== null) {
+        clearTimeout(sessionRecoveryTimer);
+        sessionRecoveryTimer = null;
+      }
+      set((s) => ({
+        auth: {
+          ...s.auth,
+          recovering: false,
+        },
+      }));
     },
 
     loadCachedPlaylist: async () => {

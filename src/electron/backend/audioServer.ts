@@ -457,6 +457,16 @@ async function handleBridge(
     return true;
   }
 
+  if (url.pathname === "/bridge/session-status" && req.method === "GET") {
+    const auth = await getYtMusicAuthStatus();
+    sendJson(res, 200, {
+      success: true,
+      needsRefresh: !auth.loggedIn,
+      auth,
+    });
+    return true;
+  }
+
   if (url.pathname === "/bridge/status" && req.method === "GET") {
     const auth = await getYtMusicAuthStatus();
     sendJson(res, 200, { success: true, auth });
