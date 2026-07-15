@@ -1,11 +1,12 @@
 // playlistStore — local + remote + transient playlists
 import { create } from "zustand";
 import type { LibrarySource, Playlist, Track } from "../types";
-import type { PlaylistResult, TrackResult } from "../../shared/desktop-contract";
+import type { PlaylistResult } from "../../shared/desktop-contract";
 import { getRpc } from "./authStore";
 import { useLibraryStore } from "./libraryStore";
 import { useUiStore } from "./uiStore";
 import { showToast } from "../components/Toast";
+import { toPlaylist, mergeUniqueTracks, mergePlaylists } from "./converters";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -17,46 +18,6 @@ import { showToast } from "../components/Toast";
 // Private helpers (not exported)
 // ---------------------------------------------------------------------------
 
-function toTrack(track: TrackResult): Track {
-  return {
-    id: track.id,
-    provider: track.provider,
-    providerId: track.providerId,
-    path: track.path,
-    title: track.title,
-    artist: track.artist,
-    album: track.album,
-    time: track.time,
-    duration: track.duration,
-    genre: track.genre,
-    picture: track.picture,
-    sourceLabel: track.sourceLabel,
-    playback: track.playback,
-    liked: track.liked,
-  };
-}
-
-function toPlaylist(playlist: PlaylistResult): Playlist {
-  const trackIdsFromEntries = playlist.entries.map((entry) => entry.id);
-  const trackIdsFromTracks = (playlist.tracks ?? []).map((t) => t.id);
-  const trackIds =
-    trackIdsFromEntries.length > 0 ? trackIdsFromEntries : trackIdsFromTracks;
-
-  return {
-    id: playlist.id,
-    provider: playlist.provider,
-    providerId: playlist.providerId,
-    name: playlist.name,
-    path: playlist.path,
-    trackIds,
-    editable: playlist.editable,
-    tracks: playlist.tracks?.map(toTrack),
-    listedItemCount: playlist.listedItemCount,
-    author: playlist.author,
-    picture: playlist.picture,
-    type: playlist.type,
-  };
-}
 
 function ytTrackStubFromId(trackId: string): Track {
   const providerId = trackId.startsWith("ytmusic:")
@@ -104,45 +65,12 @@ function playlistNeedsYtDetailFetch(pl: Playlist): boolean {
   return false;
 }
 
-function mergeUniqueTracks(...groups: Track[][]): Track[] {
-  const byId = new Map<string, Track>();
-  for (const group of groups) {
-    for (const track of group) {
-      byId.set(track.id, track);
-    }
-  }
-  return [...byId.values()];
-}
-
 function collectPlaylistTracks(playlists: Playlist[]): Track[] {
   const groups = playlists
     .map((playlist) => playlist.tracks ?? [])
     .filter((tracks) => tracks.length > 0);
 
   return groups.length > 0 ? mergeUniqueTracks(...groups) : [];
-}
-
-
-/** Merge local + remote + transient playlists respecting the active library source. */
-function mergePlaylists(
-  source: LibrarySource,
-  localItems: Playlist[],
-  remoteItems: Playlist[],
-  transientItems: Playlist[] = [],
-): Playlist[] {
-  const base =
-    source === "local"
-      ? localItems
-      : source === "ytmusic"
-        ? remoteItems
-        : [...remoteItems, ...localItems];
-
-  // Include transient items (browsed from home/search but not in library)
-  // that are not already in the library base
-  const libraryIds = new Set(base.map((p) => p.id));
-  const uniqueTransient = transientItems.filter((p) => !libraryIds.has(p.id));
-
-  return [...base, ...uniqueTransient];
 }
 
 // ---------------------------------------------------------------------------

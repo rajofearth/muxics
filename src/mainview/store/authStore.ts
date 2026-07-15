@@ -2,11 +2,9 @@
 import { create } from "zustand";
 import type {
   AuthStatus,
-  PendingAuthLogin,
 } from "../types";
 import { useLibraryStore } from "./libraryStore";
 import type {
-  AuthLoginStartResult,
   AuthStatusResult,
   DesktopBridge,
 } from "../../shared/desktop-contract";
@@ -27,7 +25,6 @@ export interface AuthState {
   rpc: DesktopBridge | null;
   auth: AuthStatus;
   authLogin: {
-    pending: PendingAuthLogin | null;
     loading: boolean;
     error: string | null;
   };
@@ -37,10 +34,7 @@ export interface AuthActions {
   setRpc: (rpc: DesktopBridge | null) => void;
   setLastSyncedAt: (lastSyncedAt: number) => void;
   loadAuthStatus: () => Promise<void>;
-  loginToYtMusic: () => Promise<void>;
   importYtMusicSession: (cookie: string) => Promise<boolean>;
-  completeYtMusicLogin: () => Promise<void>;
-  cancelYtMusicLogin: () => Promise<void>;
   clearAuthLoginError: () => void;
   logoutFromYtMusic: () => Promise<void>;
   startSessionRecovery: () => Promise<void>;
@@ -61,7 +55,6 @@ export const useAuthStore = create<AuthState & AuthActions>()((set, get) => ({
     persistent: false,
   },
   authLogin: {
-    pending: null,
     loading: false,
     error: null,
   },
@@ -80,53 +73,8 @@ export const useAuthStore = create<AuthState & AuthActions>()((set, get) => ({
         sessionExpired: auth.loggedIn ? s.auth.sessionExpired : false,
       },
       authLogin: auth.loggedIn
-        ? { pending: null, loading: false, error: null }
+        ? { loading: false, error: null }
         : s.authLogin,
-    }));
-  },
-
-  loginToYtMusic: async () => {
-    const { rpc } = get();
-    if (!rpc) return;
-
-    set((s) => ({
-      authLogin: { ...s.authLogin, loading: true, error: null },
-    }));
-
-    const result: AuthLoginStartResult = await rpc.request.authLogin();
-
-    if (result.kind === "pending_verification") {
-      set(() => ({
-        authLogin: {
-          pending: {
-            verificationUrl: result.verificationUrl,
-            userCode: result.userCode,
-            expiresAt: result.expiresAt,
-            pollIntervalMs: result.pollIntervalMs,
-          },
-          loading: false,
-          error: null,
-        },
-      }));
-      return;
-    }
-
-    if (result.kind === "completed" || result.kind === "already_logged_in") {
-      const auth = result.auth;
-      set({
-        auth: { ...auth, sessionExpired: false },
-        authLogin: { pending: null, loading: false, error: null },
-      });
-
-      if (auth.loggedIn) {
-        void useLibraryStore.getState().hydrateYtMusicFromCache();
-        void useLibraryStore.getState().syncYtMusicLibrary();
-      }
-      return;
-    }
-
-    set(() => ({
-      authLogin: { pending: null, loading: false, error: result.message },
     }));
   },
 
@@ -158,50 +106,12 @@ export const useAuthStore = create<AuthState & AuthActions>()((set, get) => ({
 
     set(() => ({
       auth: { ...result.auth!, sessionExpired: false, recovering: false },
-      authLogin: { pending: null, loading: false, error: null },
+      authLogin: { loading: false, error: null },
     }));
 
     void useLibraryStore.getState().hydrateYtMusicFromCache();
     void useLibraryStore.getState().syncYtMusicLibrary();
     return true;
-  },
-
-  completeYtMusicLogin: async () => {
-    const { rpc, authLogin } = get();
-    if (!rpc || !authLogin.pending) return;
-
-    set((s) => ({
-      authLogin: { ...s.authLogin, loading: true, error: null },
-    }));
-
-    const result = await rpc.request.authCompleteLogin();
-    if (result.kind === "completed") {
-      set(() => ({
-        auth: { ...result.auth, sessionExpired: false },
-        authLogin: { pending: null, loading: false, error: null },
-      }));
-      void useLibraryStore.getState().hydrateYtMusicFromCache();
-      void useLibraryStore.getState().syncYtMusicLibrary();
-      return;
-    }
-
-    set((s) => ({
-      authLogin: {
-        pending: s.authLogin.pending,
-        loading: false,
-        error: result.message,
-      },
-    }));
-  },
-
-  cancelYtMusicLogin: async () => {
-    const { rpc } = get();
-    if (!rpc) return;
-
-    await rpc.request.authCancelLogin();
-    set(() => ({
-      authLogin: { pending: null, loading: false, error: null },
-    }));
   },
 
   clearAuthLoginError: () => {
@@ -223,7 +133,7 @@ export const useAuthStore = create<AuthState & AuthActions>()((set, get) => ({
     const auth = await rpc.request.authLogout();
     set(() => ({
       auth: { ...auth, sessionExpired: false, recovering: false },
-      authLogin: { pending: null, loading: false, error: null },
+      authLogin: { loading: false, error: null },
     }));
 
     useLibraryStore.getState().resetRemoteLibrary();

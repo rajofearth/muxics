@@ -2,11 +2,8 @@
 import fs from "node:fs";
 import { Innertube } from "youtubei.js";
 import type {
-  AuthLoginCompleteResult,
-  AuthLoginStartResult,
   AuthStatusResult,
   ImportYtMusicSessionResult,
-  PendingYtMusicLoginResult,
 } from "../../shared/desktop-contract";
 import {
   getClient,
@@ -27,20 +24,12 @@ import { log } from "./logger";
 import { YTMUSIC_CACHE_PATH } from "./paths";
 import { classifyLibraryAuthState } from "./ytmusicParsing";
 
-type PendingLoginState = {
-  id: number;
-  challenge: PendingYtMusicLoginResult;
-  completion: Promise<AuthLoginCompleteResult>;
-  canceled: boolean;
-};
-
 type ImportedSessionDetails = {
   cookieNames?: string[];
   sourceUrl?: string;
 };
 
 let cachedAuthStatus: AuthStatusResult | null = null;
-let pendingLogin: PendingLoginState | null = null;
 
 function getCacheLastSyncedAt(): number | undefined {
   try {
@@ -188,36 +177,7 @@ export async function getYtMusicAuthStatus(): Promise<AuthStatusResult> {
   return buildAuthStatus();
 }
 
-export async function loginToYtMusic(): Promise<AuthLoginStartResult> {
-  return {
-    kind: "error",
-    message:
-      "Automatic sign-in is unavailable for YouTube Music. Import your browser cookies instead.",
-  };
-}
 
-export async function completeYtMusicLogin(): Promise<AuthLoginCompleteResult> {
-  if (!pendingLogin) {
-    const auth = await buildAuthStatus();
-    return auth.loggedIn
-      ? { kind: "completed", auth }
-      : { kind: "error", message: "No YouTube Music sign-in is in progress." };
-  }
-
-  return pendingLogin.completion;
-}
-
-export function cancelYtMusicLogin(): { success: boolean } {
-  if (!pendingLogin) {
-    return { success: false };
-  }
-
-  pendingLogin.canceled = true;
-  pendingLogin = null;
-  setCachedClient(null);
-
-  return { success: true };
-}
 
 function normalizeCookieString(cookie: string): string {
   return cookie
@@ -274,7 +234,6 @@ export async function importYtMusicSession(
       };
     }
 
-    pendingLogin = null;
     setCachedClient(client);
     resetLibraryAuthDebugFlag();
     bumpYtMusicSearchCacheSession();
@@ -338,7 +297,6 @@ export function saveYtMusicCookieSession(
     };
   }
 
-  pendingLogin = null;
   setCachedClient(null);
   cachedAuthStatus = null;
   resetLibraryAuthDebugFlag();
@@ -347,7 +305,6 @@ export function saveYtMusicCookieSession(
 }
 
 export async function logoutFromYtMusic(): Promise<AuthStatusResult> {
-  pendingLogin = null;
   setCachedClient(null);
   resetLibraryAuthDebugFlag();
   bumpYtMusicSearchCacheSession();

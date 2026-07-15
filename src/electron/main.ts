@@ -31,9 +31,6 @@ import { installBrowserBridgeHost, prepareBrowserBridgeBundle } from "./backend/
 import { runNativeMessagingHost } from "./backend/nativeHost";
 import {
   getYtMusicAuthStatus,
-  loginToYtMusic,
-  completeYtMusicLogin,
-  cancelYtMusicLogin,
   importYtMusicSession,
   logoutFromYtMusic,
 } from "./backend/ytmusicAuth";
@@ -554,9 +551,6 @@ const requestHandlers: RequestHandlerMap = {
   },
   getPlatform: () => process.platform,
   authGetStatus: () => getYtMusicAuthStatus(),
-  authLogin: () => loginToYtMusic(),
-  authCompleteLogin: () => completeYtMusicLogin(),
-  authCancelLogin: () => cancelYtMusicLogin(),
   authImportSession: ({ cookie, cookieNames, sourceUrl }) => importYtMusicSession(cookie, { cookieNames, sourceUrl }),
   authLogout: () => logoutFromYtMusic(),
   openExternalUrl: async ({ url }) => {

@@ -1,16 +1,10 @@
 // libraryStore — local + remote library, settings, sync
 import { create } from "zustand";
 import type { LibrarySource, Track } from "../types";
-import type { TrackResult } from "../../shared/desktop-contract";
 import { parseTime } from "../utils";
 import { getRpc } from "./authStore";
 import { clearAllCachedStreamUrls } from "./streamPreloader";
-
-// ---------------------------------------------------------------------------
-// Module-level constants (shared with playerStore until it is trimmed)
-// ---------------------------------------------------------------------------
-
-const CONCURRENCY = 10;
+import { mergeTracks, toTrack, mergeUniqueTracks, pLimit } from "./converters";
 
 // ---------------------------------------------------------------------------
 // Private helpers
@@ -25,51 +19,6 @@ function hashPath(p: string): string {
   return `local:${Math.abs(h).toString(36)}:${p}`;
 }
 
-function mergeTracks(
-  source: LibrarySource,
-  localTracks: Track[],
-  remoteTracks: Track[],
-): Track[] {
-  if (source === "local") {
-    return localTracks;
-  }
-
-  if (source === "ytmusic") {
-    return remoteTracks;
-  }
-
-  return [...remoteTracks, ...localTracks];
-}
-
-function toTrack(track: TrackResult): Track {
-  return {
-    id: track.id,
-    provider: track.provider,
-    providerId: track.providerId,
-    path: track.path,
-    title: track.title,
-    artist: track.artist,
-    album: track.album,
-    time: track.time,
-    duration: track.duration,
-    genre: track.genre,
-    picture: track.picture,
-    sourceLabel: track.sourceLabel,
-    playback: track.playback,
-    liked: track.liked,
-  };
-}
-
-function mergeUniqueTracks(...groups: Track[][]): Track[] {
-  const byId = new Map<string, Track>();
-  for (const group of groups) {
-    for (const track of group) {
-      byId.set(track.id, track);
-    }
-  }
-  return [...byId.values()];
-}
-
 function collectPlaylistTracksFromRaw(playlists: any[]): Track[] {
   const allTracks: Track[] = [];
   for (const pl of playlists) {
@@ -80,29 +29,6 @@ function collectPlaylistTracksFromRaw(playlists: any[]): Track[] {
     }
   }
   return allTracks;
-}
-
-async function pLimit<T, R>(
-  items: T[],
-  fn: (x: T) => Promise<R>,
-): Promise<R[]> {
-  const results: R[] = [];
-  let idx = 0;
-
-  async function worker(): Promise<void> {
-    while (idx < items.length) {
-      const i = idx++;
-      const res = await fn(items[i]);
-      results[i] = res;
-    }
-  }
-
-  const workers = Array.from(
-    { length: Math.min(CONCURRENCY, items.length) },
-    () => worker(),
-  );
-  await Promise.all(workers);
-  return results;
 }
 
 

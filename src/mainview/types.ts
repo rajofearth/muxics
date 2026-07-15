@@ -83,9 +83,3 @@ export interface AuthStatus {
   recovering?: boolean;
 }
 
-export interface PendingAuthLogin {
-  verificationUrl: string;
-  userCode: string;
-  expiresAt: number;
-  pollIntervalMs: number;
-}

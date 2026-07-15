@@ -1,10 +1,10 @@
 // uiStore — search, home feed, favorites, theme
 import { create } from "zustand";
-import type { LibrarySource, Playlist, Track } from "../types";
-import type { PlaylistResult, TrackResult } from "../../shared/desktop-contract";
+import type { Playlist, Track } from "../types";
 import { getRpc, useAuthStore } from "./authStore";
 import { useLibraryStore } from "./libraryStore";
 import { showToast } from "../components/Toast";
+import { toTrack, toPlaylist, mergeTracks } from "./converters";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -54,62 +54,7 @@ function loadThemeName(): string {
 // Private helpers (not exported)
 // ---------------------------------------------------------------------------
 
-function toTrack(track: TrackResult): Track {
-  return {
-    id: track.id,
-    provider: track.provider,
-    providerId: track.providerId,
-    path: track.path,
-    title: track.title,
-    artist: track.artist,
-    album: track.album,
-    time: track.time,
-    duration: track.duration,
-    genre: track.genre,
-    picture: track.picture,
-    sourceLabel: track.sourceLabel,
-    playback: track.playback,
-    liked: track.liked,
-  };
-}
 
-function toPlaylist(playlist: PlaylistResult): Playlist {
-  const trackIdsFromEntries = playlist.entries.map((entry) => entry.id);
-  const trackIdsFromTracks = (playlist.tracks ?? []).map((t) => t.id);
-  const trackIds =
-    trackIdsFromEntries.length > 0 ? trackIdsFromEntries : trackIdsFromTracks;
-
-  return {
-    id: playlist.id,
-    provider: playlist.provider,
-    providerId: playlist.providerId,
-    name: playlist.name,
-    path: playlist.path,
-    trackIds,
-    editable: playlist.editable,
-    tracks: playlist.tracks?.map(toTrack),
-    listedItemCount: playlist.listedItemCount,
-    author: playlist.author,
-    picture: playlist.picture,
-    type: playlist.type,
-  };
-}
-
-function mergeTracks(
-  source: LibrarySource,
-  localTracks: Track[],
-  remoteTracks: Track[],
-): Track[] {
-  if (source === "local") {
-    return localTracks;
-  }
-
-  if (source === "ytmusic") {
-    return remoteTracks;
-  }
-
-  return [...remoteTracks, ...localTracks];
-}
 
 
 

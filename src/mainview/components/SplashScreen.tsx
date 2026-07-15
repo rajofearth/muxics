@@ -18,7 +18,6 @@ export function SplashScreen() {
   const setLibrarySource = useLibraryStore((s) => s.setLibrarySource);
   const setInitReady = usePlayerStore((s) => s.setInitReady);
   const cancelSessionRecovery = useAuthStore((s) => s.cancelSessionRecovery);
-  const cancelYtMusicLogin = useAuthStore((s) => s.cancelYtMusicLogin);
 
   const showProgress = libraryLoading && scanProgress > 0 && scanProgress < 100;
 
@@ -194,7 +193,6 @@ export function SplashScreen() {
           <button
             onClick={() => {
               cancelSessionRecovery();
-              void cancelYtMusicLogin();
               // Dismiss splash (guest mode)
               useAuthStore.setState((s) => ({
                 auth: {
@@ -216,7 +214,6 @@ export function SplashScreen() {
           <button
             onClick={() => {
               cancelSessionRecovery();
-              void cancelYtMusicLogin();
               setLibrarySource("local");
               useLibraryStore.setState((s) => ({
                 library: { ...s.library, error: null },
