@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import ColorThief from "colorthief";
 import { usePlayerStore } from "../store/playerStore";
+import { useUiStore } from "../store/uiStore";
 
 const MIN_ACCENT_LUMINANCE = 0.25;
 
@@ -70,8 +71,8 @@ function pickBestAccentColor(thief: any, img: HTMLImageElement): string | null {
 
 export function useThemeFromArt() {
   const currentTrack = usePlayerStore((s) => s.player.currentTrack);
-  const updateTheme = usePlayerStore((s) => s.updateTheme);
-  const resetTheme = usePlayerStore((s) => s.resetTheme);
+  const updateTheme = useUiStore((s) => s.updateTheme);
+  const resetTheme = useUiStore((s) => s.resetTheme);
 
   useEffect(() => {
     if (!currentTrack?.picture) {

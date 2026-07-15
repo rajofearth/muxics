@@ -2,6 +2,10 @@ import { useState, useMemo, useCallback, useEffect } from "react";
 import { useShallow } from "zustand/react/shallow";
 import type { NavState, NavView, Track, Playlist } from "./types";
 import { usePlayerStore } from "./store/playerStore";
+import { useLibraryStore } from "./store/libraryStore";
+import { usePlaylistStore } from "./store/playlistStore";
+import { useUiStore } from "./store/uiStore";
+import { useAuthStore } from "./store/authStore";
 import { shuffleArray } from "./utils";
 import { TitleBar } from "./components/TitleBar";
 import { Sidebar } from "./components/Sidebar";
@@ -61,37 +65,33 @@ export function MainWindow({
   const [bridgeExtensionId, setBridgeExtensionId] = useState<string | null>(
     null,
   );
-  const {
-    library,
-    playlists,
-    ensurePlaylistHydrated,
-    settings,
-    recentlyPlayed,
-    getFavoriteTracks,
-    auth,
-    authLogin,
-    loadAuthStatus,
-    setLibrarySource,
-    clearAuthLoginError,
-    logoutFromYtMusic,
-    syncYtMusicLibrary,
-    loadPlaylistTracks,
-  } = usePlayerStore(
+  const { library, settings, setLibrarySource, syncYtMusicLibrary } = useLibraryStore(
     useShallow((s) => ({
       library: s.library,
+      settings: s.settings,
+      setLibrarySource: s.setLibrarySource,
+      syncYtMusicLibrary: s.syncYtMusicLibrary,
+    })),
+  );
+
+  const { playlists, ensurePlaylistHydrated, loadPlaylistTracks } = usePlaylistStore(
+    useShallow((s) => ({
       playlists: s.playlists,
       ensurePlaylistHydrated: s.ensurePlaylistHydrated,
-      settings: s.settings,
-      recentlyPlayed: s.recentlyPlayed,
-      getFavoriteTracks: s.getFavoriteTracks,
+      loadPlaylistTracks: s.loadPlaylistTracks,
+    })),
+  );
+
+  const recentlyPlayed = usePlayerStore((s) => s.recentlyPlayed);
+  const getFavoriteTracks = useUiStore((s) => s.getFavoriteTracks);
+
+  const { auth, authLogin, loadAuthStatus, clearAuthLoginError, logoutFromYtMusic } = useAuthStore(
+    useShallow((s) => ({
       auth: s.auth,
       authLogin: s.authLogin,
       loadAuthStatus: s.loadAuthStatus,
-      setLibrarySource: s.setLibrarySource,
       clearAuthLoginError: s.clearAuthLoginError,
       logoutFromYtMusic: s.logoutFromYtMusic,
-      syncYtMusicLibrary: s.syncYtMusicLibrary,
-      loadPlaylistTracks: s.loadPlaylistTracks,
     })),
   );
 
@@ -149,7 +149,7 @@ export function MainWindow({
       try {
         await loadAuthStatus();
 
-        if (usePlayerStore.getState().auth.loggedIn) {
+        if (useAuthStore.getState().auth.loggedIn) {
           showToast("YouTube Music is connected.");
           setShowBridgeDialog(false);
           await syncYtMusicLibrary();
@@ -184,8 +184,8 @@ export function MainWindow({
     return () => document.removeEventListener("app-navigate", navHandler);
   }, [handleNavigate]);
 
-  const homeFeedSections = usePlayerStore((s) => s.homeFeed.sections);
-  const searchState = usePlayerStore((s) => s.search);
+  const homeFeedSections = useUiStore((s) => s.homeFeed.sections);
+  const searchState = useUiStore((s) => s.search);
 
   const activePlaylist = useMemo(() => {
     if (
@@ -195,13 +195,13 @@ export function MainWindow({
     ) {
       return null;
     }
-    const fromLibrary = playlists.items.find((p) => p.id === navState.id);
+    const fromLibrary = playlists.items.find((p: Playlist) => p.id === navState.id);
     if (fromLibrary) return fromLibrary;
 
     // Check home feed sections for transient items
     for (const section of homeFeedSections) {
       const found = section.items.find(
-        (item): item is Playlist =>
+        (item: any): item is Playlist =>
           !("title" in item) && item.id === navState.id,
       );
       if (found) return found;
@@ -211,7 +211,7 @@ export function MainWindow({
     const fromSearch = [
       ...(searchState.albums || []),
       ...(searchState.playlists || []),
-    ].find((p) => p.id === navState.id);
+    ].find((p: Playlist) => p.id === navState.id);
     if (fromSearch) return fromSearch;
 
     return null;

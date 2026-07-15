@@ -6,6 +6,8 @@ import {
   type MutableRefObject,
 } from "react";
 import { usePlayerStore } from "../store/playerStore";
+import { useAuthStore } from "../store/authStore";
+import { useLibraryStore } from "../store/libraryStore";
 import { showToast } from "../components/Toast";
 import type { Track } from "../types";
 import {
@@ -39,11 +41,11 @@ function scheduleYtStreamUrlRefresh(args: {
     args.timerRef.current = null;
     if (args.loadTokenRef.current !== args.loadToken) return;
     const st = usePlayerStore.getState();
-    if (st.player.currentTrack?.id !== args.track.id || !st.rpc) return;
+    const rpc = useAuthStore.getState().rpc;
+    if (st.player.currentTrack?.id !== args.track.id || !rpc) return;
     const el = args.audioEl;
     if (!el.isConnected) return;
     void (async () => {
-      const rpc = st.rpc;
       if (!rpc) return;
       try {
         const playback = await rpc.request.ytmusicGetPlayback({
@@ -189,12 +191,16 @@ export function useAudioEngine() {
             const updatedTrack = { ...s.player.currentTrack, duration, time };
 
             // Also update it in the library if found
-            const remoteTracks = s.library.remoteTracks.map((t) =>
-              t.id === updatedTrack.id ? updatedTrack : t,
+            const lib = useLibraryStore.getState().library;
+            const remoteTracks = lib.remoteTracks.map((t: Track) =>
+              t.id === updatedTrack.id ? updatedTrack : t
             );
-            const tracks = s.library.tracks.map((t) =>
-              t.id === updatedTrack.id ? updatedTrack : t,
+            const tracks = lib.tracks.map((t: Track) =>
+              t.id === updatedTrack.id ? updatedTrack : t
             );
+            useLibraryStore.setState((s2) => ({
+              library: { ...s2.library, remoteTracks, tracks }
+            }));
 
             // Also update the queue so queued-up tracks show correct duration
             const queue = s.player.queue.map((t) =>
@@ -202,7 +208,6 @@ export function useAudioEngine() {
             );
 
             return {
-              library: { ...s.library, remoteTracks, tracks },
               player: {
                 ...s.player,
                 currentTrack: updatedTrack,
@@ -216,7 +221,7 @@ export function useAudioEngine() {
 
     const onError = () => {
       console.warn("Audio element error", el.error);
-      const rpc = usePlayerStore.getState().rpc;
+      const rpc = useAuthStore.getState().rpc;
       const { currentTrack, isPlaying } = usePlayerStore.getState().player;
       if (!rpc || !currentTrack || currentTrack.provider !== "ytmusic") {
         return;
@@ -315,16 +320,17 @@ export function useAudioEngine() {
   const currentTrackId = usePlayerStore((s) => s.player.currentTrack?.id);
   const queueLength = usePlayerStore((s) => s.player.queue.length);
   const shuffle = usePlayerStore((s) => s.player.shuffle);
-  const rpc = usePlayerStore((s) => s.rpc);
+  const rpc = useAuthStore((s) => s.rpc);
 
   // ── 2a. Prefetch upcoming tracks in the background ───────────────────
   // When the current track, queue, or shuffle state changes, prefetch
   // stream URLs for the next few tracks so the user never waits.
   useEffect(() => {
     const state = usePlayerStore.getState();
+    const currentRpc = useAuthStore.getState().rpc;
     const { currentTrack, queue } = state.player;
-    if (currentTrack && state.rpc) {
-      prefetchUpcomingTracks(queue, currentTrack.id, state.rpc.request);
+    if (currentTrack && currentRpc) {
+      prefetchUpcomingTracks(queue, currentTrack.id, currentRpc.request);
     }
   }, [currentTrackId, queueLength, shuffle]);
 

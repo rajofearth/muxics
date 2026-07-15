@@ -1,7 +1,7 @@
 import { memo, useState, useCallback } from "react";
 import { Play, Heart } from "lucide-react";
 import type { Track } from "../types";
-import { usePlayerStore } from "../store/playerStore";
+import { useUiStore } from "../store/uiStore";
 import { TrackContextMenu } from "./TrackContextMenu";
 import { EqBars } from "./EqBars";
 import { showToast } from "./Toast";
@@ -26,8 +26,8 @@ export const TrackRow = memo(function TrackRow({
   playlistId,
 }: TrackRowProps) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
-  const toggleFavorite = usePlayerStore((s) => s.toggleFavorite);
-  const isFav = usePlayerStore((s) => s.favorites.has(track.id));
+  const toggleFavorite = useUiStore((s) => s.toggleFavorite);
+  const isFav = useUiStore((s) => s.favorites.has(track.id));
 
   const onContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();

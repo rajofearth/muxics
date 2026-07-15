@@ -5,7 +5,9 @@ import type {
   DesktopSettings,
 } from "../../shared/desktop-contract";
 import { showToast } from "./Toast";
-import { usePlayerStore } from "../store/playerStore";
+import { useLibraryStore } from "../store/libraryStore";
+import { useAuthStore } from "../store/authStore";
+import { useUiStore } from "../store/uiStore";
 import { useShallow } from "zustand/react/shallow";
 import {
   FolderPlus,
@@ -186,8 +188,8 @@ function SectionHeader({
 /* ------------------------------------------------------------------ */
 
 export function SettingsView({ desktop }: { desktop?: DesktopBridge }) {
-  const themeName = usePlayerStore((s) => s.themeName);
-  const setThemeName = usePlayerStore((s) => s.setThemeName);
+  const themeName = useUiStore((s) => s.themeName);
+  const setThemeName = useUiStore((s) => s.setThemeName);
 
   const [settings, setSettings] = useState<DesktopSettings | null>(null);
   const [usageBytes, setUsageBytes] = useState(0);
@@ -208,15 +210,25 @@ export function SettingsView({ desktop }: { desktop?: DesktopBridge }) {
     [settings?.ytmusicCacheLimitBytes],
   );
 
-  const { playerSettings, addFolder, removeFolder, library, auth, rpc } =
-    usePlayerStore(
+  const { playerSettings, addFolder, removeFolder, library, syncYtMusicLibrary } =
+    useLibraryStore(
       useShallow((s) => ({
         playerSettings: s.settings,
         addFolder: s.addFolder,
         removeFolder: s.removeFolder,
         library: s.library,
+        syncYtMusicLibrary: s.syncYtMusicLibrary,
+      })),
+    );
+
+  const { auth, rpc, authLogin, loadAuthStatus, clearAuthLoginError } =
+    useAuthStore(
+      useShallow((s) => ({
         auth: s.auth,
         rpc: s.rpc,
+        authLogin: s.authLogin,
+        loadAuthStatus: s.loadAuthStatus,
+        clearAuthLoginError: s.clearAuthLoginError,
       })),
     );
 
@@ -233,10 +245,6 @@ export function SettingsView({ desktop }: { desktop?: DesktopBridge }) {
   const [bridgeExtensionId, setBridgeExtensionId] = useState<string | null>(
     null,
   );
-  const authLogin = usePlayerStore((s) => s.authLogin);
-  const loadAuthStatus = usePlayerStore((s) => s.loadAuthStatus);
-  const clearAuthLoginError = usePlayerStore((s) => s.clearAuthLoginError);
-  const syncYtMusicLibrary = usePlayerStore((s) => s.syncYtMusicLibrary);
 
   useEffect(() => {
     let cancelled = false;
@@ -359,7 +367,7 @@ export function SettingsView({ desktop }: { desktop?: DesktopBridge }) {
     setBridgeBusy(true);
     try {
       await loadAuthStatus();
-      const { auth } = usePlayerStore.getState();
+      const { auth } = useAuthStore.getState();
       if (!auth.loggedIn) {
         showToast("No browser session received yet.", "info");
         return;
@@ -369,8 +377,8 @@ export function SettingsView({ desktop }: { desktop?: DesktopBridge }) {
       await syncYtMusicLibrary();
 
       // Check result after sync completes
-      const updated = usePlayerStore.getState();
-      if (updated.auth.sessionExpired) {
+      const updatedAuth = useAuthStore.getState().auth;
+      if (updatedAuth.sessionExpired) {
         showToast(
           "Session rejected. Open the extension and click Send Session To Muxics.",
           "error",
@@ -391,7 +399,7 @@ export function SettingsView({ desktop }: { desktop?: DesktopBridge }) {
 
   const clearFolderError = () => {
     setLocalError(null);
-    usePlayerStore.setState((s) => ({
+    useLibraryStore.setState((s) => ({
       library: { ...s.library, error: null },
     }));
   };

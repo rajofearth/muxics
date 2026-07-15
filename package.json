@@ -4,7 +4,7 @@
   "version": "1.0.4",
   "author": "Rajofearth <rajofearth@proton.me>",
   "description": "A modern music player built with Electron",
-  "packageManager": "pnpm@10.32.1",
+  "packageManager": "pnpm@11.13.0",
   "main": "dist-electron/main.cjs",
   "scripts": {
     "dev": "concurrently -k \"vite --port 5173\" \"tsup --config tsup.electron.config.ts --watch\" \"cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .\"",

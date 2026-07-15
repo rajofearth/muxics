@@ -1,9 +1,9 @@
 import { useEffect } from "react";
-import { usePlayerStore } from "../store/playerStore";
+import { useUiStore } from "../store/uiStore";
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const theme = usePlayerStore((s) => s.theme);
-  const themeName = usePlayerStore((s) => s.themeName);
+  const theme = useUiStore((s) => s.theme);
+  const themeName = useUiStore((s) => s.themeName);
 
   useEffect(() => {
     const root = document.documentElement;

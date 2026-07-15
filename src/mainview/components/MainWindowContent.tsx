@@ -1,8 +1,11 @@
 import { useEffect } from "react";
 import type { ReactNode } from "react";
 import type { Track, NavState, NavView, LibrarySource } from "../types";
-import type { PlayerState } from "../store/playerStore";
-import { usePlayerStore } from "../store/playerStore";
+import type { LibraryState } from "../store/libraryStore";
+import type { PlaylistState } from "../store/playlistStore";
+import type { AuthState } from "../store/authStore";
+import { useLibraryStore } from "../store/libraryStore";
+import { usePlaylistStore } from "../store/playlistStore";
 import { formatTotalDuration, playlistVisibleTrackCount } from "../utils";
 import {
   Library,
@@ -37,12 +40,12 @@ export type MainWindowContentProps = {
   handleNavigate: (view: NavView, id?: string) => void;
   handleOpenLogin: () => void;
   setLibrarySource: (source: LibrarySource) => void;
-  library: PlayerState["library"];
-  playlists: PlayerState["playlists"];
-  settings: PlayerState["settings"];
-  auth: PlayerState["auth"];
-  authLogin: PlayerState["authLogin"];
-  recentlyPlayed: PlayerState["recentlyPlayed"];
+  library: LibraryState["library"];
+  playlists: PlaylistState["playlists"];
+  settings: LibraryState["settings"];
+  auth: AuthState["auth"];
+  authLogin: AuthState["authLogin"];
+  recentlyPlayed: Track[];
   getFavoriteTracks: () => Track[];
   loadPlaylistTracks: (playlistId: string) => Track[];
   libraryScopeLabel: string;
@@ -104,7 +107,7 @@ export function MainWindowContent({
 }: MainWindowContentProps) {
   useEffect(() => {
     const handleCacheUpdate = () => {
-      void usePlayerStore.getState().loadCachedPlaylist();
+      void usePlaylistStore.getState().loadCachedPlaylist();
     };
     document.addEventListener("muxics-yt-cache-stats", handleCacheUpdate);
     return () =>
@@ -286,7 +289,7 @@ export function MainWindowContent({
                 type="button"
                 onClick={() => {
                   // Clear error and navigate to settings
-                  usePlayerStore.setState((s) => ({
+                  useLibraryStore.setState((s) => ({
                     library: { ...s.library, error: null },
                   }));
                   handleNavigate("settings");
@@ -322,7 +325,7 @@ export function MainWindowContent({
           <button
             type="button"
             onClick={() => {
-              const store = usePlayerStore.getState();
+              const store = useLibraryStore.getState();
               if (library.source === "ytmusic") {
                 void store.syncYtMusicLibrary();
               } else {
@@ -435,7 +438,7 @@ export function MainWindowContent({
             onItemClick={(item) => handleNavigate("artist_detail", item.name)}
             onPlayItem={(item) => {
               const tracks = library.tracks.filter(
-                (t) => t.artist === item.name,
+                (t: Track) => t.artist === item.name,
               );
               if (tracks.length > 0) onPlayTrack(tracks[0], tracks);
             }}
@@ -445,9 +448,9 @@ export function MainWindowContent({
 
     case "artist_detail": {
       const artistTracks = library.tracks.filter(
-        (t) => t.artist === navState.id,
+        (t: Track) => t.artist === navState.id,
       );
-      const artistPic = artistTracks.find((t) => t.picture)?.picture;
+      const artistPic = artistTracks.find((t: Track) => t.picture)?.picture;
       return renderTrackView(
         navState.id ?? "Artist",
         "Artist",
@@ -477,7 +480,7 @@ export function MainWindowContent({
             onItemClick={(item) => handleNavigate("album_detail", item.name)}
             onPlayItem={(item) => {
               const tracks = library.tracks.filter(
-                (t) => t.album === item.name,
+                (t: Track) => t.album === item.name,
               );
               if (tracks.length > 0) onPlayTrack(tracks[0], tracks);
             }}
@@ -494,7 +497,7 @@ export function MainWindowContent({
         ? activeAlbum
           ? loadPlaylistTracks(activeAlbum.id)
           : []
-        : library.tracks.filter((t) => t.album === navState.id);
+        : library.tracks.filter((t: Track) => t.album === navState.id);
 
       const albumLoading = activeAlbum
         ? playlists.hydratingById[activeAlbum.id]
@@ -504,7 +507,7 @@ export function MainWindowContent({
         : null;
       const albumPic = isYt
         ? activeAlbum?.picture
-        : albumTracks.find((t) => t.picture)?.picture;
+        : albumTracks.find((t: Track) => t.picture)?.picture;
 
       if (
         isYt &&
@@ -726,7 +729,7 @@ export function MainWindowContent({
           ? recentlyPlayed
           : library.tracks.slice(0, 20);
       const recentPics = Array.from(
-        new Set(recent.map((t) => t.picture).filter((p): p is string => !!p)),
+        new Set(recent.map((t: Track) => t.picture).filter((p: string | undefined): p is string => !!p)),
       ).slice(0, 4);
       return renderTrackView(
         "Recently Played",

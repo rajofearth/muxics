@@ -30,21 +30,22 @@ import { loadSettings, saveSettings } from "./backend/settings";
 import { installBrowserBridgeHost, prepareBrowserBridgeBundle } from "./backend/browserBridge";
 import { runNativeMessagingHost } from "./backend/nativeHost";
 import {
+  getYtMusicAuthStatus,
+  loginToYtMusic,
+  completeYtMusicLogin,
+  cancelYtMusicLogin,
+  importYtMusicSession,
+  logoutFromYtMusic,
+} from "./backend/ytmusicAuth";
+import {
   addTrackToYtMusicPlaylist,
   createYtMusicPlaylist,
   deleteYtMusicPlaylist,
   clearYtMusicMetadataCache,
   getCachedYtMusicLibrary,
-  getYtMusicAuthStatus,
   getYtMusicHomeFeed,
-  getYtMusicPlayback,
   getYtMusicPlaylist,
-  importYtMusicSession,
   likeYtMusicTrack,
-  loginToYtMusic,
-  completeYtMusicLogin,
-  cancelYtMusicLogin,
-  logoutFromYtMusic,
   removeTrackFromYtMusicPlaylist,
   renameYtMusicPlaylist,
   saveYtMusicPlaylist,
@@ -52,7 +53,10 @@ import {
   syncYtMusicLibrary,
   unlikeYtMusicTrack,
   unsaveYtMusicPlaylist,
-} from "./backend/ytmusic";
+} from "./backend/ytmusicData";
+import {
+  getYtMusicPlayback,
+} from "./backend/ytmusicPlayback";
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;

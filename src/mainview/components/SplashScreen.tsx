@@ -1,22 +1,24 @@
 // @ts-expect-error vite svg import
 import appLogo from "../../../assets/muzics-dark.svg";
+import { usePlayerStore } from "../store/playerStore";
+import { useLibraryStore } from "../store/libraryStore";
 import {
-  usePlayerStore,
+  useAuthStore,
   INIT_STATUS_SESSION_REJECTED,
   INIT_STATUS_RECOVERING,
-} from "../store/playerStore";
+} from "../store/authStore";
 import { AlertTriangle, RefreshCw, Music, Wifi } from "lucide-react";
 
 export function SplashScreen() {
   const status = usePlayerStore((s) => s._initStatus);
-  const scanProgress = usePlayerStore((s) => s.library.scanProgress);
-  const libraryLoading = usePlayerStore((s) => s.library.loading);
-  const sessionExpired = usePlayerStore((s) => s.auth.sessionExpired);
-  const recovering = usePlayerStore((s) => s.auth.recovering);
-  const setLibrarySource = usePlayerStore((s) => s.setLibrarySource);
+  const scanProgress = useLibraryStore((s) => s.library.scanProgress);
+  const libraryLoading = useLibraryStore((s) => s.library.loading);
+  const sessionExpired = useAuthStore((s) => s.auth.sessionExpired);
+  const recovering = useAuthStore((s) => s.auth.recovering);
+  const setLibrarySource = useLibraryStore((s) => s.setLibrarySource);
   const setInitReady = usePlayerStore((s) => s.setInitReady);
-  const cancelSessionRecovery = usePlayerStore((s) => s.cancelSessionRecovery);
-  const cancelYtMusicLogin = usePlayerStore((s) => s.cancelYtMusicLogin);
+  const cancelSessionRecovery = useAuthStore((s) => s.cancelSessionRecovery);
+  const cancelYtMusicLogin = useAuthStore((s) => s.cancelYtMusicLogin);
 
   const showProgress = libraryLoading && scanProgress > 0 && scanProgress < 100;
 
@@ -96,8 +98,10 @@ export function SplashScreen() {
           <button
             onClick={() => {
               // Clear error and navigate to settings
-              usePlayerStore.setState((s) => ({
+              useAuthStore.setState((s) => ({
                 auth: { ...s.auth, sessionExpired: false },
+              }));
+              useLibraryStore.setState((s) => ({
                 library: { ...s.library, error: null },
               }));
               setInitReady();
@@ -116,7 +120,7 @@ export function SplashScreen() {
             onClick={() => {
               // Switch to local-only mode and dismiss splash
               setLibrarySource("local");
-              usePlayerStore.setState((s) => ({
+              useLibraryStore.setState((s) => ({
                 library: { ...s.library, error: null },
               }));
               setInitReady();
@@ -175,12 +179,14 @@ export function SplashScreen() {
             onClick={() => {
               cancelSessionRecovery();
               void cancelYtMusicLogin();
-              usePlayerStore.setState((s) => ({
+              useAuthStore.setState((s) => ({
                 auth: {
                   ...s.auth,
                   sessionExpired: true,
                   recovering: false,
                 },
+              }));
+              useLibraryStore.setState((s) => ({
                 library: { ...s.library, error: null },
               }));
             }}

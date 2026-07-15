@@ -1,5 +1,7 @@
 import { memo, useEffect, useRef } from "react";
 import { usePlayerStore } from "../store/playerStore";
+import { useUiStore } from "../store/uiStore";
+import { useAuthStore } from "../store/authStore";
 import { useShallow } from "zustand/react/shallow";
 import { Play, Disc3, ListMusic, Music } from "lucide-react";
 import type { Track, Playlist, NavView } from "../types";
@@ -9,14 +11,14 @@ export const HomeFeed = memo(function HomeFeed({
 }: {
   onNavigate?: (view: NavView, id?: string) => void;
 }) {
-  const { homeFeed, auth, loadHomeFeed, playTrack } = usePlayerStore(
+  const { homeFeed, loadHomeFeed } = useUiStore(
     useShallow((s) => ({
       homeFeed: s.homeFeed,
-      auth: s.auth,
       loadHomeFeed: s.loadHomeFeed,
-      playTrack: s.playTrack,
     })),
   );
+  const auth = useAuthStore((s) => s.auth);
+  const playTrack = usePlayerStore((s) => s.playTrack);
 
   const hasAttemptedRef = useRef(false);
 

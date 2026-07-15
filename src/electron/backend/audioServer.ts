@@ -10,10 +10,12 @@ import { log } from "./logger";
 import { AUDIO_SERVER_PORT, MIME_TYPES } from "../../shared/constants";
 import {
   createSapisdHash,
-  getYtMusicAuthStatus,
   getYtMusicSessionCookie,
+} from "./ytmusicClient";
+import {
+  getYtMusicAuthStatus,
   importYtMusicSession,
-} from "./ytmusic";
+} from "./ytmusicAuth";
 import {
   ensureArtworkCached,
   getAudioPathByKey,

@@ -16,6 +16,9 @@ import {
 import type { NavState, NavView, Playlist } from "../types";
 import { playlistVisibleTrackCount } from "../utils";
 import { usePlayerStore } from "../store/playerStore";
+import { useLibraryStore } from "../store/libraryStore";
+import { useUiStore } from "../store/uiStore";
+import { usePlaylistStore } from "../store/playlistStore";
 import { CreatePlaylistModal } from "./CreatePlaylistModal";
 import { EqBars } from "./EqBars";
 
@@ -31,8 +34,8 @@ export const Sidebar = memo(function Sidebar({
   onNavigate,
 }: SidebarProps) {
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const trackCount = usePlayerStore((s) => s.library.tracks.length);
-  const favCount = usePlayerStore((s) => s.favorites.size);
+  const trackCount = useLibraryStore((s) => s.library.tracks.length);
+  const favCount = useUiStore((s) => s.favorites.size);
   const queueCount = usePlayerStore((s) => s.player.queue.length);
   const recentCount = usePlayerStore((s) => s.recentlyPlayed.length);
   const currentTrack = usePlayerStore((s) => s.player.currentTrack);
@@ -124,7 +127,7 @@ export const Sidebar = memo(function Sidebar({
     );
   };
 
-  const transientItems = usePlayerStore((s) => s.playlists.transientItems);
+  const transientItems = usePlaylistStore((s) => s.playlists.transientItems);
   const libraryPlaylists = playlists.filter((p) => !transientItems.includes(p));
 
   return (

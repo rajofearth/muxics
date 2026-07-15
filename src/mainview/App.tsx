@@ -8,10 +8,7 @@ import { AudioEngineProvider } from "./context/AudioEngineContext";
 import { ThemeProvider } from "./components/ThemeProvider";
 import { ToastContainer } from "./components/Toast";
 import { SplashScreen } from "./components/SplashScreen";
-import {
-  INIT_STATUS_SESSION_REJECTED,
-  INIT_STATUS_RECOVERING,
-} from "./store/playerStore";
+import { initSession } from "./store/sessionInit";
 import type { DesktopBridge } from "../shared/desktop-contract";
 
 const MINI_WIDTH = 380;
@@ -28,14 +25,6 @@ export default function App({ desktop }: AppProps) {
   const [windowMode, setWindowMode] = useState<"main" | "mini">("main");
   const initRef = useRef(false);
 
-  const setRpc = usePlayerStore((s) => s.setRpc);
-  const loadLibrary = usePlayerStore((s) => s.loadLibrary);
-  const loadPlaylists = usePlayerStore((s) => s.loadPlaylists);
-  const loadAuthStatus = usePlayerStore((s) => s.loadAuthStatus);
-  const hydrateYtMusicFromCache = usePlayerStore(
-    (s) => s.hydrateYtMusicFromCache,
-  );
-  const syncYtMusicLibrary = usePlayerStore((s) => s.syncYtMusicLibrary);
   const playTrack = usePlayerStore((s) => s.playTrack);
   const togglePlay = usePlayerStore((s) => s.togglePlay);
   const setVolume = usePlayerStore((s) => s.setVolume);
@@ -53,74 +42,14 @@ export default function App({ desktop }: AppProps) {
   const { analyserRef, analyserReady, seek } = useAudioEngine();
   useThemeFromArt();
 
-  const rpcReady = usePlayerStore((s) => s.rpc !== null);
-
-  useEffect(() => {
-    setRpc(desktop);
-    return () => setRpc(null);
-  }, [desktop, setRpc]);
-
-  const setInitReady = usePlayerStore((s) => s.setInitReady);
-  const setInitStatus = usePlayerStore((s) => s.setInitStatus);
   const initReady = usePlayerStore((s) => s._initReady);
 
   useEffect(() => {
-    if (!initRef.current && rpcReady) {
+    if (!initRef.current) {
       initRef.current = true;
-      void (async () => {
-        setInitStatus("Checking authentication...");
-        await loadAuthStatus();
-        const loggedIn = usePlayerStore.getState().auth.loggedIn;
-
-        setInitStatus("Scanning local library...");
-        const libraryPromise = loadLibrary();
-
-        setInitStatus("Loading playlists...");
-        const playlistsPromise = loadPlaylists();
-
-        let cachePromise = Promise.resolve();
-        if (loggedIn) {
-          setInitStatus("Loading YouTube Music...");
-          cachePromise = hydrateYtMusicFromCache();
-        }
-
-        await Promise.all([libraryPromise, playlistsPromise, cachePromise]);
-
-        if (loggedIn) {
-          setInitStatus("Syncing YouTube Music...");
-          await syncYtMusicLibrary();
-
-          // If sync failed because the YouTube Music session was rejected,
-          // try auto-recovery via the browser extension background worker.
-          // If recovery starts, stay on the splash screen.
-          const authState = usePlayerStore.getState().auth;
-          if (authState.sessionExpired) {
-            setInitStatus(INIT_STATUS_SESSION_REJECTED);
-            return;
-          }
-          if (authState.recovering) {
-            setInitStatus(INIT_STATUS_RECOVERING);
-            return;
-          }
-        }
-
-        setInitStatus("Almost ready...");
-        // Small tick so the final status renders before transitioning
-        await new Promise((r) => setTimeout(r, 200));
-
-        setInitReady();
-      })();
+      void initSession(desktop);
     }
-  }, [
-    rpcReady,
-    loadAuthStatus,
-    loadLibrary,
-    loadPlaylists,
-    hydrateYtMusicFromCache,
-    syncYtMusicLibrary,
-    setInitReady,
-    setInitStatus,
-  ]);
+  }, [desktop]);
 
   useEffect(() => {
     if (currentTrack) {

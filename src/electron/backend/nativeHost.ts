@@ -1,4 +1,4 @@
-import { getYtMusicAuthStatus, saveYtMusicCookieSession } from "./ytmusic";
+import { getYtMusicAuthStatus, saveYtMusicCookieSession } from "./ytmusicAuth";
 
 type NativeMessage =
   | { type: "ping" }
