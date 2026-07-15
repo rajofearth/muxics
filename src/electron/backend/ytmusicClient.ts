@@ -43,7 +43,7 @@ function getCookieValue(
   return part ? part.slice(name.length + 1) : undefined;
 }
 
-export function createSapisdHash(cookie: string): string | null {
+export function createSapisidHash(cookie: string): string | null {
   const sid =
     getCookieValue(cookie, "SAPISID") ||
     getCookieValue(cookie, "__Secure-3PAPISID") ||
@@ -75,7 +75,7 @@ export function getCookiePresence(
 }
 
 export function hasRequiredAuthCookie(cookie: string | undefined): boolean {
-  return REQUIRED_COOKIE_NAMES.some((name) =>
+  return REQUIRED_COOKIE_NAMES.every((name) =>
     Boolean(getCookieValue(cookie, name)),
   );
 }
@@ -146,7 +146,7 @@ function createFetchWithYtMusicAuth(cookie?: string): typeof fetch | undefined {
       headers.set("Cookie", cookie);
       headers.set("X-Goog-Authuser", headers.get("X-Goog-Authuser") ?? "0");
 
-      const authHeader = createSapisdHash(cookie);
+      const authHeader = createSapisidHash(cookie);
       if (authHeader) {
         headers.set("Authorization", authHeader);
         authorizationApplied = true;
@@ -280,7 +280,10 @@ export function getYtMusicSessionCookie(): string | undefined {
 
 export function setCachedClient(client: Innertube | null): void {
   cachedClient = client;
-  if (!client) {
+  if (client) {
+    const stored = loadStoredYtMusicSession();
+    cachedClientSessionUpdatedAt = stored?.updatedAt ?? null;
+  } else {
     cachedClientSessionUpdatedAt = null;
   }
 }

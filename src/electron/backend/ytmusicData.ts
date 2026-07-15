@@ -48,6 +48,7 @@ import {
 import { getClient, getYtMusicSessionCookie, getCookiePresence } from "./ytmusicClient";
 import { loadStoredYtMusicSession } from "./ytmusicSession";
 import { getLibraryPageData } from "./ytmusicAuth";
+import { clearYtMusicSearchCacheFile } from "./ytmusicSearchCache";
 
 export type CacheShape = {
   tracks: TrackResult[];
@@ -105,7 +106,6 @@ export function clearYtMusicMetadataCache(): { success: boolean } {
     if (fs.existsSync(YTMUSIC_HOME_SNAPSHOT_PATH)) {
       fs.unlinkSync(YTMUSIC_HOME_SNAPSHOT_PATH);
     }
-    const { clearYtMusicSearchCacheFile } = require("./ytmusicSearchCache");
     clearYtMusicSearchCacheFile();
     return { success: true };
   } catch {

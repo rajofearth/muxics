@@ -9,7 +9,7 @@ import { Readable } from "node:stream";
 import { log } from "./logger";
 import { AUDIO_SERVER_PORT, MIME_TYPES } from "../../shared/constants";
 import {
-  createSapisdHash,
+  createSapisidHash,
   getYtMusicSessionCookie,
 } from "./ytmusicClient";
 import {
@@ -287,7 +287,7 @@ async function handleYtCache(
           : undefined;
         const authHeader =
           sessionCookie && withCookies
-            ? createSapisdHash(sessionCookie)
+            ? createSapisidHash(sessionCookie)
             : undefined;
 
         const resp = await fetch(sourceUrl, {
