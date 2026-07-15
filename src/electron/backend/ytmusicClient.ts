@@ -8,6 +8,7 @@ import {
 } from "./ytmusicSession";
 
 let cachedClient: Innertube | null = null;
+let cachedClientSessionUpdatedAt: number | null = null;
 let loggedLibraryAuthDebug = false;
 
 const YTMUSIC_ORIGIN = "https://music.youtube.com";
@@ -221,6 +222,7 @@ async function restoreClientFromDisk(): Promise<Innertube | null> {
   const stored = loadStoredYtMusicSession();
   if (!stored?.auth) {
     clearStoredYtMusicSession();
+    cachedClientSessionUpdatedAt = null;
     return null;
   }
 
@@ -228,6 +230,7 @@ async function restoreClientFromDisk(): Promise<Innertube | null> {
     if (stored.auth.kind === "cookie") {
       const client = await createClient(stored.auth.cookie);
       cachedClient = client;
+      cachedClientSessionUpdatedAt = stored.updatedAt;
       return client;
     }
 
@@ -235,17 +238,26 @@ async function restoreClientFromDisk(): Promise<Innertube | null> {
     attachCredentialPersistence(client, stored.createdAt);
     await client.session.signIn(stored.auth.oauth);
     cachedClient = client;
+    cachedClientSessionUpdatedAt = stored.updatedAt;
     return client;
   } catch (error) {
     log("ytmusic", "warn", "Failed to restore OAuth session", error);
     clearStoredYtMusicSession();
     cachedClient = null;
+    cachedClientSessionUpdatedAt = null;
     return null;
   }
 }
 
 export async function getClient(force = false): Promise<Innertube> {
-  if (cachedClient && !force) {
+  const stored = loadStoredYtMusicSession();
+  const diskUpdatedAt = stored?.updatedAt ?? null;
+
+  if (
+    cachedClient &&
+    !force &&
+    cachedClientSessionUpdatedAt === diskUpdatedAt
+  ) {
     return cachedClient;
   }
 
@@ -268,6 +280,9 @@ export function getYtMusicSessionCookie(): string | undefined {
 
 export function setCachedClient(client: Innertube | null): void {
   cachedClient = client;
+  if (!client) {
+    cachedClientSessionUpdatedAt = null;
+  }
 }
 
 export function getCachedClient(): Innertube | null {

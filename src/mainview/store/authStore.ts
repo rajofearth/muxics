@@ -239,6 +239,8 @@ export const useAuthStore = create<AuthState & AuthActions>()((set, get) => ({
     const { rpc, auth } = get();
     if (!rpc || auth.recovering) return;
 
+    const initialUpdatedAt = auth.sessionUpdatedAt;
+
     set((s) => ({
       auth: {
         ...s.auth,
@@ -267,7 +269,7 @@ export const useAuthStore = create<AuthState & AuthActions>()((set, get) => ({
 
       try {
         const status = await rpc.request.authGetStatus();
-        if (status.loggedIn) {
+        if (status.loggedIn && status.sessionUpdatedAt !== initialUpdatedAt) {
           // Extension refreshed the session — recovery succeeded!
           set(() => ({
             auth: {
@@ -279,6 +281,10 @@ export const useAuthStore = create<AuthState & AuthActions>()((set, get) => ({
 
           void useLibraryStore.getState().hydrateYtMusicFromCache();
           void useLibraryStore.getState().syncYtMusicLibrary();
+          
+          // Dismiss the splash screen and transition to main player
+          const { usePlayerStore } = await import("./playerStore");
+          usePlayerStore.getState().setInitReady();
           return;
         }
       } catch {

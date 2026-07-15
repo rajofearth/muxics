@@ -20,6 +20,7 @@ import {
 import {
   clearStoredYtMusicSession,
   persistCookieString,
+  loadStoredYtMusicSession,
 } from "./ytmusicSession";
 import { bumpYtMusicSearchCacheSession } from "./ytmusicSearchCache";
 import { log } from "./logger";
@@ -99,15 +100,29 @@ async function resolveProfileName(
       avatarUrl:
         selected?.account_photo?.[selected.account_photo.length - 1]?.url,
     };
-  } catch {
-    return {
-      profileName: "YouTube Music",
-    };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    const isNetworkError =
+      msg.includes("fetch failed") ||
+      msg.includes("ENOTFOUND") ||
+      msg.includes("ETIMEDOUT") ||
+      msg.includes("EAI_AGAIN") ||
+      msg.includes("socket hang up");
+
+    if (isNetworkError) {
+      return {
+        profileName: "YouTube Music",
+      };
+    }
+    throw error;
   }
 }
 
 async function buildAuthStatus(): Promise<AuthStatusResult> {
   const lastSyncedAt = getCacheLastSyncedAt();
+  const stored = loadStoredYtMusicSession();
+  const sessionUpdatedAt = stored?.updatedAt;
+
   let client: Innertube | null = getCachedClient();
   if (!client) {
     try {
@@ -117,12 +132,13 @@ async function buildAuthStatus(): Promise<AuthStatusResult> {
     }
   }
 
-  if (!client) {
+  if (!client || !client.session.logged_in) {
     cachedAuthStatus = {
       loggedIn: false,
       provider: "ytmusic",
       persistent: false,
       lastSyncedAt,
+      sessionUpdatedAt,
     };
     return cachedAuthStatus;
   }
@@ -134,6 +150,7 @@ async function buildAuthStatus(): Promise<AuthStatusResult> {
       provider: "ytmusic",
       persistent: true,
       lastSyncedAt,
+      sessionUpdatedAt,
       ...profile,
     };
   } catch (error) {
@@ -144,6 +161,7 @@ async function buildAuthStatus(): Promise<AuthStatusResult> {
       provider: "ytmusic",
       persistent: false,
       lastSyncedAt,
+      sessionUpdatedAt,
       error:
         error instanceof Error
           ? error.message

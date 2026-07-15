@@ -284,11 +284,11 @@ export const usePlaylistStore = create<PlaylistState & PlaylistActions>()(
         const cachedTrackIds = await rpc.request.getFullyCachedTrackIds();
         if (!cachedTrackIds) return;
 
-        const libraryTracks = useLibraryStore.getState().library.tracks;
+        const { library } = useLibraryStore.getState();
         const { usePlayerStore } = await import("./playerStore");
         const recentlyPlayed = usePlayerStore.getState().recentlyPlayed;
         const allKnownTracks = Object.values(
-          [...libraryTracks, ...recentlyPlayed].reduce(
+          [...library.remoteTracks, ...library.localTracks, ...recentlyPlayed].reduce(
             (acc, t) => {
               acc[t.id] = t;
               return acc;

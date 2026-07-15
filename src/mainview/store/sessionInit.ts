@@ -36,18 +36,26 @@ export async function initSession(desktop: DesktopBridge): Promise<void> {
 
   await Promise.all([libraryPromise, playlistsPromise, cachePromise]);
 
-  if (loggedIn) {
-    setInitStatus("Syncing YouTube Music...");
-    await syncYtMusicLibrary();
+  const source = useLibraryStore.getState().library.source;
+  const isLocalMode = source === "local";
 
-    const authState = useAuthStore.getState().auth;
-    if (authState.sessionExpired) {
-      setInitStatus(INIT_STATUS_SESSION_REJECTED);
-      return;
-    }
-    if (authState.recovering) {
-      setInitStatus(INIT_STATUS_RECOVERING);
-      return;
+  if (loggedIn) {
+    if (isLocalMode) {
+      // In local mode, fire remote library sync in the background so boot is instant
+      void syncYtMusicLibrary();
+    } else {
+      setInitStatus("Syncing YouTube Music...");
+      await syncYtMusicLibrary();
+
+      const authState = useAuthStore.getState().auth;
+      if (authState.sessionExpired) {
+        setInitStatus(INIT_STATUS_SESSION_REJECTED);
+        return;
+      }
+      if (authState.recovering) {
+        setInitStatus(INIT_STATUS_RECOVERING);
+        return;
+      }
     }
   }
 

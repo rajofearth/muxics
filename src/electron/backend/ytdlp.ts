@@ -108,6 +108,13 @@ const COOKIES_FILE = path.join(YTMUSIC_DIR, "yt-dlp-cookies.txt");
  *
  * @returns The path to the cookie file, or `null` if no cookie was provided.
  */
+const YTDLP_COOKIE_WHITELIST = [
+  "SAPISID",
+  "__Secure-3PAPISID",
+  "__Secure-1PAPISID",
+  "SSID",
+];
+
 function writeCookiesFile(cookieString: string | undefined): string | null {
   if (!cookieString) return null;
 
@@ -131,9 +138,11 @@ function writeCookiesFile(cookieString: string | undefined): string | null {
     const value = pair.substring(eqIdx + 1).trim();
     if (!name) continue;
 
-    // Provide both the exact domain and the wildcard form so that yt-dlp
-    // can match regardless of whether the final URL is music.youtube.com,
-    // www.youtube.com, or youtube.com.
+    // Only write whitelisted cookies to prevent invalid session states from breaking yt-dlp
+    if (!YTDLP_COOKIE_WHITELIST.includes(name)) {
+      continue;
+    }
+
     const isSecure = name.startsWith("__Secure-");
     const secureFlag = isSecure ? "TRUE" : "FALSE";
     lines.push(`.youtube.com\tTRUE\t/\t${secureFlag}\t0\t${name}\t${value}`);

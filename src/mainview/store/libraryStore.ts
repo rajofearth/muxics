@@ -152,11 +152,14 @@ export const useLibraryStore = create<LibraryState & LibraryActions>()(
       syncingRemote: false,
       error: null,
       scanProgress: 0,
-      source: "local",
+      source: (typeof localStorage !== "undefined" && (localStorage.getItem("muxics-library-source") as LibrarySource)) || "local",
     },
     settings: { watchFolders: [] },
 
     setLibrarySource: async (source) => {
+      if (typeof localStorage !== "undefined") {
+        localStorage.setItem("muxics-library-source", source);
+      }
       set((s) => ({
         library: {
           ...s.library,
@@ -170,6 +173,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>()(
       }));
       const { usePlaylistStore } = await import("./playlistStore");
       usePlaylistStore.getState().recomputePlaylists(source);
+      void usePlaylistStore.getState().loadCachedPlaylist();
     },
 
     loadLibrary: async () => {

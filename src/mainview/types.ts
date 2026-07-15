@@ -74,6 +74,7 @@ export interface AuthStatus {
   profileName?: string;
   avatarUrl?: string;
   lastSyncedAt?: number;
+  sessionUpdatedAt?: number;
   persistent: boolean;
   error?: string;
   /** Set when the stored YT Music session is rejected by the server during sync. */

@@ -118,6 +118,22 @@ export function SplashScreen() {
           </button>
           <button
             onClick={() => {
+              // Clear error and dismiss splash (guest mode)
+              useAuthStore.setState((s) => ({
+                auth: { ...s.auth, sessionExpired: false },
+              }));
+              useLibraryStore.setState((s) => ({
+                library: { ...s.library, error: null },
+              }));
+              setInitReady();
+            }}
+            className="inline-flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-xl bg-app-elevated text-app-text-primary text-[13px] font-medium hover:bg-app-active border border-app-border-strong transition-all"
+          >
+            <Wifi size={14} />
+            Continue to Player (Guest Mode)
+          </button>
+          <button
+            onClick={() => {
               // Switch to local-only mode and dismiss splash
               setLibrarySource("local");
               useLibraryStore.setState((s) => ({
@@ -173,22 +189,39 @@ export function SplashScreen() {
           </p>
         </div>
 
-        {/* Cancel button */}
+        {/* Action buttons */}
         <div className="flex flex-col gap-2 w-full max-w-xs animate-fade-in">
           <button
             onClick={() => {
               cancelSessionRecovery();
               void cancelYtMusicLogin();
+              // Dismiss splash (guest mode)
               useAuthStore.setState((s) => ({
                 auth: {
                   ...s.auth,
-                  sessionExpired: true,
+                  sessionExpired: false,
                   recovering: false,
                 },
               }));
               useLibraryStore.setState((s) => ({
                 library: { ...s.library, error: null },
               }));
+              setInitReady();
+            }}
+            className="inline-flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-xl bg-app-text-primary text-app-bg text-[13px] font-medium hover:opacity-90 transition-all"
+          >
+            <Wifi size={14} />
+            Continue to Player (Guest Mode)
+          </button>
+          <button
+            onClick={() => {
+              cancelSessionRecovery();
+              void cancelYtMusicLogin();
+              setLibrarySource("local");
+              useLibraryStore.setState((s) => ({
+                library: { ...s.library, error: null },
+              }));
+              setInitReady();
             }}
             className="inline-flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-xl bg-app-elevated text-app-text-primary text-[13px] font-medium hover:bg-app-active border border-app-border-strong transition-all"
           >

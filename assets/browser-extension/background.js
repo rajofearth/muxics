@@ -33,24 +33,31 @@ function mergeCookieSets(...groups) {
 }
 
 async function getCookiePayload() {
-  const [musicCookies, youtubeCookies, rootYoutubeCookies, googleCookies] =
-    await Promise.all([
-      chrome.cookies.getAll({ url: MUSIC_URL }),
-      chrome.cookies.getAll({ url: YOUTUBE_URL }),
-      chrome.cookies.getAll({ url: ROOT_YOUTUBE_URL }),
-      chrome.cookies.getAll({ url: GOOGLE_URL }),
-    ]);
+  const allCookies = await chrome.cookies.getAll({});
+  const filtered = allCookies.filter((c) => {
+    const domain = c.domain.toLowerCase();
+    return domain.includes("youtube.com");
+  });
 
-  const cookieMap = mergeCookieSets(
-    googleCookies,
-    rootYoutubeCookies,
-    youtubeCookies,
-    musicCookies,
-  );
-  if (!cookieMap.size) {
+  if (!filtered.length) {
     throw new Error(
       "No YouTube Music cookies were found in this browser profile.",
     );
+  }
+
+  const cookieMap = new Map();
+  const getPriority = (domain) => {
+    if (domain === "music.youtube.com") return 4;
+    if (domain === ".music.youtube.com") return 3;
+    if (domain.includes("youtube.com")) return 2;
+    if (domain.includes("google.com")) return 1;
+    return 0;
+  };
+
+  filtered.sort((a, b) => getPriority(a.domain) - getPriority(b.domain));
+
+  for (const c of filtered) {
+    cookieMap.set(c.name, c.value);
   }
 
   const cookie = [...cookieMap.entries()]
@@ -60,17 +67,17 @@ async function getCookiePayload() {
     cookieMap.has(name),
   );
 
+  const hasMusicCookie = filtered.some((c) => c.domain.includes("music.youtube.com"));
+  const hasYoutubeCookie = filtered.some((c) => c.domain.includes("youtube.com"));
+
   return {
     cookie,
     cookieNames,
-    sourceUrl:
-      musicCookies.length > 0
-        ? MUSIC_URL
-        : youtubeCookies.length > 0
-          ? YOUTUBE_URL
-          : rootYoutubeCookies.length > 0
-            ? ROOT_YOUTUBE_URL
-            : GOOGLE_URL,
+    sourceUrl: hasMusicCookie
+      ? MUSIC_URL
+      : hasYoutubeCookie
+        ? YOUTUBE_URL
+        : GOOGLE_URL,
   };
 }
 

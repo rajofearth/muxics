@@ -266,79 +266,86 @@ export function MainWindowContent({
     return <EmptyLibrary />;
   }
 
-  if (library.error) {
+  const isLibraryView =
+    navState.view === "library" ||
+    navState.view === "favorites" ||
+    navState.view === "playlists";
+
+  if (library.error && isLibraryView) {
     const isSessionRejected = auth.sessionExpired;
 
     // Auth-related errors get a beautiful sign-in prompt instead of a raw message
     if (isSessionRejected) {
+      if (library.source === "ytmusic") {
+        return (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="max-w-md text-center px-8">
+              <div className="mx-auto mb-4 w-16 h-16 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center">
+                <LogIn size={26} className="text-red-400" />
+              </div>
+              <h2 className="text-2xl font-bold text-app-text-primary mb-2">
+                Signed Out
+              </h2>
+              <p className="text-[13px] text-app-text-tertiary mb-6 leading-relaxed">
+                Your YouTube Music session has expired. Reconnect by sending your
+                session from the browser extension.
+              </p>
+              <div className="flex flex-col items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Clear error and navigate to settings
+                    useLibraryStore.setState((s) => ({
+                      library: { ...s.library, error: null },
+                    }));
+                    handleNavigate("settings");
+                  }}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-app-text-primary text-app-bg text-[13px] font-medium hover:opacity-90"
+                >
+                  <RefreshCw size={14} />
+                  Open Settings
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLibrarySource("local")}
+                  className="px-4 py-2 rounded-xl bg-app-elevated text-app-text-primary text-[13px] font-medium hover:bg-app-active border border-app-border-strong"
+                >
+                  Use Local Files
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      }
+    } else {
+      // Other errors — compact, actionable, no verbose stacktraces
       return (
         <div className="flex-1 flex items-center justify-center">
-          <div className="max-w-md text-center px-8">
-            <div className="mx-auto mb-4 w-16 h-16 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center">
-              <LogIn size={26} className="text-red-400" />
+          <div className="text-center max-w-md">
+            <div className="text-[14px] text-red-400 mb-2">
+              Something went wrong
             </div>
-            <h2 className="text-2xl font-bold text-app-text-primary mb-2">
-              Signed Out
-            </h2>
-            <p className="text-[13px] text-app-text-tertiary mb-6 leading-relaxed">
-              Your YouTube Music session has expired. Reconnect by sending your
-              session from the browser extension.
-            </p>
-            <div className="flex flex-col items-center gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  // Clear error and navigate to settings
-                  useLibraryStore.setState((s) => ({
-                    library: { ...s.library, error: null },
-                  }));
-                  handleNavigate("settings");
-                }}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-app-text-primary text-app-bg text-[13px] font-medium hover:opacity-90"
-              >
-                <RefreshCw size={14} />
-                Open Settings
-              </button>
-              <button
-                type="button"
-                onClick={() => setLibrarySource("local")}
-                className="px-4 py-2 rounded-xl bg-app-elevated text-app-text-primary text-[13px] font-medium hover:bg-app-active border border-app-border-strong"
-              >
-                Use Local Files
-              </button>
+            <div className="text-[13px] text-app-text-tertiary mb-4">
+              Could not load your music library. Please try again.
             </div>
+            <button
+              type="button"
+              onClick={() => {
+                const store = useLibraryStore.getState();
+                if (library.source === "ytmusic") {
+                  void store.syncYtMusicLibrary();
+                } else {
+                  void store.loadLibrary();
+                }
+              }}
+              className="px-4 py-2 bg-app-elevated hover:bg-app-active rounded-lg text-[13px] text-app-text-primary"
+            >
+              Retry
+            </button>
           </div>
         </div>
       );
     }
-
-    // Other errors — compact, actionable, no verbose stacktraces
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="text-center max-w-md">
-          <div className="text-[14px] text-red-400 mb-2">
-            Something went wrong
-          </div>
-          <div className="text-[13px] text-app-text-tertiary mb-4">
-            Could not load your music library. Please try again.
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              const store = useLibraryStore.getState();
-              if (library.source === "ytmusic") {
-                void store.syncYtMusicLibrary();
-              } else {
-                void store.loadLibrary();
-              }
-            }}
-            className="px-4 py-2 bg-app-elevated hover:bg-app-active rounded-lg text-[13px] text-app-text-primary"
-          >
-            Retry
-          </button>
-        </div>
-      </div>
-    );
   }
 
   if (

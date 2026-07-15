@@ -86,6 +86,7 @@ export interface AuthStatusResult {
   profileName?: string;
   avatarUrl?: string;
   lastSyncedAt?: number;
+  sessionUpdatedAt?: number;
   persistent: boolean;
   error?: string;
 }

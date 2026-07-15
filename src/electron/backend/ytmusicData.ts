@@ -394,6 +394,13 @@ export async function syncYtMusicLibrary(): Promise<YTMusicLibrarySyncResult> {
       ),
       libraryMessage: getLibraryMessageSummary(libraryPage),
     });
+    
+    // Clear bad session and cached client in the backend
+    const { setCachedClient } = await import("./ytmusicClient");
+    const { clearStoredYtMusicSession } = await import("./ytmusicSession");
+    setCachedClient(null);
+    clearStoredYtMusicSession();
+    
     throw new Error(libraryAuthState.message);
   }
 
@@ -415,14 +422,8 @@ export async function syncYtMusicLibrary(): Promise<YTMusicLibrarySyncResult> {
         playlists: writeDebugJson("library-playlists.json", playlistPage),
       }
     : { library: null, tracks: null, playlists: null };
-  const trackAuthState = classifyLibraryAuthState(tracksPage);
-  if (!trackAuthState.authenticated) {
-    throw new Error(trackAuthState.message);
-  }
-  const playlistAuthState = classifyLibraryAuthState(playlistPage);
-  if (!playlistAuthState.authenticated) {
-    throw new Error(playlistAuthState.message);
-  }
+  // Redundant sub-page auth checks removed to prevent false positives when tabs are empty or have promotional states.
+  // The primary libraryPage check above is sufficient to verify session credentials.
   const trackRenderers = await collectTracksWithContinuation(
     client,
     tracksPage,
