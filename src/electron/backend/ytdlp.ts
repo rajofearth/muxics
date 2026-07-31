@@ -122,6 +122,7 @@ const YTDLP_COOKIE_WHITELIST = [
   "SAPISID",
   "__Secure-3PAPISID",
   "__Secure-1PAPISID",
+  "APISID",
   "SSID",
 ];
 

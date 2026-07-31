@@ -21,14 +21,18 @@ Muxics is a desktop music player that combines local file playback with YouTube 
 ### Key invariants
 
 1. Keep YT auth aligned with the browser bridge — cookies from a logged-in `music.youtube.com` session
-2. Playlist hydration and playback URL resolution go through `ytmusic.ts`
+2. Playlist hydration and playback URL resolution go through the ytmusic modules (`ytmusicData.ts` / `ytmusicPlayback.ts`)
 3. Prefer audio-only streams when choosing formats
 4. Route playback through the local audio server and cache (`localhost` URLs)
 5. After any YT change, validate: auth import → library sync → All Songs → playlist open/play → search → like/unlike → playlist CRUD → track switching
 
 ## Key files
 
-- `src/electron/backend/ytmusic.ts` — YT Music API, library sync, playlist hydration, stream resolution
+- `src/electron/backend/ytmusicAuth.ts` — auth status, session import/validation, library page fetch, logout
+- `src/electron/backend/ytmusicClient.ts` — Innertube client creation/caching, cookie helpers (SAPISID hash, auth-cookie checks)
+- `src/electron/backend/ytmusicData.ts` — library sync, cache persistence, search, home feed, playlist hydration/CRUD
+- `src/electron/backend/ytmusicParsing.ts` — response renderer parsing (`toTrack`/`toPlaylist`), renderer collectors, auth-state classification
+- `src/electron/backend/ytmusicPlayback.ts` — playback and stream URL resolution
 - `src/electron/backend/ytmusicHomeSnapshot.ts` — home page sections
 - `src/electron/backend/ytMusicCache.ts` — audio/artwork/data caching
 - `src/electron/backend/audioServer.ts` — local media server

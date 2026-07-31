@@ -7,6 +7,7 @@ import {
 import { useLibraryStore } from "./libraryStore";
 import { usePlaylistStore } from "./playlistStore";
 import { usePlayerStore } from "./playerStore";
+import { showToast } from "../components/Toast";
 
 export async function initSession(desktop: DesktopBridge): Promise<void> {
   const { setRpc, loadAuthStatus } = useAuthStore.getState();
@@ -54,8 +55,21 @@ export async function initSession(desktop: DesktopBridge): Promise<void> {
 
   if (loggedIn) {
     if (isLocalMode) {
-      // In local mode, fire remote library sync in the background so boot is instant
-      void syncYtMusicLibrary();
+      // In local mode, fire remote library sync in the background so boot is instant.
+      // The action swallows its own failures into library.error, so once the sync
+      // settles, surface a freshly-set error with a toast. Syncs rejected by the
+      // browser session skip error state and auto-recover — no toast there.
+      const errorBeforeSync = useLibraryStore.getState().library.error;
+      void syncYtMusicLibrary().then(() => {
+        const error = useLibraryStore.getState().library.error;
+        if (
+          error &&
+          error !== errorBeforeSync &&
+          !error.includes("Imported browser session")
+        ) {
+          showToast(error, "error");
+        }
+      });
     } else {
       setInitStatus("Syncing YouTube Music...");
       try {
