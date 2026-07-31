@@ -153,8 +153,6 @@ export const useAuthStore = create<AuthState & AuthActions>()((set, get) => ({
     const { rpc, auth } = get();
     if (!rpc || auth.recovering) return;
 
-    const initialUpdatedAt = auth.sessionUpdatedAt;
-
     set((s) => ({
       auth: {
         ...s.auth,
@@ -184,8 +182,14 @@ export const useAuthStore = create<AuthState & AuthActions>()((set, get) => ({
       try {
         const status = await rpc.request.authGetStatus();
         if (generation !== sessionRecoveryGeneration || !get().auth.recovering) return;
-        if (status.loggedIn && status.sessionUpdatedAt !== initialUpdatedAt) {
-          // Extension refreshed the session — recovery succeeded!
+        if (status.loggedIn) {
+          // Recovery succeeded. The backend only reports loggedIn when it can
+          // build a working Innertube client from the stored session, and the
+          // rejected session was already cleared synchronously before the sync
+          // error reached us — so loggedIn here necessarily means the
+          // extension wrote a fresh, valid session. We must not require a
+          // sessionUpdatedAt change: a cookie refresh can rewrite the same
+          // session without bumping updatedAt.
           set(() => ({
             auth: {
               ...status,
