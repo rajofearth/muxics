@@ -1,3 +1,5 @@
+import "./cookie-utils.js";
+
 const BRIDGE_URL = "http://127.0.0.1:46021";
 const MUSIC_URL = "https://music.youtube.com/";
 const YOUTUBE_URL = "https://www.youtube.com/";
@@ -10,17 +12,8 @@ const REFRESH_INTERVAL_SECONDS = 30;
 const FAST_POLL_INTERVAL_SECONDS = 10;
 /** Delay before the first alarm fires after install (seconds). */
 const INITIAL_DELAY_SECONDS = 5;
-const DIAGNOSTIC_COOKIE_NAMES = [
-  "SAPISID",
-  "__Secure-3PAPISID",
-  "__Secure-1PAPISID",
-  "APISID",
-  "SID",
-  "HSID",
-  "SSID",
-];
 
-// ── Cookie helpers (shared pattern with popup.js) ──────────────
+// ── Cookie helpers (shared module: cookie-utils.js) ─────────────
 
 function mergeCookieSets(...groups) {
   const merged = new Map();
@@ -34,16 +27,7 @@ function mergeCookieSets(...groups) {
 
 async function getCookiePayload() {
   const allCookies = await chrome.cookies.getAll({});
-  const filtered = allCookies.filter((c) => {
-    const domain = c.domain.toLowerCase();
-    if (domain.includes("youtube.com")) return true;
-
-    // SAPISID/APISID may be scoped to Google rather than YouTube. Only
-    // include the auth cookie names needed by the desktop session.
-    return (
-      domain.includes("google.com") && DIAGNOSTIC_COOKIE_NAMES.includes(c.name)
-    );
-  });
+  const filtered = CookieUtils.filterYoutubeCookies(allCookies);
 
   if (!filtered.length) {
     throw new Error(
@@ -51,25 +35,12 @@ async function getCookiePayload() {
     );
   }
 
-  const cookieMap = new Map();
-  const getPriority = (domain) => {
-    if (domain === "music.youtube.com") return 4;
-    if (domain === ".music.youtube.com") return 3;
-    if (domain.includes("youtube.com")) return 2;
-    if (domain.includes("google.com")) return 1;
-    return 0;
-  };
-
-  filtered.sort((a, b) => getPriority(a.domain) - getPriority(b.domain));
-
-  for (const c of filtered) {
-    cookieMap.set(c.name, c.value);
-  }
+  const cookieMap = CookieUtils.sortAndBuildCookieMap(filtered);
 
   const cookie = [...cookieMap.entries()]
     .map(([name, value]) => `${name}=${value}`)
     .join("; ");
-  const cookieNames = DIAGNOSTIC_COOKIE_NAMES.filter((name) =>
+  const cookieNames = CookieUtils.DIAGNOSTIC_COOKIE_NAMES.filter((name) =>
     cookieMap.has(name),
   );
 
