@@ -56,11 +56,6 @@ const desktopBridge: DesktopBridge = {
       ipcRenderer.invoke("desktop:request:exportPlaylist", params),
     getPlatform: () => ipcRenderer.invoke("desktop:request:getPlatform"),
     authGetStatus: () => ipcRenderer.invoke("desktop:request:authGetStatus"),
-    authLogin: () => ipcRenderer.invoke("desktop:request:authLogin"),
-    authCompleteLogin: () =>
-      ipcRenderer.invoke("desktop:request:authCompleteLogin"),
-    authCancelLogin: () =>
-      ipcRenderer.invoke("desktop:request:authCancelLogin"),
     authImportSession: (params) =>
       ipcRenderer.invoke("desktop:request:authImportSession", params),
     authLogout: () => ipcRenderer.invoke("desktop:request:authLogout"),

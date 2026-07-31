@@ -9,11 +9,14 @@ import { Readable } from "node:stream";
 import { log } from "./logger";
 import { AUDIO_SERVER_PORT, MIME_TYPES } from "../../shared/constants";
 import {
-  createSapisdHash,
-  getYtMusicAuthStatus,
+  createSapisidHash,
   getYtMusicSessionCookie,
+} from "./ytmusicClient";
+import { serializeYtMusicSessionCookie } from "./ytmusicCookie";
+import {
+  getYtMusicAuthStatus,
   importYtMusicSession,
-} from "./ytmusic";
+} from "./ytmusicAuth";
 import {
   ensureArtworkCached,
   getAudioPathByKey,
@@ -285,7 +288,7 @@ async function handleYtCache(
           : undefined;
         const authHeader =
           sessionCookie && withCookies
-            ? createSapisdHash(sessionCookie)
+            ? createSapisidHash(sessionCookie)
             : undefined;
 
         const resp = await fetch(sourceUrl, {
@@ -294,9 +297,12 @@ async function handleYtCache(
             "User-Agent":
               "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
             Accept: "*/*",
-            Referer: "https://www.youtube.com",
-            Origin: "https://www.youtube.com",
-            ...(sessionCookie ? { Cookie: sessionCookie } : {}),
+            Referer: "https://music.youtube.com",
+            Origin: "https://music.youtube.com",
+            ...(req.headers.range ? { Range: req.headers.range } : {}),
+            ...(sessionCookie
+              ? { Cookie: serializeYtMusicSessionCookie(sessionCookie) }
+              : {}),
             ...(authHeader ? { Authorization: authHeader } : {}),
             "X-Goog-Authuser": "0",
           },
@@ -339,23 +345,31 @@ async function handleYtCache(
       }
 
       const contentType = upstream.headers.get("content-type") || "audio/mp4";
+      const contentRange = upstream.headers.get("content-range");
       const contentLength = upstream.headers.get("content-length");
+      const acceptRanges = upstream.headers.get("accept-ranges");
 
       log("audio-server", "info", "Proxy stream started", {
         sourceUrl: sourceUrl?.slice(0, 80),
         contentType,
+        status: upstream.status,
       });
 
-      // Write 200 with CORS headers, then pipe the upstream body through
+      // Preserve the upstream response status and range metadata while adding CORS.
       const head: Record<string, string> = {
         "Content-Type": contentType,
-        "Accept-Ranges": "bytes",
         "Access-Control-Allow-Origin": "*",
       };
+      if (contentRange) {
+        head["Content-Range"] = contentRange;
+      }
       if (contentLength) {
         head["Content-Length"] = contentLength;
       }
-      res.writeHead(200, head);
+      if (acceptRanges) {
+        head["Accept-Ranges"] = acceptRanges;
+      }
+      res.writeHead(upstream.status, head);
 
       const body = upstream.body;
       if (!body) {
@@ -454,6 +468,16 @@ async function handleBridge(
 
   if (url.pathname === "/bridge/ping" && req.method === "GET") {
     sendJson(res, 200, { success: true, app: "Muxics" });
+    return true;
+  }
+
+  if (url.pathname === "/bridge/session-status" && req.method === "GET") {
+    const auth = await getYtMusicAuthStatus();
+    sendJson(res, 200, {
+      success: true,
+      needsRefresh: !auth.loggedIn,
+      auth,
+    });
     return true;
   }
 

@@ -2,6 +2,7 @@ import { memo, useCallback } from "react";
 import { Shuffle, Repeat, Repeat1, SkipBack, SkipForward, Minimize2, LayoutList, Heart } from "lucide-react";
 import type { Track, RepeatMode } from "../types";
 import { usePlayerStore } from "../store/playerStore";
+import { useUiStore } from "../store/uiStore";
 import { formatTime } from "../utils";
 import { Scrubber } from "./Scrubber";
 import { VolumeSlider } from "./VolumeSlider";
@@ -46,8 +47,8 @@ export const PlayerBar = memo(function PlayerBar({
   const currentTime = usePlayerStore((s) => s.player.currentTime);
   const duration = currentTrack?.duration ?? 0;
   const RepeatIcon = repeat === "one" ? Repeat1 : Repeat;
-  const toggleFavorite = usePlayerStore((s) => s.toggleFavorite);
-  const isFav = usePlayerStore((s) => currentTrack ? s.favorites.has(currentTrack.id) : false);
+  const toggleFavorite = useUiStore((s) => s.toggleFavorite);
+  const isFav = useUiStore((s) => currentTrack ? s.favorites.has(currentTrack.id) : false);
 
   const handleFav = useCallback(() => {
     if (!currentTrack) return;

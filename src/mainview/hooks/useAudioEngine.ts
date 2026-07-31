@@ -6,8 +6,15 @@ import {
   type MutableRefObject,
 } from "react";
 import { usePlayerStore } from "../store/playerStore";
+import { useAuthStore } from "../store/authStore";
+import { useLibraryStore } from "../store/libraryStore";
 import { showToast } from "../components/Toast";
 import type { Track } from "../types";
+import {
+  getCachedStreamUrl,
+  prefetchUpcomingTracks,
+  setCachedStreamUrl,
+} from "../store/streamPreloader";
 
 const STREAM_EXPIRY_MARGIN_MS = 90_000;
 const STREAM_REFRESH_MIN_DELAY_MS = 30_000;
@@ -34,11 +41,11 @@ function scheduleYtStreamUrlRefresh(args: {
     args.timerRef.current = null;
     if (args.loadTokenRef.current !== args.loadToken) return;
     const st = usePlayerStore.getState();
-    if (st.player.currentTrack?.id !== args.track.id || !st.rpc) return;
+    const rpc = useAuthStore.getState().rpc;
+    if (st.player.currentTrack?.id !== args.track.id || !rpc) return;
     const el = args.audioEl;
     if (!el.isConnected) return;
     void (async () => {
-      const rpc = st.rpc;
       if (!rpc) return;
       try {
         const playback = await rpc.request.ytmusicGetPlayback({
@@ -52,6 +59,12 @@ function scheduleYtStreamUrlRefresh(args: {
           return;
         }
         if (playback.mode !== "direct" || !playback.url) return;
+        // Update preloader cache so the next transition is instant
+        setCachedStreamUrl(
+          args.track.id,
+          playback.url,
+          playback.expiresAt ?? Date.now() + 20 * 60 * 1000,
+        );
         usePlayerStore.getState().setPlaybackUrl(playback.url);
         el.src = playback.url;
         el.load();
@@ -167,26 +180,38 @@ export function useAudioEngine() {
           duration > 0 &&
           (!currentTrack.duration || currentTrack.duration === 0)
         ) {
+          const min = Math.floor(duration / 60);
+          const sec = duration % 60;
+          const time = `${min}:${sec.toString().padStart(2, "0")}`;
           console.log(
             `[AudioEngine] Updating missing duration for "${currentTrack.title}": ${duration}s`,
           );
           usePlayerStore.setState((s) => {
             if (s.player.currentTrack?.id !== currentTrack.id) return s;
-            const updatedTrack = { ...s.player.currentTrack, duration };
+            const updatedTrack = { ...s.player.currentTrack, duration, time };
 
             // Also update it in the library if found
-            const remoteTracks = s.library.remoteTracks.map((t) =>
-              t.id === updatedTrack.id ? updatedTrack : t,
+            const lib = useLibraryStore.getState().library;
+            const remoteTracks = lib.remoteTracks.map((t: Track) =>
+              t.id === updatedTrack.id ? updatedTrack : t
             );
-            const tracks = s.library.tracks.map((t) =>
+            const tracks = lib.tracks.map((t: Track) =>
+              t.id === updatedTrack.id ? updatedTrack : t
+            );
+            useLibraryStore.setState((s2) => ({
+              library: { ...s2.library, remoteTracks, tracks }
+            }));
+
+            // Also update the queue so queued-up tracks show correct duration
+            const queue = s.player.queue.map((t) =>
               t.id === updatedTrack.id ? updatedTrack : t,
             );
 
             return {
-              library: { ...s.library, remoteTracks, tracks },
               player: {
                 ...s.player,
                 currentTrack: updatedTrack,
+                queue,
               },
             };
           });
@@ -196,7 +221,7 @@ export function useAudioEngine() {
 
     const onError = () => {
       console.warn("Audio element error", el.error);
-      const rpc = usePlayerStore.getState().rpc;
+      const rpc = useAuthStore.getState().rpc;
       const { currentTrack, isPlaying } = usePlayerStore.getState().player;
       if (!rpc || !currentTrack || currentTrack.provider !== "ytmusic") {
         return;
@@ -228,6 +253,12 @@ export function useAudioEngine() {
           if (playback.mode !== "direct" || !playback.url) {
             throw new Error(playback.error ?? "Playback unavailable.");
           }
+          // Update preloader cache after recovery
+          setCachedStreamUrl(
+            currentTrack.id,
+            playback.url,
+            playback.expiresAt ?? Date.now() + 20 * 60 * 1000,
+          );
           usePlayerStore.getState().setPlaybackUrl(playback.url);
           el.src = playback.url;
           el.load();
@@ -287,8 +318,23 @@ export function useAudioEngine() {
   }, [clearStreamRefreshTimer]);
 
   const currentTrackId = usePlayerStore((s) => s.player.currentTrack?.id);
-  const rpc = usePlayerStore((s) => s.rpc);
+  const queueLength = usePlayerStore((s) => s.player.queue.length);
+  const shuffle = usePlayerStore((s) => s.player.shuffle);
+  const rpc = useAuthStore((s) => s.rpc);
 
+  // ── 2a. Prefetch upcoming tracks in the background ───────────────────
+  // When the current track, queue, or shuffle state changes, prefetch
+  // stream URLs for the next few tracks so the user never waits.
+  useEffect(() => {
+    const state = usePlayerStore.getState();
+    const currentRpc = useAuthStore.getState().rpc;
+    const { currentTrack, queue } = state.player;
+    if (currentTrack && currentRpc) {
+      prefetchUpcomingTracks(queue, currentTrack.id, currentRpc.request);
+    }
+  }, [currentTrackId, queueLength, shuffle]);
+
+  // ── 2b. Load current track and start playback ────────────────────────
   useEffect(() => {
     const { currentTrack } = usePlayerStore.getState().player;
     if (!currentTrack || !rpc) return;
@@ -311,18 +357,25 @@ export function useAudioEngine() {
         let url: string | null = null;
         let expiresAt: number | undefined;
         if (currentTrack.provider === "ytmusic") {
-          const playback = await rpc.request.ytmusicGetPlayback({
-            trackId: currentTrack.id,
-            providerId: currentTrack.providerId,
-          });
-          if (playback.mode === "direct" && playback.url) {
-            url = playback.url;
-            expiresAt = playback.expiresAt;
+          // Check in-memory preloader cache first for instant playback
+          const cached = getCachedStreamUrl(currentTrack.id);
+          if (cached) {
+            url = cached.url;
+            expiresAt = cached.expiresAt;
           } else {
-            throw new Error(
-              playback.error ??
-                "Playback unavailable for this YouTube Music track.",
-            );
+            const playback = await rpc.request.ytmusicGetPlayback({
+              trackId: currentTrack.id,
+              providerId: currentTrack.providerId,
+            });
+            if (playback.mode === "direct" && playback.url) {
+              url = playback.url;
+              expiresAt = playback.expiresAt;
+            } else {
+              throw new Error(
+                playback.error ??
+                  "Playback unavailable for this YouTube Music track.",
+              );
+            }
           }
         } else if (currentTrack.path) {
           url = await rpc.request.getPlaybackUrl({ path: currentTrack.path });

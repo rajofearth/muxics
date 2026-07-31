@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { Download, RefreshCw, X, AlertCircle, CheckCircle2 } from "lucide-react";
 import type { AutoUpdateStatus } from "../../shared/desktop-contract";
-import { usePlayerStore } from "../store/playerStore";
+import { useAuthStore } from "../store/authStore";
 
 export function UpdateBanner() {
   const [status, setStatus] = useState<AutoUpdateStatus | null>(null);
   const [dismissed, setDismissed] = useState(false);
-  const rpc = usePlayerStore((s) => s.rpc);
+  const rpc = useAuthStore((s) => s.rpc);
 
   useEffect(() => {
     const handleUpdate = (e: Event) => {

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { usePlayerStore } from "../store/playerStore";
+import { usePlaylistStore } from "../store/playlistStore";
 import type { Playlist } from "../types";
 import { Dialog } from "./Dialog";
 
@@ -10,7 +10,7 @@ type EditPlaylistModalProps = {
 
 export function EditPlaylistModal({ playlist, onClose }: EditPlaylistModalProps) {
   const [name, setName] = useState(playlist.name.replace(/\.m3u8?$/i, ""));
-  const renamePlaylist = usePlayerStore((s) => s.renamePlaylist);
+  const renamePlaylist = usePlaylistStore((s) => s.renamePlaylist);
 
   useEffect(() => {
     setName(playlist.name.replace(/\.m3u8?$/i, ""));

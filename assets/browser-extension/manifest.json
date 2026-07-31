@@ -4,9 +4,7 @@
   "description": "Connects your browser's YouTube Music session to the Muxics desktop app.",
   "version": "1.0.2",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAijqTxKjcQfsSnmw+21OUQskBWApyJgoqTnVZpA75B/l8LzOnOikBr5Txl8a9lwOzyLvsotqMZXhZ05wnRow7tAbJ16xNTdFW1F5PlsdXQP0X5u9cGzXKaklSMYzDrY6vGkg2/pvgESaFq/gpkoBB2cj1SUD944FS90N1xkEuSdaJNyTiyv8VhHlUDa0vVbZ3rmH7xDDsqk/AoT9wzCGd+67/7DU6csVNsolxoH65Tjg3C9eLNxkdG472/cmPOeb4YSiMGHQ4AunEIvDAf17IE1wk+6D0eq6mRaz1mjogkA33LAtnx1ixcZVSntEr1c3RGq1DZXjwfxWtvl0BC3hYTQIDAQAB",
-  "permissions": [
-    "cookies"
-  ],
+  "permissions": ["cookies", "alarms"],
   "host_permissions": [
     "https://youtube.com/*",
     "https://*.youtube.com/*",
@@ -17,6 +15,10 @@
     "https://accounts.google.com/*",
     "http://127.0.0.1/*"
   ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
   "action": {
     "default_title": "Muxics Browser Bridge",
     "default_popup": "popup.html"

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { usePlayerStore } from "../store/playerStore";
+import { usePlaylistStore } from "../store/playlistStore";
 import { Dialog } from "./Dialog";
 
 type CreatePlaylistModalProps = {
@@ -8,7 +8,7 @@ type CreatePlaylistModalProps = {
 
 export function CreatePlaylistModal({ onClose }: CreatePlaylistModalProps) {
   const [name, setName] = useState("");
-  const createPlaylist = usePlayerStore((s) => s.createPlaylist);
+  const createPlaylist = usePlaylistStore((s) => s.createPlaylist);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

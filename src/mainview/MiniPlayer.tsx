@@ -13,6 +13,7 @@ import {
   Heart,
 } from "lucide-react";
 import { usePlayerStore } from "./store/playerStore";
+import { useUiStore } from "./store/uiStore";
 import { Scrubber } from "./components/Scrubber";
 import { TitleBar } from "./components/TitleBar";
 import type { Track } from "./types";
@@ -102,8 +103,8 @@ export function MiniPlayer({
   const currentTime = usePlayerStore((s) => s.player.currentTime);
   const duration = currentTrack?.duration ?? 0;
   const containerRef = useResizeToContent(desktop, true, playQueue.length);
-  const toggleFavorite = usePlayerStore((s) => s.toggleFavorite);
-  const isFav = usePlayerStore((s) =>
+  const toggleFavorite = useUiStore((s) => s.toggleFavorite);
+  const isFav = useUiStore((s) =>
     currentTrack ? s.favorites.has(currentTrack.id) : false,
   );
 

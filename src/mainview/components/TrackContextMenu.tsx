@@ -4,6 +4,8 @@ import { useShallow } from "zustand/react/shallow";
 import { Plus, Check, Trash2, LayoutList, ListMusic, ListEnd, Heart } from "lucide-react";
 import type { Track } from "../types";
 import { usePlayerStore } from "../store/playerStore";
+import { usePlaylistStore } from "../store/playlistStore";
+import { useUiStore } from "../store/uiStore";
 import { showToast } from "./Toast";
 
 type TrackContextMenuProps = {
@@ -15,21 +17,21 @@ type TrackContextMenuProps = {
 };
 
 export function TrackContextMenu({ x, y, track, onClose, playlistId }: TrackContextMenuProps) {
-  const {
-    playlists,
-    addTrackToPlaylist,
-    removeTrackFromPlaylist,
-    playNext,
-    addToQueue,
-    toggleFavorite,
-    favorites,
-  } = usePlayerStore(
+  const { playlists, addTrackToPlaylist, removeTrackFromPlaylist } = usePlaylistStore(
     useShallow((s) => ({
       playlists: s.playlists,
       addTrackToPlaylist: s.addTrackToPlaylist,
       removeTrackFromPlaylist: s.removeTrackFromPlaylist,
+    })),
+  );
+  const { playNext, addToQueue } = usePlayerStore(
+    useShallow((s) => ({
       playNext: s.playNext,
       addToQueue: s.addToQueue,
+    })),
+  );
+  const { toggleFavorite, favorites } = useUiStore(
+    useShallow((s) => ({
       toggleFavorite: s.toggleFavorite,
       favorites: s.favorites,
     })),

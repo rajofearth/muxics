@@ -86,32 +86,11 @@ export interface AuthStatusResult {
   profileName?: string;
   avatarUrl?: string;
   lastSyncedAt?: number;
+  sessionUpdatedAt?: number;
   persistent: boolean;
   error?: string;
 }
 
-export interface PendingYtMusicLoginResult {
-  kind: "pending_verification";
-  verificationUrl: string;
-  userCode: string;
-  expiresAt: number;
-  pollIntervalMs: number;
-}
-
-export interface CompletedYtMusicLoginResult {
-  kind: "completed";
-  auth: AuthStatusResult;
-}
-
-export interface AlreadyLoggedInYtMusicLoginResult {
-  kind: "already_logged_in";
-  auth: AuthStatusResult;
-}
-
-export interface ErrorYtMusicLoginResult {
-  kind: "error";
-  message: string;
-}
 
 export interface ImportYtMusicSessionResult {
   success: boolean;
@@ -140,15 +119,6 @@ export interface BrowserBridgeHostInstallResult {
   error?: string;
 }
 
-export type AuthLoginStartResult =
-  | PendingYtMusicLoginResult
-  | CompletedYtMusicLoginResult
-  | AlreadyLoggedInYtMusicLoginResult
-  | ErrorYtMusicLoginResult;
-
-export type AuthLoginCompleteResult =
-  | CompletedYtMusicLoginResult
-  | ErrorYtMusicLoginResult;
 
 export interface YTMusicLibrarySyncResult {
   tracks: TrackResult[];
@@ -214,9 +184,6 @@ export interface DesktopRequestMap {
   exportPlaylist: { params: { name: string; entries: string[] }; response: string };
   getPlatform: { params: void; response: string };
   authGetStatus: { params: void; response: AuthStatusResult };
-  authLogin: { params: void; response: AuthLoginStartResult };
-  authCompleteLogin: { params: void; response: AuthLoginCompleteResult };
-  authCancelLogin: { params: void; response: { success: boolean } };
   authImportSession: { params: ImportYtMusicSessionParams; response: ImportYtMusicSessionResult };
   authLogout: { params: void; response: AuthStatusResult };
   openExternalUrl: { params: { url: string }; response: { success: boolean } };

@@ -1,6 +1,7 @@
 import { useEffect } from "react";
-import ColorThief from "colorthief";
+import { getColorSync, getPaletteSync } from "colorthief";
 import { usePlayerStore } from "../store/playerStore";
+import { useUiStore } from "../store/uiStore";
 
 const MIN_ACCENT_LUMINANCE = 0.25;
 
@@ -43,8 +44,8 @@ function lightenToMinLuminance(r: number, g: number, b: number): [number, number
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function pickBestAccentColor(thief: any, img: HTMLImageElement): string | null {
-  const dominant = thief.getColor(img) as [number, number, number] | null;
+function pickBestAccentColor(img: HTMLImageElement): string | null {
+  const dominant = getColorSync(img)?.array() ?? null;
   if (!dominant) return null;
 
   const [r, g, b] = dominant;
@@ -52,7 +53,7 @@ function pickBestAccentColor(thief: any, img: HTMLImageElement): string | null {
 
   if (lum >= MIN_ACCENT_LUMINANCE) return rgbToHex(r, g, b);
 
-  const palette = thief.getPalette(img, 5) as [number, number, number][] | null;
+  const palette = getPaletteSync(img, { colorCount: 5 })?.map((color) => color.array()) ?? null;
   if (palette?.length) {
     const candidates = palette
       .map((c: [number, number, number]) => ({ rgb: c, lum: getLuminance(c[0], c[1], c[2]) }))
@@ -70,8 +71,8 @@ function pickBestAccentColor(thief: any, img: HTMLImageElement): string | null {
 
 export function useThemeFromArt() {
   const currentTrack = usePlayerStore((s) => s.player.currentTrack);
-  const updateTheme = usePlayerStore((s) => s.updateTheme);
-  const resetTheme = usePlayerStore((s) => s.resetTheme);
+  const updateTheme = useUiStore((s) => s.updateTheme);
+  const resetTheme = useUiStore((s) => s.resetTheme);
 
   useEffect(() => {
     if (!currentTrack?.picture) {
@@ -86,10 +87,7 @@ export function useThemeFromArt() {
 
     const onLoad = () => {
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const CT = (ColorThief as any).default ?? ColorThief;
-        const thief = new CT();
-        const accent = pickBestAccentColor(thief, img);
+        const accent = pickBestAccentColor(img);
         if (accent) {
           const palette = [accent, adjustColor(accent, 0.85), adjustColor(accent, 0.6)];
           updateTheme(accent, palette);

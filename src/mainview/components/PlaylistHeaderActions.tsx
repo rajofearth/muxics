@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Pencil, Trash2, Bookmark, BookmarkPlus } from "lucide-react";
-import { usePlayerStore } from "../store/playerStore";
+import { usePlaylistStore } from "../store/playlistStore";
 import { useShallow } from "zustand/react/shallow";
 import type { Playlist } from "../types";
 import type { NavView } from "../types";
@@ -16,8 +16,8 @@ export function PlaylistHeaderActions({ playlist, onNavigate }: PlaylistHeaderAc
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   
-  const { deletePlaylist, savePlaylistToLibrary, unsavePlaylistFromLibrary } = usePlayerStore();
-  const remoteItems = usePlayerStore(useShallow((s) => s.playlists.remoteItems));
+  const { deletePlaylist, savePlaylistToLibrary, unsavePlaylistFromLibrary } = usePlaylistStore();
+  const remoteItems = usePlaylistStore(useShallow((s) => s.playlists.remoteItems));
   
   const isYt = playlist.provider === "ytmusic";
   const isSaved = isYt && remoteItems.some(p => p.id === playlist.id);

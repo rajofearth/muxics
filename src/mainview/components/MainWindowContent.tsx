@@ -1,8 +1,11 @@
 import { useEffect } from "react";
 import type { ReactNode } from "react";
 import type { Track, NavState, NavView, LibrarySource } from "../types";
-import type { PlayerState } from "../store/playerStore";
-import { usePlayerStore } from "../store/playerStore";
+import type { LibraryState } from "../store/libraryStore";
+import type { PlaylistState } from "../store/playlistStore";
+import type { AuthState } from "../store/authStore";
+import { useLibraryStore } from "../store/libraryStore";
+import { usePlaylistStore } from "../store/playlistStore";
 import { formatTotalDuration, playlistVisibleTrackCount } from "../utils";
 import {
   Library,
@@ -37,12 +40,12 @@ export type MainWindowContentProps = {
   handleNavigate: (view: NavView, id?: string) => void;
   handleOpenLogin: () => void;
   setLibrarySource: (source: LibrarySource) => void;
-  library: PlayerState["library"];
-  playlists: PlayerState["playlists"];
-  settings: PlayerState["settings"];
-  auth: PlayerState["auth"];
-  authLogin: PlayerState["authLogin"];
-  recentlyPlayed: PlayerState["recentlyPlayed"];
+  library: LibraryState["library"];
+  playlists: PlaylistState["playlists"];
+  settings: LibraryState["settings"];
+  auth: AuthState["auth"];
+  authLogin: AuthState["authLogin"];
+  recentlyPlayed: Track[];
   getFavoriteTracks: () => Track[];
   loadPlaylistTracks: (playlistId: string) => Track[];
   libraryScopeLabel: string;
@@ -104,7 +107,7 @@ export function MainWindowContent({
 }: MainWindowContentProps) {
   useEffect(() => {
     const handleCacheUpdate = () => {
-      void usePlayerStore.getState().loadCachedPlaylist();
+      void usePlaylistStore.getState().loadCachedPlaylist();
     };
     document.addEventListener("muxics-yt-cache-stats", handleCacheUpdate);
     return () =>
@@ -263,33 +266,85 @@ export function MainWindowContent({
     return <EmptyLibrary />;
   }
 
-  if (library.error) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="text-center max-w-md">
-          <div className="text-[14px] text-red-400 mb-2">
-            Something went wrong
+  const isLibraryView =
+    navState.view === "library" ||
+    navState.view === "favorites" ||
+    navState.view === "playlists";
+
+  if (library.error && isLibraryView) {
+    const isSessionRejected =
+      auth.sessionExpired && library.source === "ytmusic";
+
+    // Auth-related errors get a beautiful sign-in prompt instead of a raw message
+    if (isSessionRejected) {
+      return (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="max-w-md text-center px-8">
+            <div className="mx-auto mb-4 w-16 h-16 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center">
+              <LogIn size={26} className="text-red-400" />
+            </div>
+            <h2 className="text-2xl font-bold text-app-text-primary mb-2">
+              Signed Out
+            </h2>
+            <p className="text-[13px] text-app-text-tertiary mb-6 leading-relaxed">
+              Your YouTube Music session has expired. Reconnect by sending your
+              session from the browser extension.
+            </p>
+            <div className="flex flex-col items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  // Clear error and navigate to settings
+                  useLibraryStore.setState((s) => ({
+                    library: { ...s.library, error: null },
+                  }));
+                  handleNavigate("settings");
+                }}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-app-text-primary text-app-bg text-[13px] font-medium hover:opacity-90"
+              >
+                <RefreshCw size={14} />
+                Open Settings
+              </button>
+              <button
+                type="button"
+                onClick={() => setLibrarySource("local")}
+                className="px-4 py-2 rounded-xl bg-app-elevated text-app-text-primary text-[13px] font-medium hover:bg-app-active border border-app-border-strong"
+              >
+                Use Local Files
+              </button>
+            </div>
           </div>
-          <div className="text-[13px] text-app-text-tertiary mb-4">
-            {library.error}
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              const store = usePlayerStore.getState();
-              if (library.source === "ytmusic") {
-                void store.syncYtMusicLibrary();
-              } else {
-                void store.loadLibrary();
-              }
-            }}
-            className="px-4 py-2 bg-app-elevated hover:bg-app-active rounded-lg text-[13px] text-app-text-primary"
-          >
-            Retry
-          </button>
         </div>
-      </div>
-    );
+      );
+    } else {
+      // Other errors — compact, actionable, no verbose stacktraces
+      return (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center max-w-md">
+            <div className="text-[14px] text-red-400 mb-2">
+              Something went wrong
+            </div>
+            <div className="text-[13px] text-app-text-tertiary mb-4">
+              Could not load your music library. Please try again.
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                const store = useLibraryStore.getState();
+                if (library.source === "ytmusic") {
+                  void store.syncYtMusicLibrary();
+                } else {
+                  void store.loadLibrary();
+                }
+              }}
+              className="px-4 py-2 bg-app-elevated hover:bg-app-active rounded-lg text-[13px] text-app-text-primary"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      );
+    }
   }
 
   if (
@@ -389,7 +444,7 @@ export function MainWindowContent({
             onItemClick={(item) => handleNavigate("artist_detail", item.name)}
             onPlayItem={(item) => {
               const tracks = library.tracks.filter(
-                (t) => t.artist === item.name,
+                (t: Track) => t.artist === item.name,
               );
               if (tracks.length > 0) onPlayTrack(tracks[0], tracks);
             }}
@@ -399,9 +454,9 @@ export function MainWindowContent({
 
     case "artist_detail": {
       const artistTracks = library.tracks.filter(
-        (t) => t.artist === navState.id,
+        (t: Track) => t.artist === navState.id,
       );
-      const artistPic = artistTracks.find((t) => t.picture)?.picture;
+      const artistPic = artistTracks.find((t: Track) => t.picture)?.picture;
       return renderTrackView(
         navState.id ?? "Artist",
         "Artist",
@@ -431,7 +486,7 @@ export function MainWindowContent({
             onItemClick={(item) => handleNavigate("album_detail", item.name)}
             onPlayItem={(item) => {
               const tracks = library.tracks.filter(
-                (t) => t.album === item.name,
+                (t: Track) => t.album === item.name,
               );
               if (tracks.length > 0) onPlayTrack(tracks[0], tracks);
             }}
@@ -448,7 +503,7 @@ export function MainWindowContent({
         ? activeAlbum
           ? loadPlaylistTracks(activeAlbum.id)
           : []
-        : library.tracks.filter((t) => t.album === navState.id);
+        : library.tracks.filter((t: Track) => t.album === navState.id);
 
       const albumLoading = activeAlbum
         ? playlists.hydratingById[activeAlbum.id]
@@ -458,7 +513,7 @@ export function MainWindowContent({
         : null;
       const albumPic = isYt
         ? activeAlbum?.picture
-        : albumTracks.find((t) => t.picture)?.picture;
+        : albumTracks.find((t: Track) => t.picture)?.picture;
 
       if (
         isYt &&
@@ -680,7 +735,7 @@ export function MainWindowContent({
           ? recentlyPlayed
           : library.tracks.slice(0, 20);
       const recentPics = Array.from(
-        new Set(recent.map((t) => t.picture).filter((p): p is string => !!p)),
+        new Set(recent.map((t: Track) => t.picture).filter((p: string | undefined): p is string => !!p)),
       ).slice(0, 4);
       return renderTrackView(
         "Recently Played",

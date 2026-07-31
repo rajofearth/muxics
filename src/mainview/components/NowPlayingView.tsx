@@ -2,6 +2,7 @@ import { memo, useCallback, useMemo } from "react";
 import { X, Heart, SkipBack, SkipForward, Shuffle, Repeat, Repeat1, Music, ChevronRight } from "lucide-react";
 import type { Track, RepeatMode } from "../types";
 import { usePlayerStore } from "../store/playerStore";
+import { useUiStore } from "../store/uiStore";
 import { Scrubber } from "./Scrubber";
 import { VolumeSlider } from "./VolumeSlider";
 import { PlayPauseButton } from "./PlayPauseButton";
@@ -41,8 +42,8 @@ export const NowPlayingView = memo(function NowPlayingView({
   const currentTime = usePlayerStore((s) => s.player.currentTime);
   const duration = currentTrack.duration ?? 0;
   const RepeatIcon = repeat === "one" ? Repeat1 : Repeat;
-  const toggleFavorite = usePlayerStore((s) => s.toggleFavorite);
-  const isFav = usePlayerStore((s) => s.favorites.has(currentTrack.id));
+  const toggleFavorite = useUiStore((s) => s.toggleFavorite);
+  const isFav = useUiStore((s) => s.favorites.has(currentTrack.id));
   const queue = usePlayerStore((s) => s.player.queue);
 
   const nextTrack = useMemo(() => {

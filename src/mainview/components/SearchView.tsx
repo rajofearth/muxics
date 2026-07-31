@@ -1,7 +1,9 @@
 import { useCallback, useRef, useEffect, useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { Search, X, Mic2, Disc3, Play, ListMusic } from "lucide-react";
-import { usePlayerStore } from "../store/playerStore";
+import { useUiStore } from "../store/uiStore";
+import { useLibraryStore } from "../store/libraryStore";
+import { useAuthStore } from "../store/authStore";
 import type { Track, NavView, Playlist } from "../types";
 import { TrackTable } from "./TrackTable";
 import { HomeFeed } from "./HomeFeed";
@@ -52,16 +54,19 @@ export function SearchView({
   onNavigate,
 }: SearchViewProps) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const { search, setSearchQuery, libraryTracks, librarySource, auth } =
-    usePlayerStore(
-      useShallow((s) => ({
-        search: s.search,
-        setSearchQuery: s.setSearchQuery,
-        libraryTracks: s.library.tracks,
-        librarySource: s.library.source,
-        auth: s.auth,
-      })),
-    );
+  const { search, setSearchQuery } = useUiStore(
+    useShallow((s) => ({
+      search: s.search,
+      setSearchQuery: s.setSearchQuery,
+    })),
+  );
+  const { libraryTracks, librarySource } = useLibraryStore(
+    useShallow((s) => ({
+      libraryTracks: s.library.tracks,
+      librarySource: s.library.source,
+    })),
+  );
+  const auth = useAuthStore((s) => s.auth);
 
   const libraryMaps = useMemo(
     () => buildLibrarySearchMaps(libraryTracks),
