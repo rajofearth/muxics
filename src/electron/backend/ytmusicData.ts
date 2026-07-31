@@ -45,10 +45,9 @@ import {
   toTrackFromRaw,
   type RawNode,
 } from "./ytmusicParsing";
-import { getClient, getYtMusicSessionCookie, getCookiePresence } from "./ytmusicClient";
-import { loadStoredYtMusicSession } from "./ytmusicSession";
+import { getClient, getYtMusicSessionCookie, getCookiePresence, setCachedClient } from "./ytmusicClient";
+import { loadStoredYtMusicSession, clearStoredYtMusicSession } from "./ytmusicSession";
 import { createYtMusicSessionCookie } from "./ytmusicCookie";
-import { getLibraryPageData } from "./ytmusicAuth";
 import { clearYtMusicSearchCacheFile } from "./ytmusicSearchCache";
 import { pLimit } from "./concurrency";
 
@@ -387,6 +386,38 @@ async function getYtMusicPlaylistFromRaw(
   };
 }
 
+export async function getLibraryPageData(
+  client: Innertube,
+  filter?: string,
+): Promise<any> {
+  // Fetches the library page context from Innertube, optionally filtered by a
+  // chip (e.g. "Songs" or "Playlists"). Used by syncYtMusicLibrary and by
+  // ytmusicAuth.validateCookieClient to verify a session.
+  if (!filter) {
+    const response = await client.actions.execute("/browse", {
+      browseId: "FEmusic_library_landing",
+      client: "YTMUSIC",
+    });
+    return response.data;
+  }
+
+  const base = await getLibraryPageData(client);
+  const chipRenderers = collectRenderers(base, "chipCloudChipRenderer");
+  const chip = chipRenderers.find((entry) => readText(entry.text) === filter);
+  const endpoint = readChipBrowseEndpoint(chip);
+  if (!endpoint) {
+    return base;
+  }
+
+  const response = await client.actions.execute("/browse", {
+    client: "YTMUSIC",
+    ...(endpoint.browseId ? { browseId: endpoint.browseId } : {}),
+    ...(endpoint.params ? { params: endpoint.params } : {}),
+    ...(endpoint.continuation ? { continuation: endpoint.continuation } : {}),
+  });
+  return response.data;
+}
+
 export async function syncYtMusicLibrary(): Promise<YTMusicLibrarySyncResult> {
   const client = await getClient();
   const existingCache = loadCache();
@@ -407,8 +438,6 @@ export async function syncYtMusicLibrary(): Promise<YTMusicLibrarySyncResult> {
     });
     
     // Clear bad session and cached client in the backend
-    const { setCachedClient } = await import("./ytmusicClient");
-    const { clearStoredYtMusicSession } = await import("./ytmusicSession");
     setCachedClient(null);
     clearStoredYtMusicSession();
     

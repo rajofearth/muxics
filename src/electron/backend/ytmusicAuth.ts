@@ -20,6 +20,7 @@ import {
   loadStoredYtMusicSession,
 } from "./ytmusicSession";
 import { bumpYtMusicSearchCacheSession } from "./ytmusicSearchCache";
+import { getLibraryPageData } from "./ytmusicData";
 import { log } from "./logger";
 import { YTMUSIC_CACHE_PATH } from "./paths";
 import { classifyLibraryAuthState } from "./ytmusicParsing";
@@ -44,41 +45,6 @@ function getCacheLastSyncedAt(): number | undefined {
   } catch {
     return undefined;
   }
-}
-
-export async function getLibraryPageData(
-  client: Innertube,
-  filter?: string,
-): Promise<any> {
-  // Simple helper to fetch the library page context from Innertube.
-  // Imported by ytmusicData.ts to do sync.
-  if (!filter) {
-    const response = await client.actions.execute("/browse", {
-      browseId: "FEmusic_library_landing",
-      client: "YTMUSIC",
-    });
-    return response.data;
-  }
-
-  // We need readText and collectRenderers, but wait, we can import them from ytmusicParsing or just do it.
-  // Wait, let's import them to be clean, or we can just import readText/collectRenderers/readChipBrowseEndpoint from ytmusicParsing.
-  const { collectRenderers, readText, readChipBrowseEndpoint } = await import("./ytmusicParsing");
-
-  const base = await getLibraryPageData(client);
-  const chipRenderers = collectRenderers(base, "chipCloudChipRenderer");
-  const chip = chipRenderers.find((entry) => readText(entry.text) === filter);
-  const endpoint = readChipBrowseEndpoint(chip);
-  if (!endpoint) {
-    return base;
-  }
-
-  const response = await client.actions.execute("/browse", {
-    client: "YTMUSIC",
-    ...(endpoint.browseId ? { browseId: endpoint.browseId } : {}),
-    ...(endpoint.params ? { params: endpoint.params } : {}),
-    ...(endpoint.continuation ? { continuation: endpoint.continuation } : {}),
-  });
-  return response.data;
 }
 
 async function resolveProfileName(
