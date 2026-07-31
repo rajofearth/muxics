@@ -42,7 +42,7 @@ jobs:
         run: pnpm run build
 
       - name: Package (mac arm64)
-        run: pnpm exec electron-builder --config electron-builder.yml --publish always --mac --arm64
+        run: pnpm exec electron-builder --config electron-builder.yml --publish never --mac --arm64
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -76,7 +76,7 @@ jobs:
         run: pnpm run build
 
       - name: Package (linux x64)
-        run: pnpm exec electron-builder --config electron-builder.yml --publish always --linux --x64
+        run: pnpm exec electron-builder --config electron-builder.yml --publish never --linux --x64
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -110,7 +110,7 @@ jobs:
         run: pnpm run build
 
       - name: Package (linux arm64)
-        run: pnpm exec electron-builder --config electron-builder.yml --publish always --linux --arm64
+        run: pnpm exec electron-builder --config electron-builder.yml --publish never --linux --arm64
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -146,7 +146,7 @@ jobs:
         run: pnpm run build
 
       - name: Package (windows x64 & arm64)
-        run: pnpm exec electron-builder --config electron-builder.yml --publish always --win --x64 --arm64
+        run: pnpm exec electron-builder --config electron-builder.yml --publish never --win --x64 --arm64
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # 7za auto-selects the ARM64 BCJ2 filter for ARM64 payloads, which the
@@ -199,10 +199,16 @@ jobs:
           echo "Artifacts in release-artifacts:"
           find release-artifacts -type f -maxdepth 4 -print | sed -n '1,200p'
 
-      - name: Generate release notes
+      - name: Select release notes
         id: notes
+        env:
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+        shell: bash
         run: |
-          cat > release-notes.md <<'EOF'
+          NOTES_FILE="release-notes-${RELEASE_TAG}.md"
+          if [ ! -f "$NOTES_FILE" ]; then
+            NOTES_FILE=release-notes.md
+            cat > "$NOTES_FILE" <<'EOF'
           ## Muxics (packaged by electron-builder)
 
           This release includes builds for macOS (arm64), Linux (x64 & arm64), and Windows (x64 & arm64).
@@ -214,9 +220,9 @@ jobs:
           - Windows installer is NSIS by default (see electron-builder.yml).
           - Linux builds include AppImage and tar.gz per electron-builder.yml.
           EOF
-          echo "notes_path=release-notes.md" >> $GITHUB_OUTPUT
-
-      # ← REMOVE the cli/gh-action step here
+          fi
+          echo "Using release notes: $NOTES_FILE"
+          echo "notes_path=$NOTES_FILE" >> "$GITHUB_OUTPUT"
 
       - name: Create or update draft release
         env:
@@ -224,15 +230,15 @@ jobs:
           GH_REPO: ${{ github.repository }}
         shell: bash
         run: |
-          TAG=${{ steps.tag.outputs.tag }}
-          NOTES_FILE=release-notes.md
+          TAG="${{ steps.tag.outputs.tag }}"
+          NOTES_FILE="${{ steps.notes.outputs.notes_path }}"
 
           if gh release view "$TAG" -R "$GH_REPO" >/dev/null 2>&1; then
             echo "Release $TAG exists, editing (ensuring draft and updating notes)"
             gh release edit "$TAG" --title "Muxics $TAG" --notes-file "$NOTES_FILE" --draft -R "$GH_REPO"
           else
             echo "Creating draft release $TAG"
-            gh release create "$TAG" --title "Muxics $TAG" --notes-file "$NOTES_FILE" --draft -R "$GH_REPO"
+            gh release create "$TAG" --title "Muxics $TAG" --notes-file "$NOTES_FILE" --draft --verify-tag -R "$GH_REPO"
           fi
 
       - name: Upload assets to release
@@ -241,9 +247,9 @@ jobs:
           GH_REPO: ${{ github.repository }}
         shell: bash
         run: |
-          TAG=${{ steps.tag.outputs.tag }}
+          TAG="${{ steps.tag.outputs.tag }}"
           # Collect only final installer/archive assets and electron updater manifests
-          mapfile -t files < <(find release-artifacts -type f \( -name 'Muxics-*.dmg' -o -name 'Muxics-*.zip' -o -name 'Muxics-*.AppImage' -o -name 'Muxics-*.tar.gz' -o -name 'Muxics-*.exe' -o -name 'latest*.yml' \) | sed -e 's/ /\\ /g')
+          mapfile -t files < <(find release-artifacts -type f \( -name 'Muxics-*.dmg' -o -name 'Muxics-*.zip' -o -name 'Muxics-*.AppImage' -o -name 'Muxics-*.tar.gz' -o -name 'Muxics-*.exe' -o -name 'latest*.yml' \) -print)
           if [ "${#files[@]}" -eq 0 ]; then
             echo "No artifacts found to upload"
             exit 1
@@ -251,8 +257,11 @@ jobs:
 
           for f in "${files[@]}"; do
             echo "Uploading: $f"
-            gh release upload "$TAG" "$f" --clobber -R "$GH_REPO" || true
+            gh release upload "$TAG" "$f" --clobber -R "$GH_REPO"
           done
+
+          echo "Release assets on GitHub:"
+          gh release view "$TAG" --json isDraft,assets --jq '{draft: .isDraft, assets: [.assets[].name]}'
 
       - name: Done
         run: echo "Draft release prepared with artifacts."
