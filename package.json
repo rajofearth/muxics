@@ -13,35 +13,30 @@
     "package": "pnpm run build && electron-builder --config electron-builder.yml"
   },
   "dependencies": {
-    "@tanstack/react-virtual": "^3.13.23",
-    "colorthief": "^2.7.0",
-    "electron-updater": "^6.8.3",
-    "ieee754": "latest",
+    "@tanstack/react-virtual": "^3.14.9",
+    "colorthief": "^3.4.0",
+    "electron-updater": "^6.8.9",
     "lucide-react": "latest",
-    "ms": "^2.1.3",
-    "music-metadata": "^11.12.1",
+    "music-metadata": "^11.14.0",
     "react": "latest",
     "react-dom": "latest",
-    "youtubei.js": "^17.0.1",
-    "zustand": "^5.0.11"
+    "youtubei.js": "^17.2.0",
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.2.1",
+    "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "@vitejs/plugin-react": "latest",
-    "autoprefixer": "latest",
     "concurrently": "latest",
     "cross-env": "latest",
     "electron": "latest",
     "electron-builder": "latest",
-    "electronmon": "latest",
     "postcss": "latest",
     "tailwindcss": "latest",
     "tsup": "latest",
     "typescript": "latest",
-    "vite": "latest",
-    "wait-on": "latest"
+    "vite": "latest"
   }
 }

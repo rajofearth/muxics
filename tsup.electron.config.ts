@@ -17,5 +17,5 @@ export default defineConfig({
     js: ".cjs",
   }),
   external: ["electron", "electron-updater"],
-  noExternal: ["music-metadata", "token-types", "ieee754"],
+  noExternal: ["music-metadata", "token-types"],
 });
