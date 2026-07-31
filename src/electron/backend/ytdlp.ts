@@ -4,6 +4,10 @@ import path from "node:path";
 import { app } from "electron";
 import { YTMUSIC_TOOLS_DIR, YTMUSIC_DIR, ensureAppDataDirs } from "./paths";
 import { log } from "./logger";
+import {
+  serializeYtMusicSessionCookie,
+  type YtMusicSessionCookie,
+} from "./ytmusicCookie";
 
 // ---------------------------------------------------------------------------
 // Binary URLs
@@ -115,8 +119,11 @@ const YTDLP_COOKIE_WHITELIST = [
   "SSID",
 ];
 
-function writeCookiesFile(cookieString: string | undefined): string | null {
-  if (!cookieString) return null;
+function writeCookiesFile(
+  cookie: YtMusicSessionCookie | undefined,
+): string | null {
+  if (!cookie) return null;
+  const cookieString = serializeYtMusicSessionCookie(cookie);
 
   ensureAppDataDirs();
 
@@ -180,12 +187,12 @@ export interface YtDlpStreamResult {
  */
 export async function getYtDlpStreamUrl(
   videoId: string,
-  cookieString?: string,
+  cookie?: YtMusicSessionCookie,
 ): Promise<YtDlpStreamResult | null> {
   const binaryPath = await ensureYtDlpBinary();
   const url = `https://music.youtube.com/watch?v=${videoId}`;
 
-  const cookiesPath = writeCookiesFile(cookieString);
+  const cookiesPath = writeCookiesFile(cookie);
 
   const args: string[] = [
     "--no-warnings",
@@ -258,11 +265,11 @@ export async function getYtDlpStreamUrl(
  */
 export async function getYtDlpDuration(
   videoId: string,
-  cookieString?: string,
+  cookie?: YtMusicSessionCookie,
 ): Promise<number | null> {
   const binaryPath = await ensureYtDlpBinary();
   const url = `https://music.youtube.com/watch?v=${videoId}`;
-  const cookiesPath = writeCookiesFile(cookieString);
+  const cookiesPath = writeCookiesFile(cookie);
 
   const args: string[] = ["--no-warnings", "-q", "--print", "duration"];
 

@@ -2,6 +2,11 @@ import crypto from "node:crypto";
 import { Innertube } from "youtubei.js";
 import { log } from "./logger";
 import {
+  createYtMusicSessionCookie,
+  serializeYtMusicSessionCookie,
+  type YtMusicSessionCookie,
+} from "./ytmusicCookie";
+import {
   clearStoredYtMusicSession,
   loadStoredYtMusicSession,
   persistOAuthTokens,
@@ -14,28 +19,28 @@ let loggedLibraryAuthDebug = false;
 const YTMUSIC_ORIGIN = "https://music.youtube.com";
 const YTMUSIC_CLIENT_NAME = "WEB_REMIX";
 const YTMUSIC_CLIENT_ID = "67";
-const REQUIRED_COOKIE_NAMES = [
+const AUTH_COOKIE_NAMES = [
   "SAPISID",
   "__Secure-3PAPISID",
   "__Secure-1PAPISID",
   "APISID",
 ] as const;
 const DIAGNOSTIC_COOKIE_NAMES = [
-  ...REQUIRED_COOKIE_NAMES,
+  ...AUTH_COOKIE_NAMES,
   "SID",
   "HSID",
   "SSID",
 ] as const;
 
 function getCookieValue(
-  cookie: string | undefined,
+  cookie: YtMusicSessionCookie | undefined,
   name: string,
 ): string | undefined {
   if (!cookie) {
     return undefined;
   }
 
-  const part = cookie
+  const part = cookie.value
     .split(";")
     .map((entry) => entry.trim())
     .find((entry) => entry.startsWith(`${name}=`));
@@ -43,7 +48,7 @@ function getCookieValue(
   return part ? part.slice(name.length + 1) : undefined;
 }
 
-export function createSapisidHash(cookie: string): string | null {
+export function createSapisidHash(cookie: YtMusicSessionCookie): string | null {
   const sid =
     getCookieValue(cookie, "SAPISID") ||
     getCookieValue(cookie, "__Secure-3PAPISID") ||
@@ -64,7 +69,7 @@ export function createSapisidHash(cookie: string): string | null {
 }
 
 export function getCookiePresence(
-  cookie: string | undefined,
+  cookie: YtMusicSessionCookie | undefined,
 ): Record<string, boolean> {
   return Object.fromEntries(
     DIAGNOSTIC_COOKIE_NAMES.map((name) => [
@@ -74,8 +79,10 @@ export function getCookiePresence(
   );
 }
 
-export function hasRequiredAuthCookie(cookie: string | undefined): boolean {
-  return REQUIRED_COOKIE_NAMES.every((name) =>
+export function hasRequiredAuthCookie(cookie: YtMusicSessionCookie | undefined): boolean {
+  // A browser session normally contains one or more of these equivalent
+  // SAPISID-family cookies, not necessarily every variant.
+  return AUTH_COOKIE_NAMES.some((name) =>
     Boolean(getCookieValue(cookie, name)),
   );
 }
@@ -105,7 +112,9 @@ function getYtMusicRequestContext(headers: Headers, body?: string) {
   };
 }
 
-function createFetchWithYtMusicAuth(cookie?: string): typeof fetch | undefined {
+function createFetchWithYtMusicAuth(
+  cookie?: YtMusicSessionCookie,
+): typeof fetch | undefined {
   if (!cookie) {
     return undefined;
   }
@@ -143,7 +152,7 @@ function createFetchWithYtMusicAuth(cookie?: string): typeof fetch | undefined {
       headers.set("Origin", YTMUSIC_ORIGIN);
       headers.set("Referer", `${YTMUSIC_ORIGIN}/`);
       headers.set("X-Origin", YTMUSIC_ORIGIN);
-      headers.set("Cookie", cookie);
+      headers.set("Cookie", serializeYtMusicSessionCookie(cookie));
       headers.set("X-Goog-Authuser", headers.get("X-Goog-Authuser") ?? "0");
 
       const authHeader = createSapisidHash(cookie);
@@ -188,11 +197,11 @@ function createFetchWithYtMusicAuth(cookie?: string): typeof fetch | undefined {
   };
 }
 
-async function createClient(cookie?: string): Promise<Innertube> {
+async function createClient(cookie?: YtMusicSessionCookie): Promise<Innertube> {
   loggedLibraryAuthDebug = false;
 
   const client = await Innertube.create({
-    cookie,
+    cookie: cookie ? serializeYtMusicSessionCookie(cookie) : undefined,
     fetch: createFetchWithYtMusicAuth(cookie),
     retrieve_player: true,
     generate_session_locally: true,
@@ -201,7 +210,9 @@ async function createClient(cookie?: string): Promise<Innertube> {
   return client;
 }
 
-export async function createClientWithCookie(cookie: string): Promise<Innertube> {
+export async function createClientWithCookie(
+  cookie: YtMusicSessionCookie,
+): Promise<Innertube> {
   return createClient(cookie);
 }
 
@@ -228,7 +239,9 @@ async function restoreClientFromDisk(): Promise<Innertube | null> {
 
   try {
     if (stored.auth.kind === "cookie") {
-      const client = await createClient(stored.auth.cookie);
+      const client = await createClient(
+        createYtMusicSessionCookie(stored.auth.cookie),
+      );
       cachedClient = client;
       cachedClientSessionUpdatedAt = stored.updatedAt;
       return client;
@@ -274,8 +287,9 @@ export async function getClient(force = false): Promise<Innertube> {
  * Used by the audio server proxy and cache warm paths to pass auth context
  * to googlevideo CDN requests that would otherwise return 403.
  */
-export function getYtMusicSessionCookie(): string | undefined {
-  return cachedClient?.session.cookie;
+export function getYtMusicSessionCookie(): YtMusicSessionCookie | undefined {
+  const cookie = cachedClient?.session.cookie;
+  return cookie ? createYtMusicSessionCookie(cookie) : undefined;
 }
 
 export function setCachedClient(client: Innertube | null): void {

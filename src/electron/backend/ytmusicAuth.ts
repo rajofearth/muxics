@@ -23,6 +23,11 @@ import { bumpYtMusicSearchCacheSession } from "./ytmusicSearchCache";
 import { log } from "./logger";
 import { YTMUSIC_CACHE_PATH } from "./paths";
 import { classifyLibraryAuthState } from "./ytmusicParsing";
+import {
+  createYtMusicSessionCookie,
+  serializeYtMusicSessionCookie,
+  type YtMusicSessionCookie,
+} from "./ytmusicCookie";
 
 type ImportedSessionDetails = {
   cookieNames?: string[];
@@ -161,7 +166,9 @@ async function buildAuthStatus(): Promise<AuthStatusResult> {
   return cachedAuthStatus;
 }
 
-export async function validateCookieClient(cookie: string): Promise<Innertube> {
+export async function validateCookieClient(
+  cookie: YtMusicSessionCookie,
+): Promise<Innertube> {
   const client = await createClientWithCookie(cookie);
   const libraryPage = await getLibraryPageData(client);
   const authState = classifyLibraryAuthState(libraryPage);
@@ -194,8 +201,10 @@ export async function importYtMusicSession(
   cookie: string,
   details?: ImportedSessionDetails,
 ): Promise<ImportYtMusicSessionResult> {
-  const normalizedCookie = normalizeCookieString(cookie);
-  if (!normalizedCookie) {
+  const normalizedCookie = createYtMusicSessionCookie(
+    normalizeCookieString(cookie),
+  );
+  if (!normalizedCookie.value) {
     return {
       success: false,
       error:
@@ -226,7 +235,7 @@ export async function importYtMusicSession(
 
   try {
     const client = await validateCookieClient(normalizedCookie);
-    if (!persistCookieString(normalizedCookie)) {
+    if (!persistCookieString(serializeYtMusicSessionCookie(normalizedCookie))) {
       return {
         success: false,
         error:
@@ -267,8 +276,10 @@ export function saveYtMusicCookieSession(
   cookie: string,
   details?: ImportedSessionDetails,
 ): { success: boolean; error?: string } {
-  const normalizedCookie = normalizeCookieString(cookie);
-  if (!normalizedCookie) {
+  const normalizedCookie = createYtMusicSessionCookie(
+    normalizeCookieString(cookie),
+  );
+  if (!normalizedCookie.value) {
     return {
       success: false,
       error:
@@ -289,7 +300,7 @@ export function saveYtMusicCookieSession(
     };
   }
 
-  if (!persistCookieString(normalizedCookie)) {
+  if (!persistCookieString(serializeYtMusicSessionCookie(normalizedCookie))) {
     return {
       success: false,
       error:

@@ -47,8 +47,10 @@ import {
 } from "./ytmusicParsing";
 import { getClient, getYtMusicSessionCookie, getCookiePresence } from "./ytmusicClient";
 import { loadStoredYtMusicSession } from "./ytmusicSession";
+import { createYtMusicSessionCookie } from "./ytmusicCookie";
 import { getLibraryPageData } from "./ytmusicAuth";
 import { clearYtMusicSearchCacheFile } from "./ytmusicSearchCache";
+import { pLimit } from "./concurrency";
 
 export type CacheShape = {
   tracks: TrackResult[];
@@ -153,29 +155,7 @@ function invalidateCachedTrackMeta(): void {
   _cachedTrackMeta = null;
 }
 
-async function pLimit<T, R>(
-  items: T[],
-  concurrency: number,
-  fn: (x: T) => Promise<R>,
-): Promise<R[]> {
-  const results: R[] = [];
-  let idx = 0;
 
-  async function worker(): Promise<void> {
-    while (idx < items.length) {
-      const i = idx++;
-      const res = await fn(items[i]);
-      results[i] = res;
-    }
-  }
-
-  const workers = Array.from(
-    { length: Math.min(concurrency, items.length) },
-    () => worker(),
-  );
-  await Promise.all(workers);
-  return results;
-}
 
 async function fetchBatchTrackDurations(tracks: TrackResult[]): Promise<void> {
   const client = await getClient().catch(() => null);
@@ -389,7 +369,7 @@ export async function syncYtMusicLibrary(): Promise<YTMusicLibrarySyncResult> {
     log("ytmusic", "warn", "Library sync rejected by YouTube Music", {
       cookiePresence: getCookiePresence(
         storedSession?.auth.kind === "cookie"
-          ? storedSession.auth.cookie
+          ? createYtMusicSessionCookie(storedSession.auth.cookie)
           : undefined,
       ),
       libraryMessage: getLibraryMessageSummary(libraryPage),

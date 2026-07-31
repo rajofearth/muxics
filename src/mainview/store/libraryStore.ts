@@ -53,6 +53,9 @@ export interface LibraryState {
 
 export interface LibraryActions {
   setLibrarySource: (source: LibrarySource) => void;
+  getSearchTracks: (query: string) => { source: LibrarySource; tracks: Track[] };
+  getTrack: (trackId: string) => Track | undefined;
+  getAllTracks: () => Track[];
   loadLibrary: () => Promise<void>;
   hydrateYtMusicFromCache: () => Promise<void>;
   syncYtMusicLibrary: () => Promise<void>;
@@ -100,6 +103,32 @@ export const useLibraryStore = create<LibraryState & LibraryActions>()(
       const { usePlaylistStore } = await import("./playlistStore");
       usePlaylistStore.getState().recomputePlaylists(source);
       void usePlaylistStore.getState().loadCachedPlaylist();
+    },
+
+    getSearchTracks: (query) => {
+      const { source, localTracks, remoteTracks } = get().library;
+      const normalizedQuery = query.toLowerCase();
+      return {
+        source,
+        tracks: mergeTracks(source, localTracks, remoteTracks).filter(
+          (track) =>
+            track.title.toLowerCase().includes(normalizedQuery) ||
+            track.artist.toLowerCase().includes(normalizedQuery) ||
+            track.album.toLowerCase().includes(normalizedQuery),
+        ),
+      };
+    },
+
+    getTrack: (trackId) => {
+      const { localTracks, remoteTracks } = get().library;
+      return [...localTracks, ...remoteTracks].find(
+        (track) => track.id === trackId,
+      );
+    },
+
+    getAllTracks: () => {
+      const { localTracks, remoteTracks } = get().library;
+      return [...localTracks, ...remoteTracks];
     },
 
     loadLibrary: async () => {

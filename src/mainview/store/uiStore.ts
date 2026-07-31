@@ -4,7 +4,7 @@ import type { Playlist, Track } from "../types";
 import { getRpc, useAuthStore } from "./authStore";
 import { useLibraryStore } from "./libraryStore";
 import { showToast } from "../components/Toast";
-import { toTrack, toPlaylist, mergeTracks } from "./converters";
+import { toTrack, toPlaylist } from "./converters";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -156,24 +156,13 @@ export const useUiStore = create<UiState & UiActions>()((set, get) => ({
 
     // Schedule the heavy search work after React has painted the new input value
     void setTimeout(() => {
-      const library = useLibraryStore.getState().library;
+      const library = useLibraryStore.getState();
       const rpc = getRpc();
       const auth = useAuthStore.getState().auth;
-
-      const q = trimmed.toLowerCase();
-      const localResults = mergeTracks(
-        library.source,
-        library.localTracks,
-        library.remoteTracks,
-      ).filter(
-        (t) =>
-          t.title.toLowerCase().includes(q) ||
-          t.artist.toLowerCase().includes(q) ||
-          t.album.toLowerCase().includes(q),
-      );
+      const { source, tracks: localResults } = library.getSearchTracks(trimmed);
 
       const needsRemote = Boolean(
-        rpc && auth.loggedIn && library.source !== "local",
+        rpc && auth.loggedIn && source !== "local",
       );
 
       if (!needsRemote) {
@@ -216,22 +205,13 @@ export const useUiStore = create<UiState & UiActions>()((set, get) => ({
 
           const rpcNow = getRpc();
           const authNow = useAuthStore.getState().auth;
-          const libNow = useLibraryStore.getState().library;
+          const libraryNow = useLibraryStore.getState();
+          const { source: sourceNow, tracks: localAgain } =
+            libraryNow.getSearchTracks(trimmed);
 
-          if (!rpcNow || !authNow.loggedIn || libNow.source === "local") {
+          if (!rpcNow || !authNow.loggedIn || sourceNow === "local") {
             return;
           }
-
-          const localAgain = mergeTracks(
-            libNow.source,
-            libNow.localTracks,
-            libNow.remoteTracks,
-          ).filter(
-            (t) =>
-              t.title.toLowerCase().includes(q) ||
-              t.artist.toLowerCase().includes(q) ||
-              t.album.toLowerCase().includes(q),
-          );
 
           try {
             const remoteResults = await rpcNow.request.ytmusicSearch({
@@ -251,10 +231,10 @@ export const useUiStore = create<UiState & UiActions>()((set, get) => ({
 
             // Add search results to remoteTracks so that UI components like TrackTable
             // can find the full track metadata (artist, duration, etc)
-            useLibraryStore.getState().mergeRemoteTracks(normalizedTracks);
+            libraryNow.mergeRemoteTracks(normalizedTracks);
 
             const combinedTracks =
-              libNow.source === "all"
+              sourceNow === "all"
                 ? [...normalizedTracks, ...localAgain].filter(
                     (track, index, list) =>
                       list.findIndex((entry) => entry.id === track.id) ===
@@ -358,13 +338,7 @@ export const useUiStore = create<UiState & UiActions>()((set, get) => ({
   toggleFavorite: async (trackId) => {
     const rpc = getRpc();
 
-    // TODO: read localTracks + remoteTracks from libraryStore
-    const localTracks: Track[] = useLibraryStore.getState().library.localTracks;
-    const remoteTracks: Track[] =
-      useLibraryStore.getState().library.remoteTracks;
-    const track = [...localTracks, ...remoteTracks].find(
-      (item) => item.id === trackId,
-    );
+    const track = useLibraryStore.getState().getTrack(trackId);
     const previousFavorites = new Set(get().favorites);
 
     set((s) => {
@@ -402,11 +376,10 @@ export const useUiStore = create<UiState & UiActions>()((set, get) => ({
 
   getFavoriteTracks: () => {
     const { favorites } = get();
-    const localTracks = useLibraryStore.getState().library.localTracks;
-    const remoteTracks = useLibraryStore.getState().library.remoteTracks;
-    return [...localTracks, ...remoteTracks].filter((t) =>
-      favorites.has(t.id),
-    );
+    return useLibraryStore
+      .getState()
+      .getAllTracks()
+      .filter((t) => favorites.has(t.id));
   },
 
   syncFavoritesFromTracks: (tracks: Track[]) => {

@@ -42,7 +42,13 @@ async function getCookiePayload() {
   const allCookies = await chrome.cookies.getAll({});
   const filtered = allCookies.filter((c) => {
     const domain = c.domain.toLowerCase();
-    return domain.includes("youtube.com");
+    if (domain.includes("youtube.com")) return true;
+
+    // SAPISID/APISID may be scoped to Google rather than YouTube. Only
+    // include the auth cookie names needed by the desktop session.
+    return (
+      domain.includes("google.com") && DIAGNOSTIC_COOKIE_NAMES.includes(c.name)
+    );
   });
 
   if (!filtered.length) {
