@@ -16,6 +16,7 @@ const SESSION_RECOVERY_TIMEOUT_MS = 30_000;
 const SESSION_RECOVERY_POLL_MS = 2_000;
 
 let sessionRecoveryTimer: ReturnType<typeof setTimeout> | null = null;
+let sessionRecoveryGeneration = 0;
 
 // ---------------------------------------------------------------------------
 // State & Actions
@@ -103,6 +104,7 @@ export const useAuthStore = create<AuthState & AuthActions>()((set, get) => ({
       clearTimeout(sessionRecoveryTimer);
       sessionRecoveryTimer = null;
     }
+    sessionRecoveryGeneration++;
 
     set(() => ({
       auth: { ...result.auth!, sessionExpired: false, recovering: false },
@@ -129,6 +131,7 @@ export const useAuthStore = create<AuthState & AuthActions>()((set, get) => ({
       clearTimeout(sessionRecoveryTimer);
       sessionRecoveryTimer = null;
     }
+    sessionRecoveryGeneration++;
 
     const auth = await rpc.request.authLogout();
     set(() => ({
@@ -145,6 +148,7 @@ export const useAuthStore = create<AuthState & AuthActions>()((set, get) => ({
       clearTimeout(sessionRecoveryTimer);
       sessionRecoveryTimer = null;
     }
+    const generation = ++sessionRecoveryGeneration;
 
     const { rpc, auth } = get();
     if (!rpc || auth.recovering) return;
@@ -162,7 +166,7 @@ export const useAuthStore = create<AuthState & AuthActions>()((set, get) => ({
     const startedAt = Date.now();
 
     const poll = async () => {
-      if (!get().auth.recovering) return; // Recovery was cancelled
+      if (generation !== sessionRecoveryGeneration || !get().auth.recovering) return; // Recovery was cancelled
 
       const elapsed = Date.now() - startedAt;
       if (elapsed >= SESSION_RECOVERY_TIMEOUT_MS) {
@@ -179,6 +183,7 @@ export const useAuthStore = create<AuthState & AuthActions>()((set, get) => ({
 
       try {
         const status = await rpc.request.authGetStatus();
+        if (generation !== sessionRecoveryGeneration || !get().auth.recovering) return;
         if (status.loggedIn && status.sessionUpdatedAt !== initialUpdatedAt) {
           // Extension refreshed the session — recovery succeeded!
           set(() => ({
@@ -214,6 +219,7 @@ export const useAuthStore = create<AuthState & AuthActions>()((set, get) => ({
       clearTimeout(sessionRecoveryTimer);
       sessionRecoveryTimer = null;
     }
+    sessionRecoveryGeneration++;
     set((s) => ({
       auth: {
         ...s.auth,

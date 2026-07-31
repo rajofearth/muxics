@@ -101,6 +101,7 @@ async function resolveProfileName(
       msg.includes("ENOTFOUND") ||
       msg.includes("ETIMEDOUT") ||
       msg.includes("EAI_AGAIN") ||
+      msg.includes("ECONNRESET") ||
       msg.includes("socket hang up");
 
     if (isNetworkError) {
@@ -149,17 +150,18 @@ async function buildAuthStatus(): Promise<AuthStatusResult> {
     };
   } catch (error) {
     setCachedClient(null);
-    clearStoredYtMusicSession();
+    const message = error instanceof Error ? error.message : String(error);
+    const isAuthFailure = /401|403|unauthor|sign in|expired/i.test(message);
+    if (isAuthFailure) {
+      clearStoredYtMusicSession();
+    }
     cachedAuthStatus = {
       loggedIn: false,
       provider: "ytmusic",
       persistent: false,
       lastSyncedAt,
       sessionUpdatedAt,
-      error:
-        error instanceof Error
-          ? error.message
-          : "Failed to initialize YouTube Music session.",
+      error: message || "Failed to initialize YouTube Music session.",
     };
   }
 

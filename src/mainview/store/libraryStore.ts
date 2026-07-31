@@ -341,7 +341,9 @@ export const useLibraryStore = create<LibraryState & LibraryActions>()(
         if (isRejected) {
           // Don't immediately surface the error — try auto-recovery
           // via the browser extension background worker.
-          const { useAuthStore } = await import("./authStore");
+          set((s) => ({
+            library: { ...s.library, syncingRemote: false },
+          }));
           await useAuthStore.getState().startSessionRecovery();
         } else {
           set((s) => ({

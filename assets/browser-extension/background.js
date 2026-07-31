@@ -115,7 +115,7 @@ async function sendSessionToApp() {
   // Check if the app is running and needs a refresh
   const status = await bridgeFetch("/bridge/session-status");
   if (!status?.needsRefresh) {
-    return; // App doesn't need a session right now
+    return false; // App doesn't need a session right now
   }
 
   try {
@@ -128,13 +128,17 @@ async function sendSessionToApp() {
     if (result?.success) {
       // Session was accepted — switch to normal polling
       scheduleNormalRefresh();
+      return true;
     }
   } catch {
     // Silently retry on next alarm
   }
+  return false;
 }
 
 // ── Alarm scheduling ──────────────────────────────────────────
+
+let fastPollTimer = null;
 
 function scheduleNormalRefresh() {
   chrome.alarms.create(ALARM_NAME, {
@@ -143,11 +147,22 @@ function scheduleNormalRefresh() {
   });
 }
 
+// Chrome's alarms API has a 0.5-minute minimum interval, so the 10s
+// recovery retry runs on a self-rescheduling timeout instead.
+async function fastPollTick() {
+  const accepted = await sendSessionToApp();
+  if (accepted) return;
+  // Keep retrying while the app still needs a session (or the bridge
+  // is unreachable); stop once the app explicitly no longer needs one.
+  const status = await bridgeFetch("/bridge/session-status");
+  if (status === null || status?.needsRefresh) {
+    fastPollTimer = setTimeout(fastPollTick, FAST_POLL_INTERVAL_SECONDS * 1000);
+  }
+}
+
 function scheduleFastPoll() {
-  chrome.alarms.create(ALARM_NAME, {
-    delayInMinutes: FAST_POLL_INTERVAL_SECONDS / 60,
-    periodInMinutes: FAST_POLL_INTERVAL_SECONDS / 60,
-  });
+  clearTimeout(fastPollTimer);
+  fastPollTimer = setTimeout(fastPollTick, FAST_POLL_INTERVAL_SECONDS * 1000);
 }
 
 // ── Lifecycle ─────────────────────────────────────────────────
@@ -174,7 +189,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     scheduleFastPoll();
     // Trigger an immediate attempt
     sendSessionToApp()
-      .then(() => sendResponse({ accepted: true }))
+      .then((accepted) => {
+        if (accepted) clearTimeout(fastPollTimer);
+        sendResponse({ accepted });
+      })
       .catch(() => sendResponse({ accepted: false }));
     return true; // Keep channel open for async response
   }

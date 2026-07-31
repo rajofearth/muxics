@@ -109,6 +109,8 @@ export function clearYtMusicMetadataCache(): { success: boolean } {
       fs.unlinkSync(YTMUSIC_HOME_SNAPSHOT_PATH);
     }
     clearYtMusicSearchCacheFile();
+    invalidateCachedTrackMeta();
+    _fetchedTrackMeta.clear();
     return { success: true };
   } catch {
     return { success: false };
@@ -157,16 +159,24 @@ function invalidateCachedTrackMeta(): void {
 
 
 
+const MAX_DURATION_LOOKUPS_PER_CALL = 12;
+const DURATION_BATCH_DEADLINE_MS = 8_000;
+
 async function fetchBatchTrackDurations(tracks: TrackResult[]): Promise<void> {
   const client = await getClient().catch(() => null);
   const cookie = getYtMusicSessionCookie();
 
-  const missing = tracks.filter(
-    (t) => (t.duration === 0 || t.time === "—") && !_fetchedTrackMeta.has(t.id),
-  );
+  const missing = tracks
+    .filter(
+      (t) => (t.duration === 0 || t.time === "—") && !_fetchedTrackMeta.has(t.id),
+    )
+    .slice(0, MAX_DURATION_LOOKUPS_PER_CALL);
   if (missing.length === 0) return;
 
+  const deadline = Date.now() + DURATION_BATCH_DEADLINE_MS;
+
   await pLimit(missing, 3, async (track): Promise<void> => {
+    if (Date.now() > deadline) return;
     if (_fetchedTrackMeta.has(track.id)) return;
 
     let seconds: number | null = null;
@@ -244,13 +254,16 @@ async function collectTracksWithContinuation(
   const allRenderers: RawNode[] = [];
   let currentPage = initialPage;
   let pageNum = 0;
+  let continuationCount = 0;
+  const seenTokens = new Set<string>();
 
-  while (currentPage) {
+  while (currentPage && continuationCount < 3) {
     const pageRenderers = [
       ...collectRenderers(currentPage, "musicResponsiveListItemRenderer"),
       ...collectRenderers(currentPage, "musicTwoRowItemRenderer"),
     ];
 
+    const before = allRenderers.length;
     allRenderers.push(...pageRenderers);
     log(
       "ytmusic",
@@ -258,13 +271,24 @@ async function collectTracksWithContinuation(
       `${pageLabel}: collected ${pageRenderers.length} renderers from page ${pageNum} (total: ${allRenderers.length})`,
     );
 
+    if (allRenderers.length === before) {
+      log("ytmusic", "info", `${pageLabel}: no new renderers, done`);
+      break;
+    }
+
     const token = extractContinuationToken(currentPage);
     if (!token) {
       log("ytmusic", "info", `${pageLabel}: no continuation token found, done`);
       break;
     }
+    if (seenTokens.has(token)) {
+      log("ytmusic", "info", `${pageLabel}: repeated continuation token, done`);
+      break;
+    }
+    seenTokens.add(token);
 
     pageNum++;
+    continuationCount++;
     try {
       const response = await client.actions.execute("/browse", {
         continuation: token,
@@ -297,17 +321,24 @@ async function getYtMusicPlaylistFromRaw(
 
   const allRenderers: RawNode[] = [];
   let currentPage: any = payload;
-  while (currentPage) {
+  let continuationCount = 0;
+  const seenTokens = new Set<string>();
+  while (currentPage && continuationCount < 3) {
     const pageRenderers = [
       ...collectRenderers(currentPage, "musicResponsiveListItemRenderer"),
       ...collectRenderers(currentPage, "musicTwoRowItemRenderer"),
       ...collectCandidateMusicNodes(currentPage),
     ];
+    const before = allRenderers.length;
     allRenderers.push(...pageRenderers);
+    if (allRenderers.length === before) break;
 
     const token = extractContinuationToken(currentPage);
     if (!token) break;
+    if (seenTokens.has(token)) break;
+    seenTokens.add(token);
 
+    continuationCount++;
     try {
       const response = await client.actions.execute("/browse", {
         continuation: token,
@@ -502,7 +533,8 @@ export async function getYtMusicHome(): Promise<YTMusicHomeResult> {
   const result = await getYtMusicHomeFeed();
   const allTracks = result.sections.flatMap((s) =>
     s.items.filter(
-      (i): i is TrackResult => "provider" in i && i.provider === "ytmusic",
+      (i): i is TrackResult =>
+        "duration" in i && "providerId" in i && i.provider === "ytmusic",
     ),
   );
   return {
@@ -762,7 +794,7 @@ export async function getYtMusicPlaylist(
         bareId.startsWith("MPRE") || bareId.startsWith("OLAK")
           ? ("album" as const)
           : ("playlist" as const),
-      editable: false,
+      editable: true,
       entries: toPlaylistEntries(tracks),
       tracks,
       listedItemCount: tracks.length,

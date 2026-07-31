@@ -47,7 +47,12 @@ export default function App({ desktop }: AppProps) {
   useEffect(() => {
     if (!initRef.current) {
       initRef.current = true;
-      void initSession(desktop);
+      initSession(desktop).catch((err) => {
+        console.error("initSession failed:", err);
+        const { setInitStatus, setInitReady } = usePlayerStore.getState();
+        setInitStatus("Startup failed. Continuing without sync...");
+        setInitReady();
+      });
     }
   }, [desktop]);
 

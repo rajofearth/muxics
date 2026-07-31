@@ -199,6 +199,7 @@ export const usePlaylistStore = create<PlaylistState & PlaylistActions>()(
             librarySource,
             localItems,
             s.playlists.remoteItems,
+            s.playlists.transientItems,
           ),
         },
       }));
@@ -256,6 +257,7 @@ export const usePlaylistStore = create<PlaylistState & PlaylistActions>()(
                 librarySource,
                 s.playlists.localItems,
                 nextRemoteItems,
+                s.playlists.transientItems,
               ),
             },
           };
@@ -534,6 +536,7 @@ export const usePlaylistStore = create<PlaylistState & PlaylistActions>()(
                   librarySource,
                   s.playlists.localItems,
                   remoteItems,
+                  s.playlists.transientItems,
                 ),
               },
             };
@@ -543,7 +546,21 @@ export const usePlaylistStore = create<PlaylistState & PlaylistActions>()(
       }
 
       const localTracks = useLibraryStore.getState().library.localTracks;
-      const entries = [...pl.trackIds, track.id]
+      const targetIds = [...pl.trackIds, track.id];
+      const missingCount = targetIds.filter(
+        (id) =>
+          !localTracks.some(
+            (localTrack) => localTrack.id === id && Boolean(localTrack.path),
+          ),
+      ).length;
+      if (missingCount > 0) {
+        showToast(
+          "Cannot save playlist: some tracks are missing from the local library.",
+          "error",
+        );
+        return;
+      }
+      const entries = targetIds
         .map(
           (id) =>
             localTracks.find((localTrack) => localTrack.id === id)?.path,
@@ -596,6 +613,7 @@ export const usePlaylistStore = create<PlaylistState & PlaylistActions>()(
                   librarySource,
                   s.playlists.localItems,
                   remoteItems,
+                  s.playlists.transientItems,
                 ),
               },
             };
@@ -605,8 +623,21 @@ export const usePlaylistStore = create<PlaylistState & PlaylistActions>()(
       }
 
       const localTracks = useLibraryStore.getState().library.localTracks;
-      const entries = pl.trackIds
-        .filter((id) => id !== trackId)
+      const targetIds = pl.trackIds.filter((id) => id !== trackId);
+      const missingCount = targetIds.filter(
+        (id) =>
+          !localTracks.some(
+            (localTrack) => localTrack.id === id && Boolean(localTrack.path),
+          ),
+      ).length;
+      if (missingCount > 0) {
+        showToast(
+          "Cannot save playlist: some tracks are missing from the local library.",
+          "error",
+        );
+        return;
+      }
+      const entries = targetIds
         .map(
           (id) =>
             localTracks.find((localTrack) => localTrack.id === id)?.path,

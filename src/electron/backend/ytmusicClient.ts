@@ -289,7 +289,14 @@ export async function getClient(force = false): Promise<Innertube> {
  */
 export function getYtMusicSessionCookie(): YtMusicSessionCookie | undefined {
   const cookie = cachedClient?.session.cookie;
-  return cookie ? createYtMusicSessionCookie(cookie) : undefined;
+  if (cookie) {
+    return createYtMusicSessionCookie(cookie);
+  }
+
+  const stored = loadStoredYtMusicSession();
+  return stored?.auth.kind === "cookie"
+    ? createYtMusicSessionCookie(stored.auth.cookie)
+    : undefined;
 }
 
 export function setCachedClient(client: Innertube | null): void {

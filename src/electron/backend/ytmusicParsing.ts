@@ -479,27 +479,34 @@ export function toPlaylist(item: any): PlaylistResult | null {
     return null;
   }
 
-  const id =
+  const rawId =
     readBrowseIdFromYtmusicSearchItem(itemAny) ||
     itemAny.endpoint?.payload?.browseEndpoint?.browseId ||
     itemAny.id ||
     itemAny.endpoint?.payload?.browseId ||
     itemAny.browseId;
-  if (!id || !isPlausibleYtMusicPlaylistOrAlbumId(id)) {
+  if (!rawId) {
+    return null;
+  }
+
+  // Browse ids may carry a VL prefix (VLPL…/VLMPRE…); strip it so the cache
+  // key matches the bare id used by getYtMusicPlaylist and toPlaylistFromRaw.
+  const bareId = normalizeBareYtMusicPlaylistId(rawId);
+  if (!isPlausibleYtMusicPlaylistOrAlbumId(bareId)) {
     return null;
   }
 
   // YT Music Album IDs usually start with MPRE or OLAK
   const isAlbum =
-    id.startsWith("MPRE") ||
-    id.startsWith("OLAK") ||
+    bareId.startsWith("MPRE") ||
+    bareId.startsWith("OLAK") ||
     itemAny.item_type === "album";
   const itemType = isAlbum ? "album" : "playlist";
 
   return {
-    id: `ytmusic:${id}`,
+    id: `ytmusic:${bareId}`,
     provider: "ytmusic",
-    providerId: id,
+    providerId: bareId,
     name: sanitizeText(name, "Unknown Playlist"),
     author:
       itemAny.author?.name || itemAny.subtitle?.toString() || "YouTube Music",
@@ -805,7 +812,7 @@ export function mergePlaylistSummaryWithCachedDetail(
   }
 
   const cachedEntries =
-    cached.entries.length > 0
+    Array.isArray(cached.entries) && cached.entries.length > 0
       ? cached.entries
       : cached.tracks && cached.tracks.length > 0
         ? toPlaylistEntries(cached.tracks)
@@ -836,11 +843,40 @@ export function toPlaylistEntries(tracks: TrackResult[]) {
   }));
 }
 
+/**
+ * Best-effort read of the pending continuation token from a parsed Playlist.
+ * youtubei.js keeps it private, so read it from the exposed page: the
+ * continuation shelf carries the next token, and the initial shelf/continuation
+ * item fallbacks cover the other response shapes.
+ */
+function readPlaylistContinuationToken(
+  playlist: Awaited<ReturnType<Innertube["music"]["getPlaylist"]>>,
+): string | undefined {
+  const page = (playlist as any)?.page;
+  const shelfContinuation = page?.continuation_contents?.continuation;
+  if (typeof shelfContinuation === "string" && shelfContinuation) {
+    return shelfContinuation;
+  }
+  const shelf = page?.contents_memo?.getType?.(YTNodes.MusicPlaylistShelf)?.[0];
+  if (typeof shelf?.continuation === "string" && shelf.continuation) {
+    return shelf.continuation;
+  }
+  const continuationItem = page?.contents_memo?.getType?.(
+    YTNodes.ContinuationItem,
+  )?.[0];
+  const itemToken = continuationItem?.endpoint?.payload?.token;
+  if (typeof itemToken === "string" && itemToken) {
+    return itemToken;
+  }
+  return undefined;
+}
+
 export async function collectPlaylistItems(
   playlist: Awaited<ReturnType<Innertube["music"]["getPlaylist"]>>,
 ) {
   const items = [...playlist.items];
   let current = playlist;
+  const seenTokens = new Set<string>();
 
   log(
     "ytmusic",
@@ -848,15 +884,39 @@ export async function collectPlaylistItems(
     `collectPlaylistItems: starting with ${items.length} initial items`,
   );
 
-  while (current.has_continuation) {
+  let continuationPages = 0;
+  while (current.has_continuation && continuationPages < 3) {
+    const token = readPlaylistContinuationToken(current);
+    if (token) {
+      if (seenTokens.has(token)) {
+        log(
+          "ytmusic",
+          "warn",
+          "collectPlaylistItems: repeated continuation token, stopping",
+        );
+        break;
+      }
+      seenTokens.add(token);
+    }
+
+    const itemCountBefore = items.length;
     try {
       current = await current.getContinuation();
+      continuationPages++;
       items.push(...current.items);
       log(
         "ytmusic",
         "info",
         `collectPlaylistItems: fetched continuation, now have ${items.length} items`,
       );
+      if (items.length === itemCountBefore) {
+        log(
+          "ytmusic",
+          "warn",
+          "collectPlaylistItems: continuation returned no new items, stopping",
+        );
+        break;
+      }
     } catch (err) {
       log(
         "ytmusic",
@@ -996,11 +1056,52 @@ export function getLibraryMessageSummary(node: any) {
   };
 }
 
+/** InnerTube renders the sign-in prompt's CTA as a `signInEndpoint` command. */
+function hasSignInCommand(node: any): boolean {
+  if (!node || typeof node !== "object") {
+    return false;
+  }
+  if (typeof node.signInEndpoint === "object" && node.signInEndpoint !== null) {
+    return true;
+  }
+  if (Array.isArray(node)) {
+    return node.some(hasSignInCommand);
+  }
+  for (const value of Object.values(node)) {
+    if (hasSignInCommand(value)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Signed-in library landings always carry filter chips and content shelves;
+ * the signed-out sign-in prompt has neither (it only has message/subtext/button
+ * renderers plus a sign-in command).
+ */
+function hasAuthenticatedLibraryContent(node: any): boolean {
+  return (
+    collectRenderers(node, "chipCloudChipRenderer").length > 0 ||
+    collectRenderers(node, "musicShelfRenderer").length > 0 ||
+    collectRenderers(node, "musicCarouselShelfRenderer").length > 0 ||
+    collectRenderers(node, "musicResponsiveListItemRenderer").length > 0 ||
+    collectRenderers(node, "musicTwoRowItemRenderer").length > 0
+  );
+}
+
 export function classifyLibraryAuthState(node: any): LibraryAuthState {
   const summary = getLibraryMessageSummary(node);
   const normalizedMessage =
     `${summary.message} ${summary.subtext} ${summary.button}`.toLowerCase();
+
+  // Locale-independent signals first: the sign-in prompt's command and the
+  // absence of authenticated library sections are structural, not copy.
+  // The English copy match stays as a last-resort fallback only.
   const signedOut =
+    hasSignInCommand(node) ||
+    (!hasAuthenticatedLibraryContent(node) &&
+      (summary.message || summary.subtext || summary.button)) ||
     normalizedMessage.includes("sign in") ||
     normalizedMessage.includes("access tracks that you liked or saved") ||
     normalizedMessage.includes("explore your favorites");

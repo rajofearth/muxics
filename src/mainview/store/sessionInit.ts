@@ -19,7 +19,11 @@ export async function initSession(desktop: DesktopBridge): Promise<void> {
   setRpc(desktop);
 
   setInitStatus("Checking authentication...");
-  await loadAuthStatus();
+  try {
+    await loadAuthStatus();
+  } catch (err) {
+    console.error("initSession: loadAuthStatus failed", err);
+  }
   const loggedIn = useAuthStore.getState().auth.loggedIn;
 
   setInitStatus("Scanning local library...");
@@ -34,7 +38,16 @@ export async function initSession(desktop: DesktopBridge): Promise<void> {
     cachePromise = hydrateYtMusicFromCache();
   }
 
-  await Promise.all([libraryPromise, playlistsPromise, cachePromise]);
+  const settled = await Promise.allSettled([
+    libraryPromise,
+    playlistsPromise,
+    cachePromise,
+  ]);
+  for (const result of settled) {
+    if (result.status === "rejected") {
+      console.error("initSession: startup step failed", result.reason);
+    }
+  }
 
   const source = useLibraryStore.getState().library.source;
   const isLocalMode = source === "local";
@@ -45,7 +58,11 @@ export async function initSession(desktop: DesktopBridge): Promise<void> {
       void syncYtMusicLibrary();
     } else {
       setInitStatus("Syncing YouTube Music...");
-      await syncYtMusicLibrary();
+      try {
+        await syncYtMusicLibrary();
+      } catch (err) {
+        console.error("initSession: syncYtMusicLibrary failed", err);
+      }
 
       const authState = useAuthStore.getState().auth;
       if (authState.sessionExpired) {

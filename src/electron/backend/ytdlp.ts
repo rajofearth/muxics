@@ -1,6 +1,8 @@
+import crypto from "node:crypto";
 import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { promisify } from "node:util";
 import { app } from "electron";
 import { YTMUSIC_TOOLS_DIR, YTMUSIC_DIR, ensureAppDataDirs } from "./paths";
 import { log } from "./logger";
@@ -104,11 +106,15 @@ export async function ensureYtDlpBinary(): Promise<string> {
 // Cookie file writer (Netscape format)
 // ---------------------------------------------------------------------------
 
-const COOKIES_FILE = path.join(YTMUSIC_DIR, "yt-dlp-cookies.txt");
+const execFileAsync = promisify(execFile);
 
 /**
  * Write the YT Music session cookie string to a Netscape-format cookie file
  * that yt-dlp's `--cookies` option understands.
+ *
+ * Each invocation writes to a unique file so concurrent yt-dlp processes
+ * never read a half-written cookie file. Callers must delete the returned
+ * file when done.
  *
  * @returns The path to the cookie file, or `null` if no cookie was provided.
  */
@@ -126,6 +132,11 @@ function writeCookiesFile(
   const cookieString = serializeYtMusicSessionCookie(cookie);
 
   ensureAppDataDirs();
+
+  const cookieFile = path.join(
+    YTMUSIC_DIR,
+    `yt-dlp-cookies-${crypto.randomUUID()}.txt`,
+  );
 
   const lines: string[] = [
     "# Netscape HTTP Cookie File",
@@ -155,11 +166,11 @@ function writeCookiesFile(
     lines.push(`.youtube.com\tTRUE\t/\t${secureFlag}\t0\t${name}\t${value}`);
   }
 
-  fs.writeFileSync(COOKIES_FILE, lines.join("\n"), "utf-8");
+  fs.writeFileSync(cookieFile, lines.join("\n"), "utf-8");
   if (process.platform !== "win32") {
-    fs.chmodSync(COOKIES_FILE, 0o600);
+    fs.chmodSync(cookieFile, 0o600);
   }
-  return COOKIES_FILE;
+  return cookieFile;
 }
 
 // ---------------------------------------------------------------------------
@@ -210,47 +221,41 @@ export async function getYtDlpStreamUrl(
 
   log("ytdlp", "info", "Getting stream URL", { videoId });
 
-  return new Promise((resolve) => {
-    const child = execFile(
-      binaryPath,
-      args,
-      { timeout: 30_000, maxBuffer: 1024 * 1024 },
-      (error, stdout, stderr) => {
-        if (error) {
-          const stderrStr = (stderr ?? "").toString().trim();
-          log("ytdlp", "warn", "yt-dlp failed to get stream URL", {
-            videoId,
-            error: error.message,
-            stderr: stderrStr.slice(0, 500),
-          });
-          resolve(null);
-          return;
-        }
-
-        const streamUrl = (stdout ?? "").toString().trim();
-        if (!streamUrl) {
-          log("ytdlp", "warn", "yt-dlp returned empty URL", { videoId });
-          resolve(null);
-          return;
-        }
-
-        log("ytdlp", "info", "Stream URL obtained", {
-          videoId,
-          urlLength: streamUrl.length,
-        });
-
-        resolve({ url: streamUrl });
-      },
-    );
-
-    child.on("error", (err) => {
-      log("ytdlp", "warn", "yt-dlp process error", {
-        videoId,
-        error: err.message,
-      });
-      resolve(null);
+  try {
+    const { stdout } = await execFileAsync(binaryPath, args, {
+      timeout: 30_000,
+      maxBuffer: 1024 * 1024,
     });
-  });
+
+    const streamUrl = (stdout ?? "").toString().trim();
+    if (!streamUrl) {
+      log("ytdlp", "warn", "yt-dlp returned empty URL", { videoId });
+      return null;
+    }
+
+    log("ytdlp", "info", "Stream URL obtained", {
+      videoId,
+      urlLength: streamUrl.length,
+    });
+
+    return { url: streamUrl };
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException & {
+      stdout?: string | Buffer;
+      stderr?: string | Buffer;
+    };
+    const stderrStr = (err.stderr ?? "").toString().trim();
+    log("ytdlp", "warn", "yt-dlp failed to get stream URL", {
+      videoId,
+      error: err.message,
+      stderr: stderrStr.slice(0, 500),
+    });
+    return null;
+  } finally {
+    if (cookiesPath) {
+      fs.rmSync(cookiesPath, { force: true });
+    }
+  }
 }
 
 /**
@@ -281,51 +286,45 @@ export async function getYtDlpDuration(
 
   log("ytdlp", "info", "Getting track duration", { videoId });
 
-  return new Promise((resolve) => {
-    const child = execFile(
-      binaryPath,
-      args,
-      { timeout: 15_000, maxBuffer: 1024 },
-      (error, stdout, stderr) => {
-        if (error) {
-          const stderrStr = (stderr ?? "").toString().trim();
-          log("ytdlp", "warn", "yt-dlp failed to get duration", {
-            videoId,
-            error: error.message,
-            stderr: stderrStr.slice(0, 500),
-          });
-          resolve(null);
-          return;
-        }
-
-        const durationStr = (stdout ?? "").toString().trim();
-        const duration = Number(durationStr);
-        if (!Number.isFinite(duration) || duration <= 0) {
-          log("ytdlp", "warn", "yt-dlp returned invalid duration", {
-            videoId,
-            raw: durationStr,
-          });
-          resolve(null);
-          return;
-        }
-
-        log("ytdlp", "info", "Track duration obtained", {
-          videoId,
-          duration,
-        });
-
-        resolve(duration);
-      },
-    );
-
-    child.on("error", (err) => {
-      log("ytdlp", "warn", "yt-dlp process error", {
-        videoId,
-        error: err.message,
-      });
-      resolve(null);
+  try {
+    const { stdout } = await execFileAsync(binaryPath, args, {
+      timeout: 15_000,
+      maxBuffer: 1024,
     });
-  });
+
+    const durationStr = (stdout ?? "").toString().trim();
+    const duration = Number(durationStr);
+    if (!Number.isFinite(duration) || duration <= 0) {
+      log("ytdlp", "warn", "yt-dlp returned invalid duration", {
+        videoId,
+        raw: durationStr,
+      });
+      return null;
+    }
+
+    log("ytdlp", "info", "Track duration obtained", {
+      videoId,
+      duration,
+    });
+
+    return duration;
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException & {
+      stdout?: string | Buffer;
+      stderr?: string | Buffer;
+    };
+    const stderrStr = (err.stderr ?? "").toString().trim();
+    log("ytdlp", "warn", "yt-dlp failed to get duration", {
+      videoId,
+      error: err.message,
+      stderr: stderrStr.slice(0, 500),
+    });
+    return null;
+  } finally {
+    if (cookiesPath) {
+      fs.rmSync(cookiesPath, { force: true });
+    }
+  }
 }
 
 /**
