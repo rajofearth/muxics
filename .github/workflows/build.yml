@@ -149,6 +149,10 @@ jobs:
         run: pnpm exec electron-builder --config electron-builder.yml --publish always --win --x64 --arm64
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # 7za auto-selects the ARM64 BCJ2 filter for ARM64 payloads, which the
+          # installer's embedded Nsis7z plugin cannot decode on ARM64 Windows
+          # (missing Muxics.exe + DLLs after install). Force the classic BCJ2.
+          ELECTRON_BUILDER_7Z_FILTER: BCJ2
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
