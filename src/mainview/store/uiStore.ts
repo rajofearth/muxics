@@ -5,6 +5,7 @@ import { getRpc, useAuthStore } from "./authStore";
 import { useLibraryStore } from "./libraryStore";
 import { showToast } from "../components/Toast";
 import { toTrack, toPlaylist } from "./converters";
+import { bench } from "../bench";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -140,6 +141,10 @@ export const useUiStore = create<UiState & UiActions>()((set, get) => ({
       });
       return;
     }
+
+    // Bench: search:input — the keystroke that starts a search; pairs with
+    // the search:results mark in SearchView (design §2.3 mark set).
+    bench.mark("search:input");
 
     // Immediately update the query so the input feels responsive,
     // then compute search results asynchronously after the render

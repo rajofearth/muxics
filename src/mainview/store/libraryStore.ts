@@ -5,6 +5,7 @@ import { parseTime } from "../utils";
 import { getRpc } from "./authStore";
 import { clearAllCachedStreamUrls } from "./streamPreloader";
 import { mergeTracks, toTrack, mergeUniqueTracks, pLimit } from "./converters";
+import { bench } from "../bench";
 
 // ---------------------------------------------------------------------------
 // Private helpers
@@ -216,6 +217,16 @@ export const useLibraryStore = create<LibraryState & LibraryActions>()(
           },
           settings: { watchFolders: folders },
         }));
+
+        // Bench: library:visible — end of loadLibrary, post-frame so the mark
+        // lands once the updated list has rendered (design §2.3 mark set).
+        if (bench.enabled) {
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              bench.mark("library:visible");
+            });
+          });
+        }
       } catch (err) {
         set((s) => ({
           library: {

@@ -20,7 +20,8 @@ export async function initSession(desktop: DesktopBridge): Promise<void> {
   // Set RPC
   setRpc(desktop);
 
-  // PROTOTYPE — benchmark instrumentation stub (#37), throwaway.
+  // Bench: splash stages — mark each initSession stage and measure
+  // stage→stage plus first stage → ready.
   let firstStageMark: string | null = null;
   let prevStageMark: string | null = null;
   const stage = (label: string) => {
@@ -111,7 +112,7 @@ export async function initSession(desktop: DesktopBridge): Promise<void> {
   await new Promise((r) => setTimeout(r, 200));
 
   setInitReady();
-  // PROTOTYPE — benchmark instrumentation stub (#37), throwaway.
+  // Bench: initSession done — the splash → ready transition.
   bench.mark("initSession:done");
   if (firstStageMark) {
     bench.measure(

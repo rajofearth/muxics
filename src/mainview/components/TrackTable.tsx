@@ -1,9 +1,10 @@
-import { memo, useMemo, useState, useCallback, useRef } from "react";
+import { memo, useMemo, useState, useCallback, useRef, useEffect } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ChevronUp, ChevronDown } from "lucide-react";
 import type { Track } from "../types";
 import { TrackRow } from "./TrackRow";
 import { parseTime } from "../utils";
+import { bench } from "../bench";
 
 type SortKey = "title" | "artist" | "album" | "time";
 type SortDir = "asc" | "desc";
@@ -25,6 +26,11 @@ const ROW_HEIGHT_FULL = 62;
 /** Below this count, render all rows (avoids virtualizer overhead for tiny lists). */
 const VIRTUALIZE_THRESHOLD = 32;
 
+// Fire-once flag: the first TrackTable that renders with tracks (the library
+// list at startup) emits the firstPaint mark; search/playlist tables later in
+// the run don't re-trigger it (design §2.3 mark set).
+let libraryListFirstPaintFired = false;
+
 function compareStrings(a: string, b: string, dir: SortDir): number {
   const cmp = a.localeCompare(b, undefined, { sensitivity: "base" });
   return dir === "asc" ? cmp : -cmp;
@@ -43,6 +49,54 @@ export const TrackTable = memo(function TrackTable({
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const parentRef = useRef<HTMLDivElement>(null);
+
+  // ── Bench: render:library-list:firstPaint (design §2.3) ────────────────
+  // Post-frame (double rAF) after the list first renders with tracks.
+  useEffect(() => {
+    if (!bench.enabled || libraryListFirstPaintFired || tracks.length === 0) {
+      return;
+    }
+    libraryListFirstPaintFired = true;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        bench.mark("render:library-list:firstPaint");
+      });
+    });
+  }, [tracks.length]);
+
+  // ── Bench: render:library-list:scrollFrame (design §2.3) ───────────────
+  // One mark per animation frame while the list is scrolling (scripted by the
+  // driver in the rendering scenarios). Stops when scrollTop settles.
+  const scrollBenchRef = useRef<{ lastTop: number; raf: number } | null>(null);
+  useEffect(() => {
+    const el = parentRef.current;
+    if (!el || !bench.enabled) return;
+    const onScroll = () => {
+      if (scrollBenchRef.current) return;
+      const state = { lastTop: el.scrollTop, raf: 0 };
+      scrollBenchRef.current = state;
+      const tick = () => {
+        bench.mark("render:library-list:scrollFrame");
+        const top = el.scrollTop;
+        if (!scrollBenchRef.current) return;
+        if (top === scrollBenchRef.current.lastTop) {
+          scrollBenchRef.current = null;
+          return;
+        }
+        scrollBenchRef.current.lastTop = top;
+        scrollBenchRef.current.raf = requestAnimationFrame(tick);
+      };
+      scrollBenchRef.current.raf = requestAnimationFrame(tick);
+    };
+    el.addEventListener("scroll", onScroll);
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      if (scrollBenchRef.current) {
+        cancelAnimationFrame(scrollBenchRef.current.raf);
+        scrollBenchRef.current = null;
+      }
+    };
+  }, []);
 
   const sortedTracks = useMemo(() => {
     if (!sortKey) return tracks;

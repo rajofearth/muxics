@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo } from "react";
+import { memo, useCallback, useEffect, useMemo } from "react";
 import { X, Heart, SkipBack, SkipForward, Shuffle, Repeat, Repeat1, Music, ChevronRight } from "lucide-react";
 import type { Track, RepeatMode } from "../types";
 import { usePlayerStore } from "../store/playerStore";
@@ -7,6 +7,7 @@ import { Scrubber } from "./Scrubber";
 import { VolumeSlider } from "./VolumeSlider";
 import { PlayPauseButton } from "./PlayPauseButton";
 import { showToast } from "./Toast";
+import { bench } from "../bench";
 
 type NowPlayingViewProps = {
   currentTrack: Track;
@@ -45,6 +46,22 @@ export const NowPlayingView = memo(function NowPlayingView({
   const toggleFavorite = useUiStore((s) => s.toggleFavorite);
   const isFav = useUiStore((s) => s.favorites.has(currentTrack.id));
   const queue = usePlayerStore((s) => s.player.queue);
+
+  // ── Bench: render:now-playing:mount — post-frame after mount (design §2.3)
+  useEffect(() => {
+    if (!bench.enabled) return;
+    let raf1 = 0;
+    let raf2 = 0;
+    raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        bench.mark("render:now-playing:mount");
+      });
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, []);
 
   const nextTrack = useMemo(() => {
     const idx = queue.findIndex((t) => t.id === currentTrack.id);

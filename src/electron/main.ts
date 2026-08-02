@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import {
   app,
@@ -18,14 +19,15 @@ import type {
   DesktopSettings,
 } from "../shared/desktop-contract";
 import {
-  BENCH_FLUSH_CHANNEL,
-  BENCH_RECORD_CHANNEL,
+  BENCH_FLUSH_CHANNEL_V1,
+  BENCH_RECORD_CHANNEL_V1,
+  BENCH_TRACE_SCHEMA_VERSION,
   type BenchIpcRecord,
   type BenchMarkRecord,
   type BenchMeasureRecord,
   type BenchRecord,
   type BenchTrace,
-} from "../shared/bench";
+} from "../shared/bench-contract";
 import { APP_ID, APP_NAME } from "../shared/constants";
 import { getDefaultMusicPath, PLAYLISTS_DIR } from "./backend/paths";
 import { scanFolders } from "./backend/scanner";
@@ -72,20 +74,27 @@ let currentTrackTitle = "";
 let currentTrackArtist = "";
 let isPlaying = false;
 
-// PROTOTYPE — benchmark instrumentation stub (#37), throwaway.
+// Benchmark instrumentation (issue #39), gated by MUXICS_BENCH=1.
 const benchEnabled = process.env["MUXICS_BENCH"] === "1";
+const benchHeadless = process.env["MUXICS_BENCH_HEADLESS"] === "1";
 const benchRecords: BenchRecord[] = [];
 let benchWrittenCount = -1;
 
-function writeBenchTrace(reason: string): string | null {
+// Single-write latch: a flush with no new records is a no-op, so exactly one
+// trace per app run even when both flush paths (renderer pagehide, app quit)
+// fire. Atomic: write <stamp>.json.tmp then rename (design §2.3.2) — a kill
+// mid-write never leaves a corrupt trace file.
+function writeBenchTrace(reason: BenchTrace["reason"]): string | null {
   if (benchRecords.length === benchWrittenCount) return null;
   benchWrittenCount = benchRecords.length;
   try {
     const runsDir = path.join(app.getAppPath(), "benchmarks", "runs");
     fs.mkdirSync(runsDir, { recursive: true });
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const tmpPath = path.join(runsDir, `${stamp}.json.tmp`);
     const filePath = path.join(runsDir, `${stamp}.json`);
     const trace: BenchTrace = {
+      schemaVersion: BENCH_TRACE_SCHEMA_VERSION,
       reason,
       generatedAt: new Date().toISOString(),
       meta: {
@@ -98,6 +107,10 @@ function writeBenchTrace(reason: string): string | null {
           chrome: process.versions.chrome ?? "",
           node: process.versions.node ?? "",
         },
+        host: {
+          cpu: os.cpus()[0]?.model ?? "",
+          ramGB: Math.round(os.totalmem() / 1024 ** 3),
+        },
       },
       ipc: benchRecords.filter((r): r is BenchIpcRecord => r.kind === "ipc"),
       marks: benchRecords.filter(
@@ -107,7 +120,8 @@ function writeBenchTrace(reason: string): string | null {
         (r): r is BenchMeasureRecord => r.kind === "measure",
       ),
     };
-    fs.writeFileSync(filePath, JSON.stringify(trace, null, 2));
+    fs.writeFileSync(tmpPath, JSON.stringify(trace, null, 2));
+    fs.renameSync(tmpPath, filePath);
     console.log(`[muxics:bench] trace written (${reason}) → ${filePath}`);
     return filePath;
   } catch (err) {
@@ -745,12 +759,15 @@ function registerIpc() {
     }
   );
 
-  // PROTOTYPE — benchmark instrumentation stub (#37), throwaway.
+  // Benchmark instrumentation — renderer ships batches on the v1 record
+  // channel; flush writes the trace (single-write latch applies).
   if (benchEnabled) {
-    ipcMain.on(BENCH_RECORD_CHANNEL, (_event, record: BenchRecord) => {
-      benchRecords.push(record);
+    ipcMain.on(BENCH_RECORD_CHANNEL_V1, (_event, records: BenchRecord[]) => {
+      if (Array.isArray(records)) benchRecords.push(...records);
     });
-    ipcMain.handle(BENCH_FLUSH_CHANNEL, () => writeBenchTrace("renderer flush"));
+    ipcMain.handle(BENCH_FLUSH_CHANNEL_V1, () =>
+      writeBenchTrace("renderer flush"),
+    );
   }
 }
 
@@ -777,11 +794,15 @@ async function createMainWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      // Under the bench flag render at full speed while the window is
+      // invisible, so render.* paint marks measure identically in visible and
+      // headless modes (design §3.6). Default (true) when the flag is off.
+      backgroundThrottling: !benchEnabled,
     },
   });
 
   mainWindow.once("ready-to-show", () => {
-    mainWindow?.show();
+    if (!benchHeadless) mainWindow?.show();
   });
 
   mainWindow.on("closed", () => {
@@ -796,7 +817,11 @@ async function createMainWindow() {
   const rendererEntry = getRendererEntry();
   if (rendererEntry) {
     await mainWindow.loadURL(rendererEntry);
-    mainWindow.webContents.openDevTools({ mode: "detach" });
+    // Headless bench runs suppress the auto-opened detached DevTools window
+    // (design §3.6); visible runs keep it for verification.
+    if (!benchHeadless) {
+      mainWindow.webContents.openDevTools({ mode: "detach" });
+    }
   } else {
     await mainWindow.loadFile(path.join(app.getAppPath(), "dist", "index.html"));
   }
@@ -858,7 +883,8 @@ app.on("window-all-closed", () => {
   }
 });
 
-// PROTOTYPE — benchmark instrumentation stub (#37), throwaway.
+// Benchmark instrumentation — the will-quit flush covers renderer crashes
+// where pagehide never fires; the latch keeps it to one trace per run.
 app.on("will-quit", () => {
   if (benchEnabled) writeBenchTrace("app quit");
 });

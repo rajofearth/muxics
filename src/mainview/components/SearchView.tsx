@@ -7,6 +7,7 @@ import { useAuthStore } from "../store/authStore";
 import type { Track, NavView, Playlist } from "../types";
 import { TrackTable } from "./TrackTable";
 import { HomeFeed } from "./HomeFeed";
+import { bench } from "../bench";
 
 type SearchViewProps = {
   currentTrack: Track | null;
@@ -76,6 +77,27 @@ export function SearchView({
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  // ── Bench: search:results — post-frame after the search outcome renders
+  // (design §2.3). Pairs with the search:input mark emitted in uiStore's
+  // setSearchQuery; the measure is keystroke → results painted. Fires when
+  // the query settles (loading false), zero-result searches included.
+  useEffect(() => {
+    if (!bench.enabled || !search.query || search.loading) {
+      return;
+    }
+    let raf1 = 0;
+    let raf2 = 0;
+    raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        bench.mark("search:results");
+      });
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, [search.query, search.loading]);
 
   const handleClear = useCallback(() => {
     void setSearchQuery("");

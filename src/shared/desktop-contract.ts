@@ -1,4 +1,4 @@
-import type { BenchRecord } from "./bench";
+import type { BenchRecord } from "./bench-contract";
 
 export type MusicProvider = "local" | "ytmusic";
 export type LibrarySource = "all" | "local" | "ytmusic";
@@ -266,7 +266,7 @@ type MessageMethods = {
     : (payload: DesktopMessageMap[K]) => void;
 };
 
-// PROTOTYPE — benchmark instrumentation stub (#37), throwaway.
+// Benchmark instrumentation bridge (gated by MUXICS_BENCH=1).
 export interface DesktopBenchBridge {
   enabled: boolean;
   record: (record: BenchRecord) => void;

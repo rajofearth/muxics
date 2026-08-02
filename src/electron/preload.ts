@@ -5,29 +5,63 @@ import type {
   DesktopEventMap,
 } from "../shared/desktop-contract";
 import {
-  BENCH_FLUSH_CHANNEL,
-  BENCH_RECORD_CHANNEL,
+  BENCH_FLUSH_CHANNEL_V1,
+  BENCH_RECORD_CHANNEL_V1,
   type BenchIpcRecord,
   type BenchRecord,
-} from "../shared/bench";
+} from "../shared/bench-contract";
 
 type RendererEventPayload = {
   [K in keyof DesktopEventMap]: { channel: K; payload: DesktopEventMap[K] };
 }[keyof DesktopEventMap];
 
-// PROTOTYPE — benchmark instrumentation stub (#37), throwaway.
-// Gated by MUXICS_BENCH=1. Zero overhead when off: timedRequest returns the
-// raw invoke untouched and the request object is not wrapped at all.
+// Benchmark instrumentation (issue #39), gated by MUXICS_BENCH=1. Zero
+// overhead when off: timedRequest returns the raw invoke untouched and the
+// request object is not wrapped at all.
 const BENCH_ENABLED = process.env["MUXICS_BENCH"] === "1";
+
+// ── Batched transport (design §2.3.6) ─────────────────────────────────────
+// All records (timed IPC + renderer marks/measures) accumulate in one buffer
+// and ship to main every ~100ms plus an explicit final flush. Durations are
+// captured at wrap time, so batching only changes when records *arrive* at
+// main, never the numbers themselves.
+const benchBatch: BenchRecord[] = [];
+const benchSeqByIpcName = new Map<string, number>();
+
+function benchSendBatch(): void {
+  if (benchBatch.length === 0) return;
+  const batch = benchBatch.splice(0);
+  ipcRenderer.send(BENCH_RECORD_CHANNEL_V1, batch);
+}
+
+if (BENCH_ENABLED) {
+  setInterval(benchSendBatch, 100);
+}
+
+function benchRecord(record: BenchRecord): void {
+  if (!BENCH_ENABLED) return;
+  benchBatch.push(record);
+}
+
+function benchFlush(): Promise<unknown> {
+  if (!BENCH_ENABLED) return Promise.resolve(null);
+  benchSendBatch();
+  return ipcRenderer.invoke(BENCH_FLUSH_CHANNEL_V1);
+}
 
 function timedRequest<T>(name: string, invoke: () => Promise<T>): Promise<T> {
   if (!BENCH_ENABLED) return invoke();
   const start = performance.now();
   const finished = () => {
-    ipcRenderer.send(BENCH_RECORD_CHANNEL, {
+    const seq = (benchSeqByIpcName.get(name) ?? 0) + 1;
+    benchSeqByIpcName.set(name, seq);
+    benchRecord({
       kind: "ipc",
       name,
-      start,
+      seq,
+      // Monotonic epoch ms — correlates with main-process stdout and
+      // driver-side wall-clock (design §2.3.1).
+      start: performance.timeOrigin + start,
       duration: performance.now() - start,
     } satisfies BenchIpcRecord);
   };
@@ -169,16 +203,12 @@ const desktopBridge: DesktopBridge = {
       ipcRenderer.send("desktop:message:updateNowPlaying", payload),
     clearNowPlaying: () => ipcRenderer.send("desktop:message:clearNowPlaying"),
   },
-  // PROTOTYPE — benchmark instrumentation stub (#37), throwaway.
+  // Benchmark instrumentation bridge — records go into the batch buffer;
+  // flush() ships the pending batch first, then asks main to write the trace.
   bench: {
     enabled: BENCH_ENABLED,
-    record: (record: BenchRecord) => {
-      if (BENCH_ENABLED) ipcRenderer.send(BENCH_RECORD_CHANNEL, record);
-    },
-    flush: () =>
-      BENCH_ENABLED
-        ? ipcRenderer.invoke(BENCH_FLUSH_CHANNEL)
-        : Promise.resolve(null),
+    record: benchRecord,
+    flush: benchFlush,
   },
 };
 

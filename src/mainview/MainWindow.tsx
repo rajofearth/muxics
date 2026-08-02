@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
 import type { NavState, NavView, Track, Playlist } from "./types";
 import { usePlayerStore } from "./store/playerStore";
@@ -15,6 +15,7 @@ import { showToast } from "./components/Toast";
 import { MainWindowContent } from "./components/MainWindowContent";
 import { UpdateBanner } from "./components/UpdateBanner";
 import type { DesktopBridge } from "../shared/desktop-contract";
+import { bench } from "./bench";
 
 type MainWindowProps = {
   desktop?: DesktopBridge;
@@ -174,6 +175,34 @@ export function MainWindow({
     setNavState({ view, id });
     setActiveTab("All");
   }, []);
+
+  // ── Bench: nav:<view>:start → nav:<view>:end (design §2.3) ────────────
+  // All navigation funnels through handleNavigate (menu actions, sidebar,
+  // Escape, app-navigate events). The transition is marked only when the
+  // view/id actually changes; the end mark is post-frame (double rAF) so it
+  // lands after the new view paints. prevNavRef also absorbs React
+  // StrictMode's double effect on mount, so the initial view is never marked.
+  const prevNavRef = useRef<{ view: NavView; id?: string } | null>(null);
+  useEffect(() => {
+    const prev = prevNavRef.current;
+    prevNavRef.current = navState;
+    if (!prev || (prev.view === navState.view && prev.id === navState.id)) {
+      return;
+    }
+    if (!bench.enabled) return;
+    bench.mark(`nav:${navState.view}:start`);
+    let raf1 = 0;
+    let raf2 = 0;
+    raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        bench.mark(`nav:${navState.view}:end`);
+      });
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, [navState.view, navState.id]);
 
   useEffect(() => {
     const navHandler = (e: Event) => {

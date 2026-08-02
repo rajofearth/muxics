@@ -31,7 +31,7 @@ function createUnavailableProxy<T extends object>(kind: "request" | "send"): T {
 const fallbackBridge: DesktopBridge = {
   request: createUnavailableProxy<DesktopBridge["request"]>("request"),
   send: createUnavailableProxy<DesktopBridge["send"]>("send"),
-  // PROTOTYPE — benchmark instrumentation stub (#37), throwaway.
+  // Bench fallback for non-Electron dev (browser): the bridge is inert.
   bench: {
     enabled: false,
     record: () => {},

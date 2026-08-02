@@ -1,5 +1,6 @@
 // @ts-expect-error vite svg import
 import appLogo from "../../../assets/muzics-dark.svg";
+import { useEffect, useRef } from "react";
 import { usePlayerStore } from "../store/playerStore";
 import { useLibraryStore } from "../store/libraryStore";
 import {
@@ -8,6 +9,7 @@ import {
   INIT_STATUS_RECOVERING,
 } from "../store/authStore";
 import { AlertTriangle, RefreshCw, Music, Wifi } from "lucide-react";
+import { bench } from "../bench";
 
 export function SplashScreen() {
   const status = usePlayerStore((s) => s._initStatus);
@@ -20,6 +22,27 @@ export function SplashScreen() {
   const cancelSessionRecovery = useAuthStore((s) => s.cancelSessionRecovery);
 
   const showProgress = libraryLoading && scanProgress > 0 && scanProgress < 100;
+
+  // ── Bench: render:splash:<stage>:frame — post-frame (double rAF) after
+  // each splash stage paint (design §2.3 mark set). Cancelled if the stage
+  // changes before it paints, so superseded stages never leave marks.
+  const prevSplashStatus = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!status || status === prevSplashStatus.current) return;
+    prevSplashStatus.current = status;
+    if (!bench.enabled) return;
+    let raf1 = 0;
+    let raf2 = 0;
+    raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        bench.mark(`render:splash:${status}:frame`);
+      });
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, [status]);
 
   const isSessionRejected =
     status === INIT_STATUS_SESSION_REJECTED || sessionExpired;

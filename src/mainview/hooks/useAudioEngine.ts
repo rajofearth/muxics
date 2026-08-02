@@ -347,7 +347,8 @@ export function useAudioEngine() {
       clearStreamRefreshTimer();
       errorRecoveryRef.current = { loadToken: token, retried: false };
 
-      // PROTOTYPE — benchmark instrumentation stub (#37), throwaway.
+      // Bench: playback start → playing (design §2.3; measure pairs the two
+      // forwarded marks).
       bench.mark("useAudioEngine:loadAndPlay:start");
 
       const el = audioRef.current;
@@ -403,7 +404,7 @@ export function useAudioEngine() {
         currentEl.load();
         await currentEl.play();
 
-        // PROTOTYPE — benchmark instrumentation stub (#37), throwaway.
+        // Bench: stream/playback settled — measure from the paired marks.
         bench.mark("useAudioEngine:loadAndPlay:playing");
         bench.measure(
           "useAudioEngine:loadAndPlay:start → playing",
