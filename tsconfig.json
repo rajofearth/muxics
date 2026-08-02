@@ -18,6 +18,6 @@
 		"noUnusedParameters": true,
 		"noPropertyAccessFromIndexSignature": false
 	},
-	"include": ["src/**/*"],
+	"include": ["src/**/*", "benchmarks/**/*"],
 	"exclude": ["node_modules", "dist", "dist-electron", "build", "../../package/dist"]
 }

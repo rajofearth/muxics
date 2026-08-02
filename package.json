@@ -10,6 +10,8 @@
     "predev": "tsup --config tsup.electron.config.ts",
     "dev": "concurrently -k \"vite --port 5173\" \"tsup --config tsup.electron.config.ts --watch\" \"cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .\"",
     "build": "vite build && tsup --config tsup.electron.config.ts",
+    "bench:driver": "vitest run --config vitest.bench.config.ts benchmarks/driver",
+    "bench:driver:headless": "cross-env MUXICS_BENCH_HEADLESS=1 vitest run --config vitest.bench.config.ts benchmarks/driver",
     "typecheck": "tsc --noEmit",
     "package": "pnpm run build && cross-env ELECTRON_BUILDER_7Z_FILTER=BCJ2 electron-builder --config electron-builder.yml"
   },
@@ -34,10 +36,12 @@
     "cross-env": "latest",
     "electron": "latest",
     "electron-builder": "latest",
+    "playwright": "latest",
     "postcss": "latest",
     "tailwindcss": "latest",
     "tsup": "latest",
     "typescript": "latest",
-    "vite": "latest"
+    "vite": "latest",
+    "vitest": "latest"
   }
 }
