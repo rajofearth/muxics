@@ -17,6 +17,15 @@ import type {
   DesktopRequestMap,
   DesktopSettings,
 } from "../shared/desktop-contract";
+import {
+  BENCH_FLUSH_CHANNEL,
+  BENCH_RECORD_CHANNEL,
+  type BenchIpcRecord,
+  type BenchMarkRecord,
+  type BenchMeasureRecord,
+  type BenchRecord,
+  type BenchTrace,
+} from "../shared/bench";
 import { APP_ID, APP_NAME } from "../shared/constants";
 import { getDefaultMusicPath, PLAYLISTS_DIR } from "./backend/paths";
 import { scanFolders } from "./backend/scanner";
@@ -62,6 +71,50 @@ let currentMinHeight = 600;
 let currentTrackTitle = "";
 let currentTrackArtist = "";
 let isPlaying = false;
+
+// PROTOTYPE — benchmark instrumentation stub (#37), throwaway.
+const benchEnabled = process.env["MUXICS_BENCH"] === "1";
+const benchRecords: BenchRecord[] = [];
+let benchWrittenCount = -1;
+
+function writeBenchTrace(reason: string): string | null {
+  if (benchRecords.length === benchWrittenCount) return null;
+  benchWrittenCount = benchRecords.length;
+  try {
+    const runsDir = path.join(app.getAppPath(), "benchmarks", "runs");
+    fs.mkdirSync(runsDir, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const filePath = path.join(runsDir, `${stamp}.json`);
+    const trace: BenchTrace = {
+      reason,
+      generatedAt: new Date().toISOString(),
+      meta: {
+        appName: app.getName(),
+        appVersion: app.getVersion(),
+        platform: process.platform,
+        arch: process.arch,
+        versions: {
+          electron: process.versions.electron ?? "",
+          chrome: process.versions.chrome ?? "",
+          node: process.versions.node ?? "",
+        },
+      },
+      ipc: benchRecords.filter((r): r is BenchIpcRecord => r.kind === "ipc"),
+      marks: benchRecords.filter(
+        (r): r is BenchMarkRecord => r.kind === "mark",
+      ),
+      measures: benchRecords.filter(
+        (r): r is BenchMeasureRecord => r.kind === "measure",
+      ),
+    };
+    fs.writeFileSync(filePath, JSON.stringify(trace, null, 2));
+    console.log(`[muxics:bench] trace written (${reason}) → ${filePath}`);
+    return filePath;
+  } catch (err) {
+    console.error("[muxics:bench] failed to write trace:", err);
+    return null;
+  }
+}
 
 if (process.argv.includes("--muxics-native-host")) {
   runNativeMessagingHost();
@@ -691,6 +744,14 @@ function registerIpc() {
       });
     }
   );
+
+  // PROTOTYPE — benchmark instrumentation stub (#37), throwaway.
+  if (benchEnabled) {
+    ipcMain.on(BENCH_RECORD_CHANNEL, (_event, record: BenchRecord) => {
+      benchRecords.push(record);
+    });
+    ipcMain.handle(BENCH_FLUSH_CHANNEL, () => writeBenchTrace("renderer flush"));
+  }
 }
 
 async function createMainWindow() {
@@ -795,5 +856,10 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
     app.quit();
   }
+});
+
+// PROTOTYPE — benchmark instrumentation stub (#37), throwaway.
+app.on("will-quit", () => {
+  if (benchEnabled) writeBenchTrace("app quit");
 });
 }

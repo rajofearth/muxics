@@ -1,3 +1,5 @@
+import type { BenchRecord } from "./bench";
+
 export type MusicProvider = "local" | "ytmusic";
 export type LibrarySource = "all" | "local" | "ytmusic";
 export type PlaybackMode = "direct" | "hidden" | "unavailable";
@@ -264,7 +266,15 @@ type MessageMethods = {
     : (payload: DesktopMessageMap[K]) => void;
 };
 
+// PROTOTYPE — benchmark instrumentation stub (#37), throwaway.
+export interface DesktopBenchBridge {
+  enabled: boolean;
+  record: (record: BenchRecord) => void;
+  flush: () => Promise<unknown>;
+}
+
 export interface DesktopBridge {
   request: RequestMethods;
   send: MessageMethods;
+  bench: DesktopBenchBridge;
 }

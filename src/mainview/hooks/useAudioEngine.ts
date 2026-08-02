@@ -15,6 +15,7 @@ import {
   prefetchUpcomingTracks,
   setCachedStreamUrl,
 } from "../store/streamPreloader";
+import { bench } from "../bench";
 
 const STREAM_EXPIRY_MARGIN_MS = 90_000;
 const STREAM_REFRESH_MIN_DELAY_MS = 30_000;
@@ -346,6 +347,9 @@ export function useAudioEngine() {
       clearStreamRefreshTimer();
       errorRecoveryRef.current = { loadToken: token, retried: false };
 
+      // PROTOTYPE — benchmark instrumentation stub (#37), throwaway.
+      bench.mark("useAudioEngine:loadAndPlay:start");
+
       const el = audioRef.current;
       if (!el) return;
 
@@ -398,6 +402,14 @@ export function useAudioEngine() {
         currentEl.src = url;
         currentEl.load();
         await currentEl.play();
+
+        // PROTOTYPE — benchmark instrumentation stub (#37), throwaway.
+        bench.mark("useAudioEngine:loadAndPlay:playing");
+        bench.measure(
+          "useAudioEngine:loadAndPlay:start → playing",
+          "useAudioEngine:loadAndPlay:start",
+          "useAudioEngine:loadAndPlay:playing",
+        );
 
         if (currentTrack.provider === "ytmusic") {
           scheduleYtStreamUrlRefresh({

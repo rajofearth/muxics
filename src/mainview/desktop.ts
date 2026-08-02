@@ -31,6 +31,12 @@ function createUnavailableProxy<T extends object>(kind: "request" | "send"): T {
 const fallbackBridge: DesktopBridge = {
   request: createUnavailableProxy<DesktopBridge["request"]>("request"),
   send: createUnavailableProxy<DesktopBridge["send"]>("send"),
+  // PROTOTYPE — benchmark instrumentation stub (#37), throwaway.
+  bench: {
+    enabled: false,
+    record: () => {},
+    flush: () => Promise.resolve(null),
+  },
 };
 
 export function getDesktopBridge(): DesktopBridge {

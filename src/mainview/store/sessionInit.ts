@@ -1,4 +1,5 @@
 import type { DesktopBridge } from "../../shared/desktop-contract";
+import { bench } from "../bench";
 import {
   useAuthStore,
   INIT_STATUS_SESSION_REJECTED,
@@ -19,7 +20,22 @@ export async function initSession(desktop: DesktopBridge): Promise<void> {
   // Set RPC
   setRpc(desktop);
 
-  setInitStatus("Checking authentication...");
+  // PROTOTYPE — benchmark instrumentation stub (#37), throwaway.
+  let firstStageMark: string | null = null;
+  let prevStageMark: string | null = null;
+  const stage = (label: string) => {
+    setInitStatus(label);
+    const markName = `initSession:${label}`;
+    bench.mark(markName);
+    if (prevStageMark) {
+      bench.measure(`${prevStageMark} → ${markName}`, prevStageMark, markName);
+    } else {
+      firstStageMark = markName;
+    }
+    prevStageMark = markName;
+  };
+
+  stage("Checking authentication...");
   try {
     await loadAuthStatus();
   } catch (err) {
@@ -27,15 +43,15 @@ export async function initSession(desktop: DesktopBridge): Promise<void> {
   }
   const loggedIn = useAuthStore.getState().auth.loggedIn;
 
-  setInitStatus("Scanning local library...");
+  stage("Scanning local library...");
   const libraryPromise = loadLibrary();
 
-  setInitStatus("Loading playlists...");
+  stage("Loading playlists...");
   const playlistsPromise = loadPlaylists();
 
   let cachePromise = Promise.resolve();
   if (loggedIn) {
-    setInitStatus("Loading YouTube Music...");
+    stage("Loading YouTube Music...");
     cachePromise = hydrateYtMusicFromCache();
   }
 
@@ -71,7 +87,7 @@ export async function initSession(desktop: DesktopBridge): Promise<void> {
         }
       });
     } else {
-      setInitStatus("Syncing YouTube Music...");
+      stage("Syncing YouTube Music...");
       try {
         await syncYtMusicLibrary();
       } catch (err) {
@@ -90,9 +106,18 @@ export async function initSession(desktop: DesktopBridge): Promise<void> {
     }
   }
 
-  setInitStatus("Almost ready...");
+  stage("Almost ready...");
   // Small tick so the final status renders before transitioning
   await new Promise((r) => setTimeout(r, 200));
 
   setInitReady();
+  // PROTOTYPE — benchmark instrumentation stub (#37), throwaway.
+  bench.mark("initSession:done");
+  if (firstStageMark) {
+    bench.measure(
+      "initSession:first stage → ready",
+      firstStageMark,
+      "initSession:done",
+    );
+  }
 }

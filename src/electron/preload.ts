@@ -4,13 +4,65 @@ import type {
   DesktopBridge,
   DesktopEventMap,
 } from "../shared/desktop-contract";
+import {
+  BENCH_FLUSH_CHANNEL,
+  BENCH_RECORD_CHANNEL,
+  type BenchIpcRecord,
+  type BenchRecord,
+} from "../shared/bench";
 
 type RendererEventPayload = {
   [K in keyof DesktopEventMap]: { channel: K; payload: DesktopEventMap[K] };
 }[keyof DesktopEventMap];
 
+// PROTOTYPE — benchmark instrumentation stub (#37), throwaway.
+// Gated by MUXICS_BENCH=1. Zero overhead when off: timedRequest returns the
+// raw invoke untouched and the request object is not wrapped at all.
+const BENCH_ENABLED = process.env["MUXICS_BENCH"] === "1";
+
+function timedRequest<T>(name: string, invoke: () => Promise<T>): Promise<T> {
+  if (!BENCH_ENABLED) return invoke();
+  const start = performance.now();
+  const finished = () => {
+    ipcRenderer.send(BENCH_RECORD_CHANNEL, {
+      kind: "ipc",
+      name,
+      start,
+      duration: performance.now() - start,
+    } satisfies BenchIpcRecord);
+  };
+  return invoke().then(
+    (result) => {
+      finished();
+      return result;
+    },
+    (error) => {
+      finished();
+      throw error;
+    },
+  );
+}
+
+// Wrap the whole request map once instead of touching ~40 call sites: any
+// future desktop:request method is timed automatically. Callers see the same
+// promises, same values, same rejection behavior.
+function wrapTimedRequest(
+  request: DesktopBridge["request"],
+): DesktopBridge["request"] {
+  if (!BENCH_ENABLED) return request;
+  const wrapped: Record<string, (...args: never[]) => Promise<unknown>> = {};
+  for (const [name, method] of Object.entries(request) as [
+    string,
+    (...args: never[]) => Promise<unknown>,
+  ][]) {
+    wrapped[name] = (...args: never[]) =>
+      timedRequest(`desktop:request:${name}`, () => method(...args));
+  }
+  return wrapped as unknown as DesktopBridge["request"];
+}
+
 const desktopBridge: DesktopBridge = {
-  request: {
+  request: wrapTimedRequest({
     getDefaultMusicPath: () =>
       ipcRenderer.invoke("desktop:request:getDefaultMusicPath"),
     scanFolders: (params) =>
@@ -103,7 +155,7 @@ const desktopBridge: DesktopBridge = {
       ipcRenderer.invoke("desktop:request:checkForUpdates"),
     installUpdate: () =>
       ipcRenderer.invoke("desktop:request:installUpdate"),
-  },
+  }),
   send: {
     resizeWindow: (payload) =>
       ipcRenderer.send("desktop:message:resizeWindow", payload),
@@ -116,6 +168,17 @@ const desktopBridge: DesktopBridge = {
     updateNowPlaying: (payload) =>
       ipcRenderer.send("desktop:message:updateNowPlaying", payload),
     clearNowPlaying: () => ipcRenderer.send("desktop:message:clearNowPlaying"),
+  },
+  // PROTOTYPE — benchmark instrumentation stub (#37), throwaway.
+  bench: {
+    enabled: BENCH_ENABLED,
+    record: (record: BenchRecord) => {
+      if (BENCH_ENABLED) ipcRenderer.send(BENCH_RECORD_CHANNEL, record);
+    },
+    flush: () =>
+      BENCH_ENABLED
+        ? ipcRenderer.invoke(BENCH_FLUSH_CHANNEL)
+        : Promise.resolve(null),
   },
 };
 
