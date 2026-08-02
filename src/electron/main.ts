@@ -80,6 +80,29 @@ const benchHeadless = process.env["MUXICS_BENCH_HEADLESS"] === "1";
 const benchRecords: BenchRecord[] = [];
 let benchWrittenCount = -1;
 
+// Headless bench runs keep the window off-screen but PRESENT to the OS
+// compositor (see ready-to-show below): a never-shown window has no frame
+// surface, so rAF throttles to ~1fps regardless of backgroundThrottling or
+// occlusion switches. That would (a) drop post-frame marks scheduled right
+// before app close and (b) inflate every render.* measurement. The switches
+// below are cheap insurance on top of the off-screen show — identical timing
+// to the visible default either way (design §3.6).
+if (benchEnabled && benchHeadless) {
+  app.commandLine.appendSwitch("disable-backgrounding-occluded-windows");
+  app.commandLine.appendSwitch("disable-renderer-backgrounding");
+}
+
+// Bench runs isolate the Chromium profile too (design §3.2): the driver
+// launches with APPDATA=<scratch>, which redirects the app-data paths but NOT
+// Electron's userData (on Windows the profile resolves from the Known Folder
+// API, not the env var) — without this the renderer would read/write the
+// REAL profile's localStorage/cookies (surfaced by #42). The driver pre-places
+// the safeStorage key at <scratch>/<name>/Local State, so the copied session
+// decrypts exactly as #40 intended.
+if (benchEnabled && process.env["APPDATA"]) {
+  app.setPath("userData", path.join(process.env["APPDATA"], app.getName()));
+}
+
 // Single-write latch: a flush with no new records is a no-op, so exactly one
 // trace per app run even when both flush paths (renderer pagehide, app quit)
 // fire. Atomic: write <stamp>.json.tmp then rename (design §2.3.2) — a kill
@@ -802,7 +825,14 @@ async function createMainWindow() {
   });
 
   mainWindow.once("ready-to-show", () => {
-    if (!benchHeadless) mainWindow?.show();
+    if (benchHeadless) {
+      // Off-screen but present to the OS compositor so headless runs render at
+      // full speed (a hidden window's rAF throttles to ~1fps — measured by
+      // #42). Skipping the taskbar entry keeps the unattended run invisible.
+      mainWindow?.setPosition(-32000, -32000);
+      mainWindow?.setSkipTaskbar(true);
+    }
+    mainWindow?.show();
   });
 
   mainWindow.on("closed", () => {

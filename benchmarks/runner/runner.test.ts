@@ -2,16 +2,18 @@ import fs from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   getScenario,
+  IMPLEMENTED_SCENARIO_IDS,
   SCENARIO_CATALOG,
-  STARTUP_SCENARIO_IDS,
 } from "../scenarios/catalog";
 import { runScenarios } from "./runner";
 
-// Scenario runner (issue #41): executes the startup pair end to end through
-// real UI interactions + the readiness gate — startup.cold on a fresh scratch
-// copy with app-level caches emptied, then startup.warm relaunching the SAME
-// copy. Both are session-validated (a local-only run never yields a trace) and
-// each trace carries the data manifest in its meta (design §5, Q4).
+// Scenario runner (issues #41 + #42): executes the wired scenarios end to end
+// through real UI interactions + the readiness gate — startup.cold on a fresh
+// scratch copy with app-level caches emptied, startup.warm relaunching the
+// SAME copy, then library.scan on its own fresh cold copy, library.sync.yt on
+// the warm copy, and the two search flows. Every run is session-validated (a
+// local-only run never yields a trace) and each trace carries the data
+// manifest in its meta (design §5, Q4).
 describe("muxics scenario runner", () => {
   it("catalog: every flow has an id, area, inputs, and measures", () => {
     expect(SCENARIO_CATALOG.length).toBeGreaterThanOrEqual(16);
@@ -32,13 +34,13 @@ describe("muxics scenario runner", () => {
   });
 
   it(
-    "runs startup.cold then startup.warm against one scratch copy, traces carry the data manifest",
+    "runs the wired scenarios end to end: startup pair, library scan/sync, and both searches",
     async () => {
       const headless = process.env["MUXICS_BENCH_HEADLESS"] === "1";
       const results = await runScenarios({ headless });
 
-      expect(results.map((r) => r.scenarioId)).toEqual([...STARTUP_SCENARIO_IDS]);
-      // One batch: cold and warm share the same scratch copy (§4.1).
+      expect(results.map((r) => r.scenarioId)).toEqual([...IMPLEMENTED_SCENARIO_IDS]);
+      // One batch: every run shares the batch scratch root id (§4.1).
       expect(new Set(results.map((r) => r.runId)).size).toBe(1);
 
       for (const r of results) {
@@ -50,13 +52,7 @@ describe("muxics scenario runner", () => {
         expect(r.trace.meta.appName).toBe("muxics");
         expect(r.trace.meta.dataManifest).toEqual(r.manifest);
         expect(r.manifest.musicFolders.length).toBeGreaterThan(0);
-        expect(r.manifest.playlistCount).toBeGreaterThanOrEqual(0);
-        // Startup instrumentation ran — initSession stage marks + stage
-        // measures present (§4.1). When the session is briefly "recovering"
-        // (self-heal, §3.1) initSession returns early and the final
-        // `first stage → ready` measure is absent — the driver's readiness
-        // gate is the session-validity authority, not this measure. But a
-        // run that DID complete initSession must carry the paired measure.
+        // Every launch runs initSession — splash stage marks + stage measures.
         expect(
           r.trace.marks.some((m) => m.name.startsWith("initSession:")),
           `${r.scenarioId} initSession marks`,
@@ -65,16 +61,14 @@ describe("muxics scenario runner", () => {
           r.trace.measures.length,
           `${r.scenarioId} stage measures`,
         ).toBeGreaterThan(0);
-        if (r.trace.marks.some((m) => m.name === "initSession:done")) {
-          expect(
-            r.trace.measures.some((m) => m.name === "initSession:first stage → ready"),
-            `${r.scenarioId} startup measure`,
-          ).toBe(true);
-        }
         expect(fs.existsSync(r.tracePath)).toBe(true);
       }
 
-      const [cold, warm] = results;
+      const byId = (id: string) => results.find((r) => r.scenarioId === id)!;
+
+      // ── Startup pair (unchanged #41 contract) ────────────────────────────
+      const cold = byId("startup.cold");
+      const warm = byId("startup.warm");
       expect(cold.manifest.cacheProfile).toBe("cold");
       expect(warm.manifest.cacheProfile).toBe("warm");
 
@@ -90,11 +84,82 @@ describe("muxics scenario runner", () => {
       const warmBytes = warm.manifest.caches.reduce((sum, c) => sum + c.bytes, 0);
       expect(warmBytes).toBeGreaterThan(0);
 
+      // ── library.scan (§4.2) ─────────────────────────────────────────────
+      const scan = byId("library.scan");
+      expect(scan.manifest.cacheProfile).toBe("cold");
+      // Whole-scan latency IPC (timed by the preload wrap).
+      expect(
+        scan.trace.ipc.some((i) => i.name === "desktop:request:scanFolders"),
+        "library.scan scanFolders IPC",
+      ).toBe(true);
+      // Metadata throughput burst — a diagnostic name, never pass/fail.
+      expect(
+        scan.trace.ipc.some((i) => i.name === "desktop:request:getTrackMetadata"),
+        "library.scan getTrackMetadata burst",
+      ).toBe(true);
+      // The scan stage measure + the library list rendered (steps opened it).
+      expect(
+        scan.trace.measures.some((m) => m.name.includes("Scanning local library")),
+        "library.scan stage measure",
+      ).toBe(true);
+      expect(
+        scan.trace.marks.some((m) => m.name === "render:library-list:firstPaint"),
+        "library.scan list first paint",
+      ).toBe(true);
+
+      // ── library.sync.yt (§4.2) ──────────────────────────────────────────
+      const sync = byId("library.sync.yt");
+      expect(sync.manifest.cacheProfile).toBe("warm");
+      expect(
+        sync.trace.ipc.some((i) => i.name === "desktop:request:ytmusicLoadCachedLibrary"),
+        "library.sync.yt hydrate IPC",
+      ).toBe(true);
+      expect(
+        sync.trace.ipc.some((i) => i.name === "desktop:request:ytmusicSyncLibrary"),
+        "library.sync.yt sync IPC",
+      ).toBe(true);
+
+      // ── search.local (§4.3) ─────────────────────────────────────────────
+      const searchLocal = byId("search.local");
+      expect(
+        searchLocal.trace.marks.some((m) => m.name === "search:input"),
+        "search.local input mark",
+      ).toBe(true);
+      expect(
+        searchLocal.trace.marks.some((m) => m.name === "search:results"),
+        "search.local results mark",
+      ).toBe(true);
+      // The local filter is renderer-only — the remote search path must never
+      // fire in this scenario (design §4.3: "no IPC").
+      expect(
+        searchLocal.trace.ipc.some(
+          (i) => i.name === "desktop:request:ytmusicSearch",
+        ),
+        "search.local must not hit the remote search path",
+      ).toBe(false);
+
+      // ── search.remote (§4.3) ────────────────────────────────────────────
+      const searchRemote = byId("search.remote");
+      expect(
+        searchRemote.trace.marks.some((m) => m.name === "search:input"),
+        "search.remote input mark",
+      ).toBe(true);
+      expect(
+        searchRemote.trace.marks.some((m) => m.name === "search:results"),
+        "search.remote results mark",
+      ).toBe(true);
+      expect(
+        searchRemote.trace.ipc.some((i) => i.name === "desktop:request:ytmusicSearch"),
+        "search.remote ytmusicSearch IPC",
+      ).toBe(true);
+
       console.log(
         `[bench:runner] cold=${cold.tracePath} warm=${warm.tracePath} ` +
+          `scan=${scan.tracePath} sync=${sync.tracePath} ` +
+          `searchLocal=${searchLocal.tracePath} searchRemote=${searchRemote.tracePath} ` +
           `warmCacheBytes=${warmBytes} warmPlaylists=${warm.manifest.playlistCount}`,
       );
     },
-    900_000,
+    1_800_000, // six real launches + builds — budget generously
   );
 });

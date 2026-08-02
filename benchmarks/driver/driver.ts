@@ -10,7 +10,7 @@
 // override, §3.2), waits for the readiness gate (§3.1), then closes and
 // collects the trace from benchmarks/runs/ (§3.3).
 import { _electron } from "playwright";
-import type { ElectronApplication } from "playwright";
+import type { ElectronApplication, Page } from "playwright";
 import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
@@ -73,6 +73,14 @@ export interface LaunchCycleOptions {
    * sessionValid flag is set true here only after the readiness gate passes.
    */
   manifest?: BenchDataManifest;
+  /**
+   * Post-readiness scenario steps (design §4 automation fidelity) — real UI
+   * interactions performed after the readiness gate passes and before the app
+   * closes. Marks/measures/IPCs recorded during the steps land in the trace
+   * collected at close, so scenario flows (open library, type a search, …)
+   * measure through the actual DOM, never the bridge.
+   */
+  steps?: (page: Page) => Promise<void>;
 }
 
 export interface LaunchCycleResult {
@@ -1067,6 +1075,15 @@ export async function runLaunchCycle(
 
     // Readiness gate — logged in + real home-feed content (§3.1).
     await waitForReadiness(app);
+
+    // Scenario steps — real clicks/keyboard on the actual DOM (§4). Records
+    // made here are batched to main and flushed with the trace at close.
+    if (options.steps) {
+      const page = await app.firstWindow();
+      console.log(`${TAG} scenario steps running...`);
+      await options.steps(page);
+      console.log(`${TAG} scenario steps done.`);
+    }
 
     // Close cleanly; the renderer pagehide flush + will-quit flush write the
     // trace (single-write latch → exactly one file).

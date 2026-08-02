@@ -1,10 +1,10 @@
-// Shared scenario catalog (issue #41) — every locked flow from
+// Shared scenario catalog (issues #41–#44) — every locked flow from
 // docs/benchmarks/design.md §4, as data: id, area, inputs, measures.
 //
 // The design is LOCKED (#34); this module is the single source the runner and
 // the later compare/registry tooling (#45–#47) read from. The runner (#41)
-// executes the startup pair end to end; the remaining flows get their
-// executors in #42–#44 — until then they are catalog data only.
+// executes the startup pair end to end; #42 adds the library + search flows;
+// #43–#44 add the rest — until then the remaining flows are catalog data only.
 //
 // Measure names are the app-side marks/measures/IPC channels that exist in the
 // instrumentation layer (#39) — see the design §4 tables and the grep-verified
@@ -401,8 +401,20 @@ export const SCENARIO_CATALOG: ScenarioDefinition[] = [
   },
 ];
 
-/** The startup pair — the only flows with executors in #41 (§4.1). */
+/** The startup pair — the flows with executors in #41 (§4.1). */
 export const STARTUP_SCENARIO_IDS = ["startup.cold", "startup.warm"] as const;
+
+/**
+ * Scenarios with executors wired so far — the runner's default set: the
+ * startup pair (#41) plus the library + search flows (#42, §4.2–4.3).
+ */
+export const IMPLEMENTED_SCENARIO_IDS = [
+  ...STARTUP_SCENARIO_IDS,
+  "library.scan",
+  "library.sync.yt",
+  "search.local",
+  "search.remote",
+] as const;
 
 export function getScenario(id: string): ScenarioDefinition {
   const def = SCENARIO_CATALOG.find((s) => s.id === id);

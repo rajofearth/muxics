@@ -14,6 +14,8 @@
     "bench:driver:headless": "cross-env MUXICS_BENCH_HEADLESS=1 vitest run --config vitest.bench.config.ts benchmarks/driver",
     "bench:startup": "vitest run --config vitest.bench.config.ts benchmarks/runner",
     "bench:startup:headless": "cross-env MUXICS_BENCH_HEADLESS=1 vitest run --config vitest.bench.config.ts benchmarks/runner",
+    "bench:scenarios": "vitest run --config vitest.bench.config.ts benchmarks/runner",
+    "bench:scenarios:headless": "cross-env MUXICS_BENCH_HEADLESS=1 vitest run --config vitest.bench.config.ts benchmarks/runner",
     "typecheck": "tsc --noEmit",
     "package": "pnpm run build && cross-env ELECTRON_BUILDER_7Z_FILTER=BCJ2 electron-builder --config electron-builder.yml"
   },
