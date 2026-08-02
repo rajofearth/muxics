@@ -43,6 +43,28 @@ export interface BenchMeasureRecord {
 
 export type BenchRecord = BenchIpcRecord | BenchMarkRecord | BenchMeasureRecord;
 
+/**
+ * Data manifest (design §5, grilling Q4) — what data a run actually used, so
+ * runs stay comparable as the real library changes. Attached to the trace's
+ * meta by the driver/runner after collection (the app does not know about the
+ * bench data inventory); compare tooling prints it with results.
+ */
+export interface BenchDataManifest {
+  /** Real music folders the run measured + audio file counts (§5.1.1). */
+  musicFolders: Array<{ path: string; audioFiles: number }>;
+  /** Playlist files (.m3u/.m3u8) in the copied profile's playlists/. */
+  playlistCount: number;
+  /**
+   * True only when the readiness gate confirmed a logged-in session
+   * (design §3.1) — a run that lands in local-only mode never yields a trace.
+   */
+  sessionValid: boolean;
+  /** App-level cache state the run launched against (§4.1 cold/warm axis). */
+  cacheProfile: "cold" | "warm";
+  /** Per-cache sizes in the profile the run launched against. */
+  caches: Array<{ name: string; files: number; bytes: number }>;
+}
+
 export interface BenchTraceMeta {
   appName: string;
   appVersion: string;
@@ -51,6 +73,8 @@ export interface BenchTraceMeta {
   versions: { electron: string; chrome: string; node: string };
   /** Host context for drift analysis (design §6.2) — filled by main from os. */
   host?: { cpu: string; ramGB: number };
+  /** Data manifest (design §5 Q4) — driver-attached, see BenchDataManifest. */
+  dataManifest?: BenchDataManifest;
 }
 
 export interface BenchTrace {

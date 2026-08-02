@@ -19,6 +19,10 @@ describe("muxics bench driver", () => {
       expect(result.trace.reason).toMatch(/renderer flush|app quit/);
       expect(result.trace.ipc.length).toBeGreaterThan(0);
       expect(result.trace.marks.length).toBeGreaterThan(0);
+      // Data manifest attached (design §5 Q4) — cold profile, session-valid.
+      expect(result.trace.meta.dataManifest?.cacheProfile).toBe("cold");
+      expect(result.trace.meta.dataManifest?.sessionValid).toBe(true);
+      expect(result.trace.meta.dataManifest?.musicFolders.length).toBeGreaterThan(0);
       expect(fs.existsSync(result.tracePath)).toBe(true);
 
       console.log(

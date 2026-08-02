@@ -23,7 +23,7 @@ import {
   AUDIO_SERVER_PORT,
   LEGACY_APP_DATA_IDS,
 } from "../../src/shared/constants";
-import type { BenchTrace } from "../../src/shared/bench-contract";
+import type { BenchDataManifest, BenchTrace } from "../../src/shared/bench-contract";
 
 const VITE_PORT = 5173;
 const DEV_SERVER_URL = `http://localhost:${VITE_PORT}`;
@@ -45,6 +45,41 @@ export interface DriverResult {
   /** Captured main-process stdout lines (diagnostics). */
   appStdout: string[];
   /** Captured main-process stderr lines (diagnostics). */
+  appStderr: string[];
+}
+
+/** Launch chain result — preflight + tsup build + a running Vite child. */
+export interface PreparedChain {
+  repoRoot: string;
+  report: PreflightReport;
+  vite: ChildProcess;
+}
+
+/** The scratch app-data copy a cold run launches against (§3.2, §5 cold). */
+export interface ColdScratch {
+  /** benchmarks/scratch/<run-id>/ — contains the app-data dir + Chromium profile. */
+  scratchRoot: string;
+  /** Basename of the copied app-data dir (legacy-name precedence preserved). */
+  appDataDirName: string;
+}
+
+export interface LaunchCycleOptions {
+  repoRoot: string;
+  /** Scratch root from createColdScratch (or reused for the warm relaunch). */
+  scratchRoot: string;
+  headless: boolean;
+  /**
+   * Data manifest to attach to the collected trace (design §5, Q4). The
+   * sessionValid flag is set true here only after the readiness gate passes.
+   */
+  manifest?: BenchDataManifest;
+}
+
+export interface LaunchCycleResult {
+  runId: string;
+  tracePath: string;
+  trace: BenchTrace;
+  appStdout: string[];
   appStderr: string[];
 }
 
@@ -188,7 +223,7 @@ async function waitForOutcome(
 export interface PreflightReport {
   repoRoot: string;
   appDataDir: string;
-  musicDirs: string[];
+  musicFolders: Array<{ path: string; audioFiles: number }>;
   ytDlpPath: string;
 }
 
@@ -325,13 +360,13 @@ export async function preflight(repoRoot: string): Promise<PreflightReport> {
     candidates.add(path.join(os.homedir(), "Music"));
   }
   for (const folder of readWatchFolders(appDataDir)) candidates.add(folder);
-  const musicDirs: string[] = [];
+  const musicFolders: Array<{ path: string; audioFiles: number }> = [];
   for (const dir of candidates) {
     if (!fs.existsSync(dir)) continue;
     const count = countAudioFiles(dir);
-    if (count > 0) musicDirs.push(`${dir} (${count} audio files)`);
+    if (count > 0) musicFolders.push({ path: dir, audioFiles: count });
   }
-  if (musicDirs.length === 0) {
+  if (musicFolders.length === 0) {
     failPreflight(
       "No real audio files found in the default music folder or watch folders.",
       `Put audio files in ${[...candidates].join(" / ")} (or add a watch folder in the app's settings).`,
@@ -373,7 +408,7 @@ export async function preflight(repoRoot: string): Promise<PreflightReport> {
   return {
     repoRoot,
     appDataDir,
-    musicDirs,
+    musicFolders,
     ytDlpPath,
   };
 }
@@ -523,6 +558,128 @@ function buildScratchCopy(
     console.log(`${TAG} copied safeStorage key → ${scratchLocalState}`);
   }
   return scratchRoot;
+}
+
+// ---------------------------------------------------------------------------
+// App-level cache profile (design §5 cold/warm) + data manifest (Q4)
+// ---------------------------------------------------------------------------
+
+// The app's own disk caches under <app-data>/ytmusic/ — the cold/warm axis.
+// NOT included: session.json (the credential), tools/ (yt-dlp), settings.json,
+// playlists/ (real user data), debug/ — those are data, not cache.
+const APP_LEVEL_CACHE_RELS = [
+  "ytmusic/cache.json",
+  "ytmusic/media-index.json",
+  "ytmusic/home-snapshot.json",
+  "ytmusic/search-cache.json",
+  "ytmusic/audio",
+  "ytmusic/artwork",
+] as const;
+
+/** Remove the app-level caches from a copied profile → the §5 `cold` variant. */
+function emptyAppLevelCaches(appDataDir: string): void {
+  for (const rel of APP_LEVEL_CACHE_RELS) {
+    const p = path.join(appDataDir, rel);
+    try {
+      if (!fs.existsSync(p)) continue;
+      if (fs.statSync(p).isDirectory()) {
+        fs.rmSync(p, { recursive: true, force: true });
+        fs.mkdirSync(p, { recursive: true }); // ensureAppDataDirs would recreate it
+      } else {
+        fs.rmSync(p, { force: true });
+      }
+    } catch (err) {
+      console.warn(
+        `${TAG} could not clear app-level cache ${rel}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
+}
+
+/** Recursive { files, bytes } for a path (0/0 when missing or unreadable). */
+function statPath(p: string): { files: number; bytes: number } {
+  try {
+    const stat = fs.statSync(p);
+    if (!stat.isDirectory()) {
+      return { files: 1, bytes: stat.size };
+    }
+    let files = 0;
+    let bytes = 0;
+    const stack = [p];
+    while (stack.length > 0) {
+      const dir = stack.pop()!;
+      let entries: fs.Dirent[];
+      try {
+        entries = fs.readdirSync(dir, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+      for (const entry of entries) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          stack.push(full);
+        } else if (entry.isFile()) {
+          files++;
+          try {
+            bytes += fs.statSync(full).size;
+          } catch {
+            // unreadable — count the file, skip its bytes
+          }
+        }
+      }
+    }
+    return { files, bytes };
+  } catch {
+    return { files: 0, bytes: 0 };
+  }
+}
+
+/**
+ * Data manifest (design §5, Q4) — what data the run used. Cache sizes are the
+ * state the run LAUNCHED against: cold measures the emptied profile (~0),
+ * warm measures the same copy after the preceding run populated it. The
+ * caller stamps sessionValid only after the readiness gate passes (§3.1).
+ */
+export function computeDataManifest(options: {
+  appDataDir: string;
+  musicFolders: Array<{ path: string; audioFiles: number }>;
+  cacheProfile: "cold" | "warm";
+  sessionValid: boolean;
+}): BenchDataManifest {
+  let playlistCount = 0;
+  try {
+    playlistCount = fs
+      .readdirSync(path.join(options.appDataDir, "playlists"))
+      .filter((f) => f.endsWith(".m3u") || f.endsWith(".m3u8")).length;
+  } catch {
+    // no playlists dir in the copy — count stays 0
+  }
+  const caches = APP_LEVEL_CACHE_RELS.map((rel) => {
+    const { files, bytes } = statPath(path.join(options.appDataDir, rel));
+    return { name: rel, files, bytes };
+  });
+  return {
+    musicFolders: options.musicFolders,
+    playlistCount,
+    sessionValid: options.sessionValid,
+    cacheProfile: options.cacheProfile,
+    caches,
+  };
+}
+
+/** Merge the manifest into the collected trace and persist it (design §5 Q4). */
+export function attachDataManifest(
+  tracePath: string,
+  trace: BenchTrace,
+  manifest: BenchDataManifest,
+): void {
+  trace.meta.dataManifest = manifest;
+  fs.writeFileSync(tracePath, JSON.stringify(trace, null, 2), "utf-8");
+  console.log(
+    `${TAG} attached data manifest (${manifest.cacheProfile}, ${manifest.playlistCount} playlists) → ${tracePath}`,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -808,7 +965,7 @@ async function closeApp(app: ElectronApplication): Promise<void> {
 // Teardown — never leave a stray Vite, app, or scratch copy behind
 // ---------------------------------------------------------------------------
 
-async function teardown(
+export async function teardown(
   vite: ChildProcess | null,
   scratchRoot: string | null,
 ): Promise<void> {
@@ -841,57 +998,82 @@ async function teardown(
 }
 
 // ---------------------------------------------------------------------------
-// Orchestration
+// Orchestration — reusable pieces the scenario runner (#41) composes
 // ---------------------------------------------------------------------------
 
-export async function runDriverCycle(
-  options: DriverOptions = {},
-): Promise<DriverResult> {
-  const headless =
-    options.headless ?? process.env["MUXICS_BENCH_HEADLESS"] === "1";
+/**
+ * Pre-flight (§5.1) + tsup build + Vite child (§3.1 steps 1–3). One Vite can
+ * serve many app launches (cold → warm relaunch), so the chain is prepared
+ * once per batch and torn down after the last run.
+ */
+export async function prepareLaunchChain(): Promise<PreparedChain> {
   const repoRoot = resolveRepoRoot();
-  const runId = new Date().toISOString().replace(/[:.]/g, "-");
-  const runsDir = path.join(repoRoot, RUNS_DIR_REL);
-  const runFilesBefore = listRunFiles(runsDir);
+  const report = await preflight(repoRoot);
+  console.log(`${TAG} preflight OK:`);
+  console.log(`${TAG}   app-data dir: ${report.appDataDir}`);
+  console.log(
+    `${TAG}   music: ${report.musicFolders
+      .map((m) => `${m.path} (${m.audioFiles} audio files)`)
+      .join("; ")}`,
+  );
+  console.log(`${TAG}   yt-dlp: ${report.ytDlpPath}`);
 
-  let vite: ChildProcess | null = null;
-  let scratchRoot: string | null = null;
+  await buildElectronEntrypoints(repoRoot);
+  const vite = await startVite(repoRoot);
+  return { repoRoot, report, vite };
+}
+
+/**
+ * The §5 `cold` profile: snapshot the real app-data dir into a scratch dir
+ * (§3.2) and empty the app-level disk caches so the first launch of a batch
+ * starts truly cold. The warm relaunch reuses this same copy (§4.1).
+ */
+export function createColdScratch(
+  repoRoot: string,
+  appDataDir: string,
+  runId: string,
+): ColdScratch {
+  const scratchRoot = buildScratchCopy(repoRoot, appDataDir, runId);
+  const appDataDirName = path.basename(appDataDir);
+  emptyAppLevelCaches(path.join(scratchRoot, appDataDirName));
+  console.log(
+    `${TAG} emptied app-level caches in cold profile (${APP_LEVEL_CACHE_RELS.join(", ")})`,
+  );
+  return { scratchRoot, appDataDirName };
+}
+
+/**
+ * One launch → readiness gate (§3.1) → clean close → trace collect + validate.
+ * Session-validated readiness is enforced here for every scenario: a run that
+ * lands in local-only mode throws and its trace is discarded (§3.1).
+ */
+export async function runLaunchCycle(
+  options: LaunchCycleOptions,
+): Promise<LaunchCycleResult> {
+  const runsDir = path.join(options.repoRoot, RUNS_DIR_REL);
+  const runFilesBefore = listRunFiles(runsDir);
+  const runId = new Date().toISOString().replace(/[:.]/g, "-");
+
   let app: ElectronApplication | null = null;
   let appStdout: string[] = [];
   let appStderr: string[] = [];
 
   try {
-    // 1. Pre-flight — fail fast with the missing prerequisite named (§5.1).
-    const report = await preflight(repoRoot);
-    console.log(`${TAG} preflight OK:`);
-    console.log(`${TAG}   app-data dir: ${report.appDataDir}`);
-    console.log(`${TAG}   music: ${report.musicDirs.join("; ")}`);
-    console.log(`${TAG}   yt-dlp: ${report.ytDlpPath}`);
-
-    // 2. Build Electron entrypoints — `electron .` needs dist-electron/ (§3.1).
-    await buildElectronEntrypoints(repoRoot);
-
-    // 3. Start the Vite dev server as a child.
-    vite = await startVite(repoRoot);
-
-    // 4. Snapshot the real app-data into a scratch dir — the real session is
-    // never written to (§3.2).
-    scratchRoot = buildScratchCopy(repoRoot, report.appDataDir, runId);
-
-    // 5. Launch Electron against the scratch copy.
-    app = await launchApp(repoRoot, scratchRoot, headless);
+    // Launch Electron against the scratch copy (§3.2 — the real session is
+    // never written to).
+    app = await launchApp(options.repoRoot, options.scratchRoot, options.headless);
     appStdout = captureStdout(app);
     appStderr = captureStderr(app);
 
-    // 6. Readiness gate — logged in + real home-feed content (§3.1).
+    // Readiness gate — logged in + real home-feed content (§3.1).
     await waitForReadiness(app);
 
-    // 7. Close cleanly; the renderer pagehide flush + will-quit flush write
-    // the trace (single-write latch → exactly one file).
+    // Close cleanly; the renderer pagehide flush + will-quit flush write the
+    // trace (single-write latch → exactly one file).
     await closeApp(app);
     app = null;
 
-    // 8. Collect + validate the trace (§3.3).
+    // Collect + validate the trace (§3.3).
     const expected = findTracePathInStdout(appStdout);
     const { path: tracePath, trace } = await waitForTraceFile(
       expected,
@@ -906,21 +1088,26 @@ export async function runDriverCycle(
         `Trace ${tracePath} failed validation:\n  - ${problems.join("\n  - ")}`,
       );
     }
+    if (options.manifest) {
+      // The readiness gate passed (otherwise waitForReadiness threw and the
+      // trace was discarded), so the run's session was genuinely valid.
+      options.manifest.sessionValid = true;
+      attachDataManifest(tracePath, trace, options.manifest);
+    }
     console.log(`${TAG} trace OK: ${tracePath}`);
     console.log(
       `${TAG}   reason=${trace.reason} ipc=${trace.ipc.length} marks=${trace.marks.length} measures=${trace.measures.length}`,
     );
 
-    return { runId, headless, tracePath, trace, appStdout, appStderr };
+    return { runId, tracePath, trace, appStdout, appStderr };
   } catch (err) {
-    // Diagnostics first — the app's own output lines explain why a run
-    // failed (auth restore errors, sync rejections, yt-dlp issues).
+    // Diagnostics first — the app's own output lines explain why a run failed
+    // (auth restore errors, sync rejections, yt-dlp issues).
     const appLines = lastAppLines(appStdout, appStderr);
     if (appLines.length > 0) {
       console.error(`${TAG} last app output lines:`);
       for (const line of appLines) console.error(`  ${line}`);
     }
-    // Abort handling — close the app before teardown.
     if (app) {
       try {
         await closeApp(app);
@@ -945,6 +1132,52 @@ export async function runDriverCycle(
       }
     }
     throw err;
+  }
+}
+
+/**
+ * Single cold cycle — the #40 driver contract, kept as a thin composition of
+ * the pieces above so the runner can reuse them without duplicating the chain.
+ */
+export async function runDriverCycle(
+  options: DriverOptions = {},
+): Promise<DriverResult> {
+  const headless =
+    options.headless ?? process.env["MUXICS_BENCH_HEADLESS"] === "1";
+
+  let vite: ChildProcess | null = null;
+  let scratchRoot: string | null = null;
+
+  try {
+    const chain = await prepareLaunchChain();
+    vite = chain.vite;
+    const runId = new Date().toISOString().replace(/[:.]/g, "-");
+    const scratch = createColdScratch(
+      chain.repoRoot,
+      chain.report.appDataDir,
+      runId,
+    );
+    scratchRoot = scratch.scratchRoot;
+    const manifest = computeDataManifest({
+      appDataDir: path.join(scratch.scratchRoot, scratch.appDataDirName),
+      musicFolders: chain.report.musicFolders,
+      cacheProfile: "cold",
+      sessionValid: false, // stamped true by runLaunchCycle after readiness
+    });
+    const result = await runLaunchCycle({
+      repoRoot: chain.repoRoot,
+      scratchRoot: scratch.scratchRoot,
+      headless,
+      manifest,
+    });
+    return {
+      runId,
+      headless,
+      tracePath: result.tracePath,
+      trace: result.trace,
+      appStdout: result.appStdout,
+      appStderr: result.appStderr,
+    };
   } finally {
     // Never leave a stray Vite or scratch copy behind — success or failure
     // (design §3.2: tear down the scratch dir after the run).
