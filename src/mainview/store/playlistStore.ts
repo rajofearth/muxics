@@ -7,6 +7,7 @@ import { useLibraryStore } from "./libraryStore";
 import { useUiStore } from "./uiStore";
 import { showToast } from "../components/Toast";
 import { toPlaylist, mergeUniqueTracks, mergePlaylists } from "./converters";
+import { bench } from "../bench";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -331,6 +332,12 @@ export const usePlaylistStore = create<PlaylistState & PlaylistActions>()(
       }));
 
       try {
+        // Bench: ytmusicGetPlaylist hydration window (design §4.4 "(new)"
+        // hydration marks). bench.* is a no-op when MUXICS_BENCH=1 is off.
+        // Note: hydrateAllYtPlaylists runs these concurrently (3 workers) at
+        // startup, so batch-time pairings can span playlists — the scenario's
+        // single-playlist open pairs cleanly; batch records stay diagnostic.
+        bench.mark("playlist:yt:hydrate:start");
         const detailed = await rpc.request.ytmusicGetPlaylist({
           playlistId: playlist.providerId,
         });
@@ -385,6 +392,12 @@ export const usePlaylistStore = create<PlaylistState & PlaylistActions>()(
             },
           };
         });
+        bench.mark("playlist:yt:hydrate:done");
+        bench.measure(
+          "playlist:yt:hydrate:start → done",
+          "playlist:yt:hydrate:start",
+          "playlist:yt:hydrate:done",
+        );
       } catch (error) {
         set((s) => ({
           playlists: {

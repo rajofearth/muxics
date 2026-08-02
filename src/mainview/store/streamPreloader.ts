@@ -1,5 +1,6 @@
 import type { Track } from "../types";
 import type { DesktopBridge } from "../../shared/desktop-contract";
+import { bench } from "../bench";
 
 // ---------------------------------------------------------------------------
 // In-memory stream URL cache
@@ -91,6 +92,11 @@ export async function prefetchStreamUrl(
   if (existing) return existing;
 
   const promise = (async () => {
+    // Bench: prefetch window (design §4.5 playback.preloader-hit). bench.* is
+    // a no-op when MUXICS_BENCH=1 is off. Prefetches run with concurrency 3,
+    // so the forwarded start/done mark pair can span tracks — the prefetch
+    // IPC (ytmusicGetPlayback) is timed independently by the preload wrap.
+    bench.mark("streamPreloader:prefetch:start");
     try {
       const playback = await rpc.ytmusicGetPlayback({
         trackId: track.id,
@@ -103,6 +109,12 @@ export async function prefetchStreamUrl(
         expiresAt: playback.expiresAt ?? Date.now() + 20 * 60 * 1000,
       };
       cache.set(track.id, entry);
+      bench.mark("streamPreloader:prefetch:done");
+      bench.measure(
+        "streamPreloader:prefetch:start → done",
+        "streamPreloader:prefetch:start",
+        "streamPreloader:prefetch:done",
+      );
       return entry;
     } catch {
       // Prefetch failures are non-fatal – the audio engine will fetch on demand.

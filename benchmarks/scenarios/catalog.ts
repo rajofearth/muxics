@@ -4,13 +4,17 @@
 // The design is LOCKED (#34); this module is the single source the runner and
 // the later compare/registry tooling (#45–#47) read from. The runner (#41)
 // executes the startup pair end to end; #42 adds the library + search flows;
-// #43–#44 add the rest — until then the remaining flows are catalog data only.
+// #43 adds the playlist + playback flows; #44 adds the rendering + ipc.burst
+// flows (this file lists the app marks/IPCs each asserts).
 //
 // Measure names are the app-side marks/measures/IPC channels that exist in the
 // instrumentation layer (#39) — see the design §4 tables and the grep-verified
 // mark set in src/mainview/ (bench.ts, sessionInit.ts, SearchView, TrackTable,
-// NowPlayingView, useAudioEngine). Names marked "(new)" in §4 do not exist yet
-// and are listed here only when their ticket lands.
+// NowPlayingView, useAudioEngine, playlistStore, streamPreloader). Marks the
+// design marked "(new)" landed with their ticket: #43 landed the playlist
+// render mark, the YT hydration marks, and the stream-preloader prefetch
+// marks; #44 landed the §4.6 render marks (splash, library-list, now-playing)
+// and the §4.7 ipc.burst diagnostic names.
 
 export type ScenarioArea =
   | "startup/splash"
@@ -22,8 +26,9 @@ export type ScenarioArea =
   | "IPC";
 
 /**
- * Locked inputs (design §4 tables). Only the startup pair is executor-wired
- * in #41; the rest are the contract #42–#44 build against.
+ * Locked inputs (design §4 tables). The startup pair is executor-wired in #41,
+ * library + search in #42, playlists + playback in #43, rendering + ipc.burst
+ * in #44 — every catalog flow now has a runner executor.
  */
 export interface ScenarioInputs {
   /** Scratch profile variant (design §5) — the cold/warm axis. */
@@ -232,11 +237,15 @@ export const SCENARIO_CATALOG: ScenarioDefinition[] = [
     seeded: "no",
     inputs: { realSession: true, realMusicFolders: true },
     measures: {
-      // renderer list-render mark is "(new)" in §4 — lands with its ticket
-      marks: [],
+      // renderer list-render mark "(new)" in §4 — landed with #43
+      // (MainWindowContent playlist_detail post-frame mark).
+      marks: ["render:playlist:list"],
       measures: [],
       ipc: ["listPlaylists", "loadPlaylist"],
-      driverSteps: ["open a local playlist", "wait for render"],
+      driverSteps: [
+        "open a local playlist (source forced Local)",
+        "wait for track list render",
+      ],
     },
   },
   {
@@ -247,10 +256,15 @@ export const SCENARIO_CATALOG: ScenarioDefinition[] = [
     seeded: "yes",
     inputs: { realSession: true, playlistId: "<fixed playlistId>" },
     measures: {
-      marks: [], // hydration marks
-      measures: [],
+      // hydration marks "(new)" in §4 — landed with #43
+      // (ensurePlaylistHydrated around the ytmusicGetPlaylist call).
+      marks: ["playlist:yt:hydrate:start", "playlist:yt:hydrate:done"],
+      measures: ["playlist:yt:hydrate:start → done"],
       ipc: ["ytmusicGetPlaylist"],
-      driverSteps: ["open YouTube playlist", "wait for items"],
+      driverSteps: [
+        "open a real YouTube playlist via the grid",
+        "wait for hydration + track list",
+      ],
     },
   },
   {
@@ -315,10 +329,17 @@ export const SCENARIO_CATALOG: ScenarioDefinition[] = [
       marks: [
         "useAudioEngine:loadAndPlay:start",
         "useAudioEngine:loadAndPlay:playing",
+        // prefetch marks "(new)" in §4.5 — landed with #43 (streamPreloader
+        // prefetchStreamUrl around the ytmusicGetPlayback call).
+        "streamPreloader:prefetch:start",
+        "streamPreloader:prefetch:done",
       ],
-      measures: ["useAudioEngine:loadAndPlay:start → playing"],
-      // prefetch IPC timing — named when the executor lands (#43)
-      ipc: [],
+      measures: [
+        "useAudioEngine:loadAndPlay:start → playing",
+        "streamPreloader:prefetch:start → done",
+      ],
+      // prefetch IPC — auto-timed by the preload wrap (named with #43).
+      ipc: ["ytmusicGetPlayback"],
       driverSteps: ["play a track", "advance to the prefetched next track"],
     },
   },
@@ -334,7 +355,10 @@ export const SCENARIO_CATALOG: ScenarioDefinition[] = [
         "useAudioEngine:loadAndPlay:start",
         "useAudioEngine:loadAndPlay:playing",
       ],
-      measures: ["useAudioEngine:loadAndPlay:start → playing (consecutive)"],
+      // The app emits the plain name on EVERY load; consecutive occurrences of
+      // the measure ARE the auto-advance sequence (#43 reconciled the catalog
+      // to the real emitted name).
+      measures: ["useAudioEngine:loadAndPlay:start → playing"],
       ipc: [],
       driverSteps: ["queue ≥3 tracks", "let auto-advance play through"],
     },
@@ -405,8 +429,9 @@ export const SCENARIO_CATALOG: ScenarioDefinition[] = [
 export const STARTUP_SCENARIO_IDS = ["startup.cold", "startup.warm"] as const;
 
 /**
- * Scenarios with executors wired so far — the runner's default set: the
- * startup pair (#41) plus the library + search flows (#42, §4.2–4.3).
+ * Scenarios with executors wired — the runner's default set: the startup pair
+ * (#41), the library + search flows (#42, §4.2–4.3), the playlist + playback
+ * flows (#43, §4.4–4.5), and the rendering + ipc.burst flows (#44, §4.6–4.7).
  */
 export const IMPLEMENTED_SCENARIO_IDS = [
   ...STARTUP_SCENARIO_IDS,
@@ -414,6 +439,17 @@ export const IMPLEMENTED_SCENARIO_IDS = [
   "library.sync.yt",
   "search.local",
   "search.remote",
+  "playlist.open.local",
+  "playlist.open.yt",
+  "playback.cached",
+  "playback.local",
+  "playback.stream.ytdlp-miss",
+  "playback.preloader-hit",
+  "playback.advance",
+  "render.splash",
+  "render.library-list",
+  "render.now-playing",
+  "ipc.burst",
 ] as const;
 
 export function getScenario(id: string): ScenarioDefinition {

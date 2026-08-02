@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import type { ReactNode } from "react";
 import type { Track, NavState, NavView, LibrarySource } from "../types";
 import type { LibraryState } from "../store/libraryStore";
@@ -31,6 +31,7 @@ import { NowPlayingView } from "./NowPlayingView";
 import { SettingsView } from "./SettingsView";
 import { Collage } from "./Collage";
 import type { DesktopBridge } from "../../shared/desktop-contract";
+import { bench } from "../bench";
 
 export type MainWindowContentProps = {
   desktop?: DesktopBridge;
@@ -68,6 +69,52 @@ export type MainWindowContentProps = {
   handlePlayAll: (tracks: Track[]) => void;
   handleShufflePlay: (tracks: Track[]) => void;
 };
+
+/**
+ * Bench: render:playlist:list — post-frame (double rAF) mark after a playlist
+ * detail list renders (design §4.4 "(new)" render mark; the name is set by
+ * #43). Fires once per opened playlist id. Renders a null element, so it is
+ * safe to mount inside the playlist_detail case.
+ *
+ * Fires with any track count: local playlist entries resolve to ZERO library
+ * rows (entry ids are `local:<path>` while library track ids are
+ * `local:<hash>:<path>` — a known app mismatch, flagged in #43), so the mark
+ * represents the detail view rendering, not the row count.
+ *
+ * StrictMode note: dev mounts run effects twice (mount → cleanup → mount).
+ * The playlist id is claimed only when the mark actually fires (inside the
+ * second rAF), so the first run's cancelled rAFs never suppress the mark.
+ */
+function PlaylistRenderBench({
+  tracks,
+  playlistId,
+}: {
+  tracks: Track[];
+  playlistId?: string;
+}) {
+  const firedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!bench.enabled) {
+      return;
+    }
+    let raf1 = 0;
+    let raf2 = 0;
+    raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        if (firedFor.current === playlistId) {
+          return;
+        }
+        firedFor.current = playlistId ?? null;
+        bench.mark("render:playlist:list");
+      });
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, [tracks.length, playlistId]);
+  return null;
+}
 
 export function MainWindowContent({
   desktop,
@@ -699,24 +746,31 @@ export function MainWindowContent({
         );
       }
 
-      return renderTrackView(
-        activePlaylist?.name ?? "Playlist",
-        activePlaylist?.provider === "ytmusic" ? "YouTube Music" : "Playlist",
-        plTracks,
-        <Collage
-          pictures={recentPics}
-          fallback={activePlaylist?.picture}
-          FallbackIcon={ListMusic}
-          iconSize={40}
-        />,
-        activePlaylist ? (
-          <PlaylistHeaderActions
-            playlist={activePlaylist}
-            onNavigate={handleNavigate}
-          />
-        ) : undefined,
-        activePlaylist?.id,
-        () => handleNavigate("playlists"),
+      return (
+        <>
+          <PlaylistRenderBench tracks={plTracks} playlistId={navState.id} />
+          {renderTrackView(
+            activePlaylist?.name ?? "Playlist",
+            activePlaylist?.provider === "ytmusic"
+              ? "YouTube Music"
+              : "Playlist",
+            plTracks,
+            <Collage
+              pictures={recentPics}
+              fallback={activePlaylist?.picture}
+              FallbackIcon={ListMusic}
+              iconSize={40}
+            />,
+            activePlaylist ? (
+              <PlaylistHeaderActions
+                playlist={activePlaylist}
+                onNavigate={handleNavigate}
+              />
+            ) : undefined,
+            activePlaylist?.id,
+            () => handleNavigate("playlists"),
+          )}
+        </>
       );
     }
 
