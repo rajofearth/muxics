@@ -8,6 +8,7 @@ import {
   Menu,
   Tray,
   nativeImage,
+  net,
   shell,
   type MenuItemConstructorOptions,
 } from "electron";
@@ -920,7 +921,11 @@ app.whenReady().then(async () => {
 
     // Silent check — AndNotify can surface OS toasts / extra windows, which
     // AppImageHub scores as an on-screen error when the test is offline.
-    autoUpdater.checkForUpdates().catch(handleUpdateCheckError);
+    // Skip entirely when offline so Chromium never dumps
+    // net::ERR_INTERNET_DISCONNECTED into the process log.
+    if (net.isOnline()) {
+      autoUpdater.checkForUpdates().catch(handleUpdateCheckError);
+    }
   }
 
   app.on("activate", async () => {

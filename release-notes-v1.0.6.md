@@ -1,7 +1,7 @@
 ### AppImageHub / Linux packaging
 
 * **AppImage filename:** Linux artifacts no longer include `linux` in the name (e.g. `Muxics-1.0.6-x86_64.AppImage` instead of `Muxics-1.0.6-linux-x86_64.AppImage`), matching AppImageHub naming rules.
-* **Offline startup:** Auto-update checks no longer show an on-screen error banner or noisy console errors when the machine is offline (`net::ERR_INTERNET_DISCONNECTED` and similar). Startup uses a silent `checkForUpdates()` instead of `checkForUpdatesAndNotify()`. Real update failures still surface in the in-app banner.
+* **Offline startup:** Auto-update is skipped entirely when the machine is offline, so Chromium never logs `net::ERR_INTERNET_DISCONNECTED`. Remaining network/DNS failures are ignored (no red banner, no `checkForUpdatesAndNotify()` toast). Startup uses a silent `checkForUpdates()` only when online. Real update failures still surface in the in-app banner.
 
 ## Muxics (packaged by electron-builder)
 
