@@ -27,6 +27,9 @@ mac:
         - arm64
   icon: build/icon.icns
 linux:
+  # AppImageHub rejects names that contain "linux" (every AppImage is Linux).
+  artifactName: ${productName}-${version}-${arch}.${ext}
+  executableName: muxics
   category: AudioVideo
   icon: build/icons
   target:

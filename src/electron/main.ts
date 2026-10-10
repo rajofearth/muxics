@@ -8,6 +8,7 @@ import {
   Menu,
   Tray,
   nativeImage,
+  net,
   shell,
   type MenuItemConstructorOptions,
 } from "electron";
@@ -182,17 +183,27 @@ function getRendererEntry(): string | null {
   return null;
 }
 
-function isMissingUpdateMetadataError(error: unknown): boolean {
-  if (!(error instanceof Error)) {
-    return false;
+function updateErrorText(error: unknown): string {
+  if (error instanceof Error) {
+    return `${error.message}\n${error.stack ?? ""}`;
   }
+  return String(error);
+}
 
-  const message = `${error.message}\n${error.stack ?? ""}`;
-  return /latest(?:-[\w.-]+)?\.yml/i.test(message) && /(404|not found|cannot find)/i.test(message);
+function isIgnorableUpdateError(error: unknown): boolean {
+  const message = updateErrorText(error);
+  if (/latest(?:-[\w.-]+)?\.yml/i.test(message) && /(404|not found|cannot find)/i.test(message)) {
+    return true;
+  }
+  // Offline / no DNS is expected (AppImageHub tests with no network). Do not
+  // log or show a banner — both are treated as on-screen errors there.
+  return /ERR_INTERNET_DISCONNECTED|ERR_NETWORK_CHANGED|ERR_NAME_NOT_RESOLVED|ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_CONNECTION_TIMED_OUT|ENOTFOUND|ECONNREFUSED|ENETUNREACH|EAI_AGAIN|net::ERR_/i.test(
+    message,
+  );
 }
 
 function handleUpdateCheckError(error: unknown) {
-  if (isMissingUpdateMetadataError(error)) {
+  if (isIgnorableUpdateError(error)) {
     return;
   }
 
@@ -877,6 +888,17 @@ app.whenReady().then(async () => {
   if (!process.env["VITE_DEV_SERVER_URL"]) {
     autoUpdater.autoDownload = true;
     autoUpdater.autoInstallOnAppQuit = true;
+    autoUpdater.logger = {
+      info() {},
+      warn() {},
+      debug() {},
+      error(message: unknown) {
+        if (isIgnorableUpdateError(message)) {
+          return;
+        }
+        console.error("[muxics:updater]", message);
+      },
+    };
 
     autoUpdater.on("checking-for-update", () => {
       sendRendererEvent("autoUpdateStatus", { status: "checking" });
@@ -897,7 +919,13 @@ app.whenReady().then(async () => {
       handleUpdateCheckError(err);
     });
 
-    autoUpdater.checkForUpdatesAndNotify().catch(handleUpdateCheckError);
+    // Silent check — AndNotify can surface OS toasts / extra windows, which
+    // AppImageHub scores as an on-screen error when the test is offline.
+    // Skip entirely when offline so Chromium never dumps
+    // net::ERR_INTERNET_DISCONNECTED into the process log.
+    if (net.isOnline()) {
+      autoUpdater.checkForUpdates().catch(handleUpdateCheckError);
+    }
   }
 
   app.on("activate", async () => {

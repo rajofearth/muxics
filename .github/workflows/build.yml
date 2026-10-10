@@ -75,10 +75,23 @@ jobs:
       - name: Build web + electron bundles
         run: pnpm run build
 
+      - name: Prepare Linux icons
+        run: node scripts/prepare-electron-assets.mjs
+
       - name: Package (linux x64)
         run: pnpm exec electron-builder --config electron-builder.yml --publish never --linux --x64
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install zsync
+        run: sudo apt-get update && sudo apt-get install -y zsync
+
+      - name: Embed AppImage update information
+        run: |
+          IMG=$(ls artifacts/Muxics-*-x86_64.AppImage)
+          bash scripts/embed-appimage-update-info.sh "$IMG" \
+            "gh-releases-zsync|rajofearth|muxics|latest|Muxics-*-x86_64.AppImage.zsync" \
+            artifacts/latest-linux.yml
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
@@ -86,6 +99,7 @@ jobs:
           name: linux-x64
           path: |
             artifacts/Muxics-*.AppImage
+            artifacts/Muxics-*.AppImage.zsync
             artifacts/Muxics-*.tar.gz
             artifacts/latest-linux.yml
           if-no-files-found: error
@@ -109,10 +123,23 @@ jobs:
       - name: Build web + electron bundles
         run: pnpm run build
 
+      - name: Prepare Linux icons
+        run: node scripts/prepare-electron-assets.mjs
+
       - name: Package (linux arm64)
         run: pnpm exec electron-builder --config electron-builder.yml --publish never --linux --arm64
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install zsync
+        run: sudo apt-get update && sudo apt-get install -y zsync
+
+      - name: Embed AppImage update information
+        run: |
+          IMG=$(ls artifacts/Muxics-*-arm64.AppImage)
+          bash scripts/embed-appimage-update-info.sh "$IMG" \
+            "gh-releases-zsync|rajofearth|muxics|latest|Muxics-*-arm64.AppImage.zsync" \
+            artifacts/latest-linux-arm64.yml
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
@@ -120,6 +147,7 @@ jobs:
           name: linux-arm64
           path: |
             artifacts/Muxics-*.AppImage
+            artifacts/Muxics-*.AppImage.zsync
             artifacts/Muxics-*.tar.gz
             artifacts/latest-linux-arm64.yml
           if-no-files-found: error
@@ -249,7 +277,7 @@ jobs:
         run: |
           TAG="${{ steps.tag.outputs.tag }}"
           # Collect only final installer/archive assets and electron updater manifests
-          mapfile -t files < <(find release-artifacts -type f \( -name 'Muxics-*.dmg' -o -name 'Muxics-*.zip' -o -name 'Muxics-*.AppImage' -o -name 'Muxics-*.tar.gz' -o -name 'Muxics-*.exe' -o -name 'latest*.yml' \) -print)
+          mapfile -t files < <(find release-artifacts -type f \( -name 'Muxics-*.dmg' -o -name 'Muxics-*.zip' -o -name 'Muxics-*.AppImage' -o -name 'Muxics-*.AppImage.zsync' -o -name 'Muxics-*.tar.gz' -o -name 'Muxics-*.exe' -o -name 'latest*.yml' \) -print)
           if [ "${#files[@]}" -eq 0 ]; then
             echo "No artifacts found to upload"
             exit 1
