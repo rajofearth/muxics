@@ -146,6 +146,8 @@ export const useLibraryStore = create<LibraryState & LibraryActions>()(
           const defaultPath = await rpc.request.getDefaultMusicPath();
           const addResult = await rpc.request.addFolder({ path: defaultPath });
           if (!addResult.success) {
+            // First launch without ~/Music (CI / AppImageHub / containers) is
+            // an empty library, not a fatal error — EmptyLibrary prompts the user.
             set((s) => ({
               library: {
                 ...s.library,
@@ -156,7 +158,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>()(
                   s.library.remoteTracks,
                 ),
                 loading: false,
-                error: addResult.error ?? "Could not add folder",
+                error: null,
                 scanProgress: 0,
               },
               settings: { watchFolders: [] },

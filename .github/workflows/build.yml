@@ -75,6 +75,9 @@ jobs:
       - name: Build web + electron bundles
         run: pnpm run build
 
+      - name: Prepare Linux icons
+        run: node scripts/prepare-electron-assets.mjs
+
       - name: Package (linux x64)
         run: pnpm exec electron-builder --config electron-builder.yml --publish never --linux --x64
         env:
@@ -108,6 +111,9 @@ jobs:
 
       - name: Build web + electron bundles
         run: pnpm run build
+
+      - name: Prepare Linux icons
+        run: node scripts/prepare-electron-assets.mjs
 
       - name: Package (linux arm64)
         run: pnpm exec electron-builder --config electron-builder.yml --publish never --linux --arm64
